@@ -1,0 +1,350 @@
+.diff-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  background: var(--tempest-bg-editor);
+}
+
+/* ── Shared: status badge ───────────────────────────────────────────────────── */
+
+.dp-status {
+  font-size: 11px;
+  font-family: "Geist Mono", monospace;
+  font-weight: 600;
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+}
+
+.dp-status--modified  { color: var(--tempest-git-modified); }
+.dp-status--added     { color: var(--tempest-git-added); }
+.dp-status--deleted   { color: var(--tempest-git-deleted); }
+.dp-status--renamed   { color: var(--tempest-accent-blue); }
+.dp-status--untracked { color: var(--tempest-git-untracked); }
+
+/* ── Shared: file stats ─────────────────────────────────────────────────────── */
+
+.dp-file-stats {
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.dp-stat-add,
+.dp-stat-del {
+  font-size: 11px;
+  font-family: "Geist Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.dp-stat-add { color: var(--tempest-git-added); }
+.dp-stat-del { color: var(--tempest-git-deleted); }
+
+/* ── Shared: unified diff lines ─────────────────────────────────────────────── */
+
+.dp-line {
+  display: flex;
+  align-items: stretch;
+  font-family: "Geist Mono", monospace;
+  font-size: 12.5px;
+  line-height: 20px;
+  min-width: max-content;
+}
+
+.dp-line--hunk    { background: color-mix(in srgb, var(--tempest-accent-blue) 8%, transparent); }
+.dp-line--added   { background: color-mix(in srgb, var(--tempest-git-added) 10%, transparent); }
+.dp-line--removed { background: color-mix(in srgb, var(--tempest-git-deleted) 10%, transparent); }
+.dp-line--context { background: transparent; }
+
+.dp-ln {
+  flex-shrink: 0;
+  width: 44px;
+  padding: 0 8px;
+  text-align: right;
+  color: var(--tempest-fg-subtle);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  opacity: 0.45;
+  border-right: 1px solid var(--tempest-border-subtle);
+}
+
+.dp-ln--old { border-right: none; }
+
+.dp-line--added   .dp-ln--old,
+.dp-line--removed .dp-ln--new { opacity: 0; }
+
+.dp-line-content {
+  flex: 1;
+  padding: 0 16px;
+  white-space: pre;
+  color: var(--tempest-fg-default);
+}
+
+.dp-line--hunk    .dp-line-content { color: var(--tempest-accent-blue); opacity: 0.85; }
+.dp-line--added   .dp-line-content { color: var(--tempest-git-added); }
+.dp-line--removed .dp-line-content { color: var(--tempest-git-deleted); }
+
+/* ── Header ─────────────────────────────────────────────────────────────────── */
+
+.dp-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  height: 36px;
+  border-bottom: 1px solid var(--tempest-border-default);
+  background: var(--tempest-bg-panel);
+  gap: 8px;
+}
+
+.dp-header-title {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--tempest-fg-subtle);
+}
+
+.dp-push-spin {
+  animation: dp-spin 0.8s linear infinite;
+}
+
+.dp-push-error-strip {
+  flex-shrink: 0;
+  background: var(--tempest-accent-red);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 7px 14px;
+  display: flex;
+  align-items: center;
+}
+
+.dp-push-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 12px;
+  background: var(--tempest-accent-green);
+  height: 42px;
+}
+
+.dp-push-bar-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #000000;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease;
+}
+
+.dp-push-bar-btn:hover:not(:disabled) {
+  background: #e8e8e8;
+}
+
+.dp-push-bar-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.dp-reload-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.dp-reload-btn:hover:not(:disabled) {
+  color: var(--tempest-fg-default);
+  background: var(--tempest-bg-hover);
+}
+
+.dp-reload-btn:disabled { opacity: 0.4; cursor: default; }
+
+.dp-reload-btn--spinning svg {
+  animation: dp-spin 0.8s linear infinite;
+}
+
+@keyframes dp-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── Stream view ────────────────────────────────────────────────────────────── */
+
+.dp-stream {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+}
+
+.dp-stream-scroll {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tempest-border-subtle) transparent;
+  padding: 14px 16px 0;
+}
+
+.dp-stream-scroll::-webkit-scrollbar { width: 8px; }
+.dp-stream-scroll::-webkit-scrollbar-thumb { background: var(--tempest-border-subtle); border-radius: 4px; }
+
+.dp-stream-card {
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 12px;
+  background: var(--tempest-bg-sidebar);
+}
+
+.dp-stream-cardhead {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--tempest-bg-panel);
+  border: none;
+  border-bottom: 1px solid var(--tempest-border-default);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s ease;
+}
+
+.dp-stream-cardhead:hover { background: var(--tempest-bg-hover); }
+
+.dp-stream-chevron {
+  display: flex;
+  align-items: center;
+  color: var(--tempest-fg-subtle);
+  flex-shrink: 0;
+}
+
+.dp-stream-path {
+  flex: 1;
+  font-size: 12px;
+  font-family: "Geist Mono", monospace;
+  color: var(--tempest-fg-default);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.dp-stream-stub {
+  width: 100%;
+  padding: 14px 16px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: 12px;
+  font-family: "Geist Mono", monospace;
+  color: var(--tempest-fg-subtle);
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.dp-stream-stub:hover {
+  color: var(--tempest-fg-muted);
+  background: var(--tempest-bg-hover);
+}
+
+.dp-stream-body {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tempest-border-subtle) transparent;
+}
+
+.dp-stream-body::-webkit-scrollbar { height: 6px; }
+.dp-stream-body::-webkit-scrollbar-thumb { background: var(--tempest-border-subtle); border-radius: 3px; }
+
+.dp-stream-tail { height: 8px; }
+
+/* ── Loading / error / empty states ────────────────────────────────────────── */
+
+.dp-status-msg {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--tempest-fg-subtle);
+}
+
+.dp-status-msg--error {
+  color: var(--tempest-git-deleted);
+  padding: 16px;
+  text-align: center;
+}
+
+/* Jump bar */
+
+.dp-stream-jumpbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--tempest-border-default);
+  background: var(--tempest-bg-panel);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.dp-stream-jumpbar::-webkit-scrollbar { display: none; }
+
+.dp-stream-jumplabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--tempest-fg-subtle);
+  flex-shrink: 0;
+}
+
+.dp-stream-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--tempest-border-subtle);
+  background: transparent;
+  color: var(--tempest-fg-muted);
+  font-size: 11px;
+  font-family: "Geist Mono", monospace;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.dp-stream-pill:hover {
+  color: var(--tempest-fg-default);
+  background: var(--tempest-bg-hover);
+  border-color: var(--tempest-accent-blue);
+}

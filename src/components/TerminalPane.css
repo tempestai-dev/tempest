@@ -1,0 +1,79 @@
+.terminal-pane-wrapper {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+
+.terminal-pane {
+  flex: 1;
+  padding: 8px;
+  box-sizing: border-box;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.terminal-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--tempest-bg-elevated);
+  border-bottom: 1px solid var(--tempest-border-subtle);
+  flex-shrink: 0;
+}
+
+.terminal-search-input {
+  flex: 1;
+  background: var(--tempest-bg-input);
+  border: 1px solid var(--tempest-border-subtle);
+  border-radius: 4px;
+  color: var(--tempest-text-primary);
+  font-family: "Geist Mono", monospace;
+  font-size: 12px;
+  padding: 3px 7px;
+  outline: none;
+}
+
+.terminal-search-input:focus {
+  border-color: var(--tempest-accent-blue);
+}
+
+.terminal-search-close {
+  background: none;
+  border: none;
+  color: var(--tempest-text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.terminal-search-close:hover {
+  color: var(--tempest-text-primary);
+}
+
+.terminal-pane .xterm {
+  height: 100%;
+}
+
+.terminal-pane .xterm-viewport {
+  overflow-y: auto !important;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tempest-border-subtle) transparent;
+}
+
+.terminal-pane .xterm-viewport::-webkit-scrollbar {
+  width: 4px;
+}
+
+.terminal-pane .xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.terminal-pane .xterm-viewport::-webkit-scrollbar-thumb {
+  background: var(--tempest-border-subtle);
+  border-radius: 2px;
+}

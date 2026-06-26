@@ -1,0 +1,352 @@
+/* ── Root ───────────────────────────────────────────────────────────────────── */
+
+.op-root {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--tempest-bg-editor);
+  overflow: hidden;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────────── */
+
+.op-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--tempest-border-default);
+}
+
+.op-header-count {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--tempest-fg-default);
+}
+
+.op-header-sep {
+  font-size: 13px;
+  color: var(--tempest-fg-subtle);
+  user-select: none;
+}
+
+.op-header-active {
+  font-size: 13px;
+  color: var(--tempest-fg-muted);
+}
+
+/* ── List ───────────────────────────────────────────────────────────────────── */
+
+.op-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tempest-border-subtle) transparent;
+}
+
+.op-list::-webkit-scrollbar { width: 5px; }
+.op-list::-webkit-scrollbar-track { background: transparent; }
+.op-list::-webkit-scrollbar-thumb { background: var(--tempest-border-subtle); border-radius: 3px; }
+
+/* Thin gap between state groups (done/working/idle) */
+.op-group-gap {
+  height: 1px;
+  background: var(--tempest-border-default);
+  margin: 4px 0;
+}
+
+/* ── Row ────────────────────────────────────────────────────────────────────── */
+
+.op-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--tempest-border-default);
+  transition: background 0.08s;
+  cursor: default;
+  min-width: 0;
+}
+
+.op-row:last-child {
+  border-bottom: none;
+}
+
+.op-row:hover {
+  background: var(--tempest-bg-hover);
+}
+
+.op-row--dormant {
+  opacity: 0.45;
+}
+
+.op-row--dormant:hover {
+  opacity: 0.75;
+}
+
+/* State dot column — fixed width so all rows align */
+.op-row-dot {
+  flex-shrink: 0;
+  width: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Identity: name + branch lines */
+.op-row-identity {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.op-row-nameline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.op-row-typeicon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--tempest-fg-subtle);
+}
+
+.op-row-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--tempest-fg-default);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.op-row-project {
+  font-size: 11px;
+  color: var(--tempest-fg-subtle);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* "review" inline tag — plain text, no box */
+.op-row-review {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--tempest-accent-green);
+  flex-shrink: 0;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
+.op-row-branchline {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.op-row-branchicon {
+  flex-shrink: 0;
+  color: var(--tempest-fg-subtle);
+}
+
+.op-row-branch {
+  font-size: 11px;
+  font-family: "Geist Mono", monospace;
+  color: var(--tempest-fg-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.op-row-dot-sep {
+  font-size: 11px;
+  color: var(--tempest-fg-subtle);
+  flex-shrink: 0;
+  user-select: none;
+  opacity: 0.5;
+}
+
+.op-row-file {
+  font-size: 11px;
+  font-family: "Geist Mono", monospace;
+  color: var(--tempest-fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  max-width: 200px;
+}
+
+.op-row-filemore {
+  font-size: 11px;
+  font-family: "Geist Mono", monospace;
+  color: var(--tempest-fg-subtle);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Right column: age + actions */
+.op-row-right {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.op-row-age {
+  font-size: 11px;
+  font-family: "Geist Mono", monospace;
+  color: var(--tempest-fg-subtle);
+  white-space: nowrap;
+  min-width: 44px;
+  text-align: right;
+}
+
+/* Actions — invisible until row hover */
+.op-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.op-row:hover .op-row-actions {
+  opacity: 1;
+}
+
+/* Ghost action buttons */
+.op-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 4px;
+  color: var(--tempest-fg-muted);
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.08s, color 0.08s, border-color 0.08s;
+}
+
+.op-act:hover {
+  background: var(--tempest-bg-active);
+  color: var(--tempest-fg-default);
+  border-color: var(--tempest-border-subtle);
+}
+
+.op-act--icon {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+}
+
+/* ── State dots ─────────────────────────────────────────────────────────────── */
+
+.op-dot {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Done: dim green */
+.op-dot--done {
+  background: var(--tempest-accent-green);
+  opacity: 0.7;
+}
+
+/* Idle: subtle gray */
+.op-dot--idle {
+  background: var(--tempest-fg-subtle);
+  opacity: 0.35;
+}
+
+/* Dormant: hollow ring */
+.op-dot--dormant {
+  background: transparent;
+  border: 1px solid var(--tempest-fg-subtle);
+  opacity: 0.35;
+}
+
+/* Working: amber spinner */
+.op-spinner {
+  color: var(--tempest-accent-yellow);
+  flex-shrink: 0;
+  animation: op-spin 1s linear infinite;
+}
+
+@keyframes op-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── Empty state ────────────────────────────────────────────────────────────── */
+
+.op-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 64px 24px;
+}
+
+.op-empty-text {
+  font-size: 13px;
+  color: var(--tempest-fg-subtle);
+}
+
+.op-empty-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 5px;
+  color: var(--tempest-fg-muted);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.08s, color 0.08s;
+}
+
+.op-empty-btn:hover {
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
+}
+
+/* ── Diff stats ─────────────────────────────────────────────────────────────── */
+
+.op-stat-add {
+  font-size: 11px;
+  font-family: "Geist Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--tempest-git-added);
+  opacity: 0.75;
+  flex-shrink: 0;
+}
+
+.op-stat-del {
+  font-size: 11px;
+  font-family: "Geist Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--tempest-git-deleted);
+  opacity: 0.75;
+  flex-shrink: 0;
+}

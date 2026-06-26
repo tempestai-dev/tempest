@@ -1,0 +1,264 @@
+.prd-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.prd {
+  width: 440px;
+  background: var(--tempest-bg-panel);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────────── */
+
+.prd-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--tempest-border-default);
+  background: var(--tempest-bg-sidebar);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tempest-fg-default);
+}
+
+.prd-close {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.prd-close:hover {
+  background: var(--tempest-border-default);
+  color: var(--tempest-fg-default);
+}
+
+/* ── Body ───────────────────────────────────────────────────────────────────── */
+
+.prd-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.prd-body--success {
+  gap: 10px;
+}
+
+/* ── Fields ─────────────────────────────────────────────────────────────────── */
+
+.prd-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.prd-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--tempest-fg-subtle);
+}
+
+.prd-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--tempest-bg-input);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 5px;
+  color: var(--tempest-fg-default);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 7px 10px;
+  outline: none;
+  transition: border-color 0.12s ease;
+}
+
+.prd-input:focus {
+  border-color: var(--tempest-accent-blue);
+}
+
+.prd-input--narrow {
+  width: 160px;
+}
+
+.prd-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--tempest-bg-input);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 5px;
+  color: var(--tempest-fg-default);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 7px 10px;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.12s ease;
+}
+
+.prd-textarea:focus {
+  border-color: var(--tempest-accent-blue);
+}
+
+/* ── Token section ──────────────────────────────────────────────────────────── */
+
+.prd-token-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.prd-hint {
+  font-size: 11px;
+  color: var(--tempest-fg-subtle);
+  margin: 0;
+}
+
+.prd-hint code {
+  font-family: "Geist Mono", monospace;
+  background: var(--tempest-border-default);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.prd-token-row {
+  display: flex;
+  gap: 8px;
+}
+
+.prd-save-token {
+  flex-shrink: 0;
+  padding: 7px 14px;
+  border: none;
+  border-radius: 5px;
+  background: var(--tempest-accent-blue);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.12s ease;
+}
+
+.prd-save-token:hover:not(:disabled) { filter: brightness(1.12); }
+.prd-save-token:disabled { opacity: 0.5; cursor: default; }
+
+/* ── Footer ─────────────────────────────────────────────────────────────────── */
+
+.prd-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.prd-meta {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  font-family: "Geist Mono", monospace;
+  color: var(--tempest-fg-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prd-submit {
+  flex-shrink: 0;
+  padding: 7px 18px;
+  border: none;
+  border-radius: 5px;
+  background: var(--tempest-accent-green);
+  color: #000000;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.12s ease;
+}
+
+.prd-submit:hover:not(:disabled) { filter: brightness(1.08); }
+.prd-submit:disabled { opacity: 0.5; cursor: default; }
+
+/* ── Error ──────────────────────────────────────────────────────────────────── */
+
+.prd-error {
+  font-size: 12px;
+  color: var(--tempest-accent-red);
+  background: var(--tempest-island-bg-open);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 5px;
+  padding: 8px 10px;
+}
+
+/* ── Success state ──────────────────────────────────────────────────────────── */
+
+.prd-success-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tempest-accent-green);
+  margin: 0;
+}
+
+.prd-pr-url {
+  font-size: 12px;
+  font-family: "Geist Mono", monospace;
+  color: var(--tempest-fg-subtle);
+  word-break: break-all;
+}
+
+.prd-open-btn {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 5px;
+  background: var(--tempest-island-bg-open);
+  color: var(--tempest-fg-default);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.prd-open-btn:hover { background: var(--tempest-border-default); }
+
+/* ── Non-GitHub fallback ────────────────────────────────────────────────────── */
+
+.prd-note {
+  font-size: 13px;
+  color: var(--tempest-fg-muted);
+  margin: 0;
+}
+
+.prd-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--tempest-accent-blue);
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+}

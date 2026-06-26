@@ -1,0 +1,179 @@
+.psm {
+  position: fixed;
+  background: var(--tempest-bg-panel);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 50;
+}
+
+/* Recents list */
+
+.psm-recents {
+  max-height: 240px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tempest-border-subtle) transparent;
+}
+
+.psm-recents::-webkit-scrollbar { width: 4px; }
+.psm-recents::-webkit-scrollbar-track { background: transparent; }
+.psm-recents::-webkit-scrollbar-thumb { background: var(--tempest-border-subtle); border-radius: 2px; }
+
+.psm-empty {
+  padding: 16px 14px;
+  font-size: 13px;
+  color: var(--tempest-fg-subtle);
+}
+
+.psm-recent-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 14px;
+  cursor: pointer;
+  transition: background 0.1s;
+  border-bottom: 1px solid var(--tempest-border-default);
+  user-select: none;
+}
+
+.psm-recent-item:last-child {
+  border-bottom: none;
+}
+
+.psm-recent-item:hover {
+  background: var(--tempest-bg-hover);
+}
+
+.psm-recent-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.psm-recent-name {
+  font-size: 13px;
+  color: var(--tempest-fg-default);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.psm-recent-path {
+  font-size: 11px;
+  color: var(--tempest-fg-subtle);
+  font-family: 'Geist Mono', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.psm-recent-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+.psm-recent-time {
+  font-size: 11px;
+  color: var(--tempest-fg-subtle);
+  white-space: nowrap;
+}
+
+.psm-recent-chevron {
+  color: var(--tempest-fg-subtle);
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.psm-recent-item:hover .psm-recent-chevron {
+  opacity: 1;
+}
+
+/* Action buttons */
+
+.psm-actions {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--tempest-border-default);
+}
+
+.psm-action-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 7px;
+  color: var(--tempest-fg-muted);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+  user-select: none;
+}
+
+.psm-action-btn:hover {
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
+  border-color: var(--tempest-border-subtle);
+}
+
+/* Clone input */
+
+.psm-clone {
+  display: flex;
+  gap: 8px;
+  padding: 0 14px 12px;
+}
+
+.psm-clone-input {
+  flex: 1;
+  height: 32px;
+  padding: 0 10px;
+  background: var(--tempest-bg-input);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 6px;
+  color: var(--tempest-fg-default);
+  font-size: 12px;
+  font-family: 'Geist Mono', monospace;
+  outline: none;
+  transition: border-color 0.12s;
+}
+
+.psm-clone-input:focus {
+  border-color: var(--tempest-border-subtle);
+}
+
+.psm-clone-input::placeholder {
+  color: var(--tempest-fg-subtle);
+  font-family: 'Geist', sans-serif;
+}
+
+.psm-clone-btn {
+  height: 32px;
+  padding: 0 14px;
+  background: var(--tempest-fg-default);
+  border: none;
+  border-radius: 6px;
+  color: var(--tempest-bg-base);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+
+.psm-clone-btn:hover:not(:disabled) { opacity: 0.88; }
+.psm-clone-btn:disabled { opacity: 0.3; cursor: not-allowed; }

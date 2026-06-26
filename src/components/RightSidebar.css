@@ -1,0 +1,280 @@
+.right-sidebar {
+  flex-shrink: 0;
+  background: var(--tempest-bg-sidebar);
+  border-left: 1px solid var(--tempest-border-default);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  transition: width 0.22s ease, opacity 0.22s ease, border-color 0.22s ease;
+  opacity: 1;
+}
+
+.right-sidebar--collapsed {
+  width: 0 !important;
+  border-color: transparent !important;
+  opacity: 0 !important;
+}
+
+/* Drag handle */
+
+.rs-drag-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background 0.15s;
+}
+
+.rs-drag-handle:hover {
+  background: var(--tempest-accent-blue);
+  opacity: 0.5;
+}
+
+/* Header: tabs + reload */
+
+.rs-header {
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--tempest-border-default);
+  background: var(--tempest-bg-panel);
+}
+
+.rs-tabs {
+  display: flex;
+  align-items: stretch;
+  flex: 1;
+  overflow: hidden;
+}
+
+.rs-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--tempest-fg-subtle);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.1s, border-color 0.12s;
+  flex-shrink: 0;
+}
+
+.rs-tab:hover {
+  color: var(--tempest-fg-default);
+}
+
+.rs-tab--active {
+  color: var(--tempest-fg-default);
+  background: var(--tempest-bg-editor);
+  border-bottom-color: var(--tempest-accent-blue);
+}
+
+.rs-tab-count {
+  font-size: 10px;
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-muted);
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Reload button */
+
+.rs-reload-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  transition: color 0.1s, background 0.1s;
+  border-radius: 0;
+}
+
+.rs-reload-btn:hover:not(:disabled) {
+  color: var(--tempest-fg-default);
+  background: var(--tempest-bg-hover);
+}
+
+.rs-reload-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+@keyframes rs-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.rs-reload-btn--spinning svg {
+  animation: rs-spin 0.7s linear infinite;
+}
+
+/* Body / scrollable area */
+
+.rs-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.rs-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tempest-border-subtle) transparent;
+}
+
+.rs-scroll::-webkit-scrollbar { width: 4px; }
+.rs-scroll::-webkit-scrollbar-track { background: transparent; }
+.rs-scroll::-webkit-scrollbar-thumb { background: var(--tempest-border-subtle); border-radius: 2px; }
+
+/* Empty / error states */
+
+.rs-empty {
+  padding: 12px 12px;
+  font-size: 12px;
+  color: var(--tempest-fg-subtle);
+  user-select: none;
+}
+
+.rs-git-error {
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--tempest-accent-red);
+  font-family: "Geist Mono", monospace;
+}
+
+.rs-git-no-init {
+  padding: 12px;
+  font-size: 11px;
+  color: var(--tempest-fg-muted);
+  line-height: 1.5;
+}
+
+/* File tree */
+
+.rs-file-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding-right: 8px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.08s;
+  min-width: 0;
+}
+
+.rs-file-item:hover {
+  background: var(--tempest-bg-hover);
+}
+
+.rs-file-item--dir {
+  cursor: pointer;
+}
+
+.rs-file-item--file {
+  cursor: pointer;
+}
+
+.rs-file-item--file:hover .rs-file-name {
+  color: var(--tempest-fg-default);
+}
+
+.rs-file-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  flex-shrink: 0;
+  color: var(--tempest-fg-subtle);
+}
+
+.rs-file-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--tempest-fg-subtle);
+}
+
+.rs-file-item--dir .rs-file-icon {
+  color: var(--tempest-accent-yellow);
+}
+
+.rs-file-name {
+  font-size: 12px;
+  color: var(--tempest-fg-default);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.rs-file-empty {
+  font-size: 11px;
+  color: var(--tempest-fg-subtle);
+  height: 20px;
+  display: flex;
+  align-items: center;
+}
+
+/* Changes tab */
+
+.rs-change-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px;
+  min-width: 0;
+  cursor: default;
+  user-select: none;
+  transition: background 0.08s;
+}
+
+.rs-change-item:hover {
+  background: var(--tempest-bg-hover);
+}
+
+.rs-change-status {
+  font-size: 11px;
+  font-family: "Geist Mono", monospace;
+  font-weight: 600;
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+}
+
+.rs-change-status--modified  { color: var(--tempest-git-modified); }
+.rs-change-status--added     { color: var(--tempest-git-added); }
+.rs-change-status--deleted   { color: var(--tempest-git-deleted); }
+.rs-change-status--renamed   { color: var(--tempest-accent-blue); }
+.rs-change-status--untracked { color: var(--tempest-git-untracked); }
+
+.rs-change-path {
+  font-size: 12px;
+  color: var(--tempest-fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+  font-family: "Geist Mono", monospace;
+}

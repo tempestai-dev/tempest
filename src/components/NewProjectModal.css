@@ -1,0 +1,143 @@
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  width: 400px;
+  background: var(--tempest-bg-editor);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 10px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.modal-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--tempest-fg-default);
+}
+
+.modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modal-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--tempest-fg-subtle);
+}
+
+.modal-input {
+  height: 34px;
+  padding: 0 10px;
+  background: var(--tempest-bg-input);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 6px;
+  color: var(--tempest-fg-default);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  width: 100%;
+  transition: border-color 0.12s;
+}
+
+.modal-input:focus {
+  border-color: var(--tempest-border-subtle);
+}
+
+.modal-input--location {
+  cursor: pointer;
+  color: var(--tempest-fg-muted);
+}
+
+.modal-input--location:not([value=""]) {
+  color: var(--tempest-fg-default);
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+}
+
+.modal-location-row {
+  display: flex;
+  gap: 6px;
+}
+
+.modal-browse-btn {
+  height: 34px;
+  width: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--tempest-bg-input);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 6px;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  font-family: inherit;
+}
+
+.modal-browse-btn:hover {
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
+  border-color: var(--tempest-border-subtle);
+}
+
+.modal-error {
+  font-size: 12px;
+  color: var(--tempest-semantic-error);
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.modal-btn {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, opacity 0.12s;
+  border: 1px solid transparent;
+}
+
+.modal-btn--cancel {
+  background: transparent;
+  border-color: var(--tempest-border-default);
+  color: var(--tempest-fg-muted);
+}
+
+.modal-btn--cancel:hover {
+  border-color: var(--tempest-border-subtle);
+  color: var(--tempest-fg-default);
+}
+
+.modal-btn--create {
+  background: var(--tempest-fg-default);
+  color: var(--tempest-bg-base);
+  font-weight: 500;
+}
+
+.modal-btn--create:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.modal-btn--create:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}

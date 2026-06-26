@@ -1,0 +1,218 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--tempest-bg-base);
+  color: var(--tempest-fg-default);
+  font-family: 'Geist', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.welcome {
+  width: 460px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.logo-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.tagline {
+  font-size: 13px;
+  color: var(--tempest-fg-default);
+  text-align: center;
+}
+
+.wordmark {
+  height: 34px;
+  width: auto;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 20px;
+  background: var(--tempest-bg-editor);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 8px;
+  color: var(--tempest-fg-default);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  user-select: none;
+}
+
+.action-btn:hover {
+  background: var(--tempest-bg-hover);
+  border-color: var(--tempest-border-subtle);
+}
+
+.action-btn:active {
+  background: var(--tempest-bg-active);
+}
+
+.recents {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.recents-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--tempest-fg-subtle);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+}
+
+.recents-list {
+  height: 240px;
+  overflow-y: auto;
+  border-radius: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tempest-border-subtle) transparent;
+}
+
+.recents-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.recents-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.recents-list::-webkit-scrollbar-thumb {
+  background: var(--tempest-border-subtle);
+  border-radius: 2px;
+}
+
+.recent-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.1s;
+  border-bottom: 1px solid var(--tempest-border-default);
+  user-select: none;
+}
+
+.recent-item:last-child {
+  border-bottom: none;
+}
+
+.recent-item:hover {
+  background: var(--tempest-bg-hover);
+}
+
+.recent-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.recent-name {
+  font-size: 13px;
+  color: var(--tempest-fg-default);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recent-path {
+  font-size: 11px;
+  color: var(--tempest-fg-subtle);
+  font-family: 'Geist Mono', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recent-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+.recent-time {
+  font-size: 11px;
+  color: var(--tempest-fg-subtle);
+  white-space: nowrap;
+}
+
+.recent-chevron {
+  color: var(--tempest-fg-subtle);
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.recent-item:hover .recent-chevron {
+  opacity: 1;
+}
+
+.recents-empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--tempest-fg-muted);
+  font-size: 13px;
+}
+
+.load-more {
+  align-self: center;
+  padding: 5px 14px;
+  background: transparent;
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 6px;
+  color: var(--tempest-fg-subtle);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+  user-select: none;
+}
+
+.load-more:hover {
+  color: var(--tempest-fg-muted);
+  border-color: var(--tempest-border-subtle);
+}

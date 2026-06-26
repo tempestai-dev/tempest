@@ -1,0 +1,128 @@
+.nsm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+}
+
+.nsm {
+  position: fixed;
+  z-index: 301;
+  background: var(--tempest-bg-sidebar);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 248px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.nsm-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: var(--tempest-fg-default);
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+  position: relative;
+  user-select: none;
+}
+
+.nsm-item:hover:not(.nsm-item--disabled) {
+  background: var(--tempest-bg-hover);
+}
+
+.nsm-item--sub {
+  cursor: default;
+}
+
+.nsm-item--disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.nsm-item-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--tempest-fg-muted);
+}
+
+.nsm-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.nsm-item-label {
+  font-size: 13px;
+  color: var(--tempest-fg-default);
+}
+
+.nsm-item-desc {
+  font-size: 11px;
+  color: var(--tempest-fg-subtle);
+}
+
+.nsm-item-chevron {
+  flex-shrink: 0;
+  color: var(--tempest-fg-subtle);
+  margin-top: 3px;
+}
+
+.nsm-submenu {
+  position: absolute;
+  left: calc(100% + 4px);
+  top: -4px;
+  background: var(--tempest-bg-sidebar);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 192px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  z-index: 302;
+}
+
+.nsm-subitem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.nsm-subitem:hover {
+  background: var(--tempest-bg-hover);
+}
+
+.nsm-subitem-icon {
+  flex-shrink: 0;
+}
+
+[data-theme="dark"] .agent-icon--mono {
+  filter: invert(1);
+}
+
+.nsm-subitem-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--tempest-fg-default);
+}
+
+.nsm-subitem-hint {
+  font-size: 11px;
+  color: var(--tempest-fg-subtle);
+  font-family: "Geist Mono", monospace;
+}

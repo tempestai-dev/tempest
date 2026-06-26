@@ -1,0 +1,144 @@
+.cmp-pane {
+  flex-direction: column;
+  height: 100%;
+  background: var(--tempest-bg-editor);
+  overflow: hidden;
+}
+
+.cmp-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 14px;
+  height: 36px;
+  min-height: 36px;
+  border-bottom: 1px solid var(--tempest-border-default);
+  background: var(--tempest-bg-panel);
+}
+
+.cmp-header-icon {
+  color: var(--tempest-fg-subtle);
+  flex-shrink: 0;
+}
+
+.cmp-header-name {
+  font-size: 12px;
+  font-family: 'Geist Mono', monospace;
+  color: var(--tempest-fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmp-toggle {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 6px;
+  background: var(--tempest-bg-base);
+}
+
+.cmp-toggle-btn {
+  font-size: 11px;
+  font-family: inherit;
+  line-height: 1.5;
+  padding: 2px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tempest-fg-muted);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.cmp-toggle-btn:hover {
+  color: var(--tempest-fg-default);
+}
+
+.cmp-toggle-btn.active {
+  background: var(--tempest-bg-active);
+  color: var(--tempest-fg-default);
+}
+
+.cmp-container {
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Ensure CodeMirror fills the container */
+.cmp-container .cm-editor {
+  height: 100%;
+}
+
+.cmp-container .cm-scroller {
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tempest-border-subtle) transparent;
+}
+
+.cmp-container .cm-scroller::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.cmp-container .cm-scroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cmp-container .cm-scroller::-webkit-scrollbar-thumb {
+  background: var(--tempest-border-subtle);
+  border-radius: 3px;
+}
+
+.cmp-container .cm-scroller::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.cmp-error {
+  padding: 16px;
+  font-size: 13px;
+  font-family: 'Geist Mono', monospace;
+  color: var(--tempest-semantic-error);
+}
+
+/* Markdown preview */
+.cmp-preview-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--tempest-bg-editor);
+  scrollbar-width: thin;
+  scrollbar-color: var(--tempest-border-subtle) transparent;
+}
+
+.cmp-preview-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.cmp-preview-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cmp-preview-scroll::-webkit-scrollbar-thumb {
+  background: var(--tempest-border-subtle);
+  border-radius: 3px;
+}
+
+.cmp-preview-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Override github-markdown-css layout to sit inside our themed scroll area */
+.cmp-markdown-body.markdown-body {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 24px 32px;
+  background-color: transparent;
+}
+

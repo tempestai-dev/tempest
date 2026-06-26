@@ -1,0 +1,91 @@
+.topbar {
+  position: relative;
+  height: 32px;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.topbar-drag {
+  position: absolute;
+  inset: 0;
+  -webkit-app-region: drag;
+}
+
+.topbar-left {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+  z-index: 1;
+}
+
+.topbar-zen-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.topbar-zen-btn:hover {
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
+}
+
+.topbar-zen-btn--disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.topbar-zen-btn--disabled:hover {
+  background: transparent;
+  color: var(--tempest-fg-subtle);
+}
+
+.topbar-controls {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+  z-index: 1;
+}
+
+.win-btn {
+  width: 28px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  font-family: inherit;
+  -webkit-app-region: no-drag;
+}
+
+.win-btn:hover {
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
+}
+
+.win-btn--close:hover {
+  background: var(--tempest-accent-red);
+  color: #ffffff;
+}
