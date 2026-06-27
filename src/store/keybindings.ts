@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { getRuntimeState, setRuntimeState } from "../lib/runtimeState";
 
 export type ActionId =
   | "toggleTheme"
@@ -10,7 +11,9 @@ export type ActionId =
   | "closeTab"
   | "nextTab"
   | "prevTab"
-  | "broadcast";
+  | "broadcast"
+  | "splitPaneV"
+  | "splitPaneH";
 
 export interface Shortcut {
   key: string;   // KeyboardEvent.key (original casing preserved)
@@ -36,6 +39,8 @@ export const ACTION_DEFS: ActionDef[] = [
   { id: "nextTab",            label: "Next Tab",               group: "Navigation"  },
   { id: "prevTab",            label: "Previous Tab",           group: "Navigation"  },
   { id: "broadcast",          label: "Broadcast to Agents",    group: "Workspaces"  },
+  { id: "splitPaneV",         label: "Split Pane Side by Side", group: "Layout"      },
+  { id: "splitPaneH",         label: "Split Pane Top / Bottom", group: "Layout"      },
 ];
 
 export const DEFAULTS: Record<ActionId, Shortcut | null> = {
@@ -48,36 +53,29 @@ export const DEFAULTS: Record<ActionId, Shortcut | null> = {
   closeTab:           { key: "w",   ctrl: true,  shift: false, alt: false },
   nextTab:            { key: "Tab", ctrl: true,  shift: false, alt: false },
   prevTab:            { key: "Tab", ctrl: true,  shift: true,  alt: false },
-  broadcast:          { key: "b",   ctrl: true,  shift: true,  alt: false },
+  broadcast:          { key: "m",   ctrl: true,  shift: true,  alt: false },
+  splitPaneV:         { key: "|",   ctrl: true,  shift: true,  alt: false },
+  splitPaneH:         { key: "_",   ctrl: true,  shift: true,  alt: false },
 };
 
-const STORAGE_KEY = "tempest-keybindings";
-
-function load(): Record<ActionId, Shortcut | null> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { ...DEFAULTS };
-    const saved = JSON.parse(raw) as Partial<Record<ActionId, Shortcut | null>>;
-    return { ...DEFAULTS, ...saved };
-  } catch {
-    return { ...DEFAULTS };
-  }
-}
-
-let bindings = load();
 const listeners = new Set<() => void>();
+function notify() { for (const fn of listeners) fn(); }
 
-function notify() {
-  for (const fn of listeners) fn();
+// Merged cache — lazy init so it reads from runtimeState after loadRuntimeState().
+let _bindings: Record<ActionId, Shortcut | null> | null = null;
+
+function merged(): Record<ActionId, Shortcut | null> {
+  if (!_bindings) _bindings = { ...DEFAULTS, ...getRuntimeState().keybindings };
+  return _bindings;
 }
 
 export function getBindings(): Record<ActionId, Shortcut | null> {
-  return bindings;
+  return merged();
 }
 
 export function setBinding(action: ActionId, shortcut: Shortcut | null): void {
-  bindings = { ...bindings, [action]: shortcut };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(bindings));
+  setRuntimeState({ keybindings: { ...getRuntimeState().keybindings, [action]: shortcut } });
+  _bindings = { ...DEFAULTS, ...getRuntimeState().keybindings };
   notify();
 }
 
@@ -86,8 +84,8 @@ export function resetBinding(action: ActionId): void {
 }
 
 export function resetAllBindings(): void {
-  bindings = { ...DEFAULTS };
-  localStorage.removeItem(STORAGE_KEY);
+  setRuntimeState({ keybindings: {} });
+  _bindings = { ...DEFAULTS };
   notify();
 }
 
@@ -97,7 +95,7 @@ function subscribe(fn: () => void): () => void {
 }
 
 export function useKeybindings(): Record<ActionId, Shortcut | null> {
-  return useSyncExternalStore(subscribe, () => bindings, () => bindings);
+  return useSyncExternalStore(subscribe, () => merged(), () => merged());
 }
 
 export function matchesEvent(shortcut: Shortcut | null, e: KeyboardEvent): boolean {

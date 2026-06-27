@@ -1,26 +1,18 @@
 import { useSyncExternalStore } from "react";
+import { getRuntimeState, setRuntimeState } from "../lib/runtimeState";
 
-const STORAGE_KEY = "tempest-attribution";
-
-// The co-author line injected into every commit when attribution is enabled.
-// Swap this email once the GitHub machine account is created.
 export const COAUTHOR_LINE =
   "Co-authored-by: Tempest <tempestai.dev@gmail.com>";
 
-let enabled = localStorage.getItem(STORAGE_KEY) === "true";
 const listeners = new Set<() => void>();
-
-function notify() {
-  for (const fn of listeners) fn();
-}
+function notify() { for (const fn of listeners) fn(); }
 
 export function getAttribution(): boolean {
-  return enabled;
+  return getRuntimeState().attribution;
 }
 
 export function setAttribution(value: boolean): void {
-  enabled = value;
-  localStorage.setItem(STORAGE_KEY, String(value));
+  setRuntimeState({ attribution: value });
   notify();
 }
 
@@ -30,5 +22,9 @@ function subscribe(fn: () => void): () => void {
 }
 
 export function useAttribution(): boolean {
-  return useSyncExternalStore(subscribe, () => enabled, () => enabled);
+  return useSyncExternalStore(
+    subscribe,
+    () => getRuntimeState().attribution,
+    () => getRuntimeState().attribution,
+  );
 }

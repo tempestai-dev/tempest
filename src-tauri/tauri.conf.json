@@ -29,8 +29,20 @@
       }
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/gsvprharsha/tempest/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDJFOEZGODJEOUU4MTc1REUKUldUZWRZR2VMZmlQTHZvQ1FqdklsaUZFSU82TEdKNmFnRlFpcERZV0VDandod1owWVUvd1hKL0MK",
+      "windows": {
+        "installMode": "quiet"
+      }
+    }
+  },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": ["nsis", "msi"],
     "icon": [
       "icons/32x32.png",

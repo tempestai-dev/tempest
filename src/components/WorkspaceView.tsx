@@ -7,7 +7,8 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { createWorktree, gitInit, NotAGitRepoError } from "../lib/worktree";
 import { addRecent, getRecents } from "../store/recents";
 import { getOpenProjects, saveOpenProjects } from "../store/openProjects";
-import { getWorktreeSession, saveWorktreeSession, removeWorktreeSession, markWorktreeSessionClosed, markWorktreeSessionOpen, pruneOrphanedSessions, rootSessionKey, getRootSessionsForProject } from "../store/sessions";
+import { getWorktreeSession, saveWorktreeSession, removeWorktreeSession, markWorktreeSessionClosed, markWorktreeSessionOpen, pruneOrphanedSessions, dedupeRootSessions, rootSessionKey, rootSessionIdFromKey, getRootSessionsForProject, type WorktreeSession } from "../store/sessions";
+import { getRuntimeState, setRuntimeState } from "../lib/runtimeState";
 import {
   LayoutGrid,
   FolderPlus,
@@ -32,6 +33,8 @@ import {
   Globe,
   FileCode,
   Megaphone,
+  Columns2,
+  Rows2,
 } from "lucide-react";
 import { useWorkState, setWorkState, clearWorkState } from "../store/workState";
 import { useKeybindings, matchesEvent, formatShortcut } from "../store/keybindings";
@@ -66,9 +69,11 @@ interface Session {
   previewUrl?: string; // current URL for preview tabs
   agent?: string; // CLI command when this is an agent session (e.g. "claude")
   conversationId?: string; // the Claude conversation UUID
+  instanceId: string; // permanent canonical identity — minted once (= sessionId), never changes across resumes
   createdAt: string; // ISO timestamp
   isRootSession?: boolean; // true when session runs in the project root (no worktree)
   noGit?: boolean; // true when user skipped git init for this root session
+  parentSessionId?: string; // set when this session was spawned via a split from another
   storeKey?: string; // the sessions.ts key this session was saved under; undefined = not persisted
   metadata: {
     resumeCount: number;
@@ -94,6 +99,60 @@ type NavSection = "overview";
 function folderName(p: string): string {
   return p.replace(/[/\\]+$/, "").split(/[/\\]/).pop() ?? p;
 }
+
+// ─── Split pane layout ────────────────────────────────────────────────────────
+// "v" = vertical divider (panes side by side); "h" = horizontal divider (stacked).
+type SplitDir = "h" | "v";
+interface SplitLeaf   { type: "leaf";  sessionId: string; }
+interface SplitBranch { type: "split"; id: string; dir: SplitDir; ratio: number; first: PaneNode; second: PaneNode; }
+type PaneNode = SplitLeaf | SplitBranch;
+interface PaneRect    { top: number; left: number; width: number; height: number; } // 0–1 fractions
+
+function paneSessionIds(n: PaneNode): string[] {
+  if (n.type === "leaf") return [n.sessionId];
+  return [...paneSessionIds(n.first), ...paneSessionIds(n.second)];
+}
+
+function replaceLeaf(n: PaneNode, id: string, repl: PaneNode): PaneNode | null {
+  if (n.type === "leaf") return n.sessionId === id ? repl : null;
+  const a = replaceLeaf(n.first, id, repl); if (a) return { ...n, first: a } as SplitBranch;
+  const b = replaceLeaf(n.second, id, repl); if (b) return { ...n, second: b } as SplitBranch;
+  return null;
+}
+
+function removeLeaf(n: PaneNode, id: string): PaneNode | null {
+  if (n.type === "leaf") return null;
+  if (n.first.type  === "leaf" && n.first.sessionId  === id) return n.second;
+  if (n.second.type === "leaf" && n.second.sessionId === id) return n.first;
+  const a = removeLeaf(n.first, id);  if (a !== null) return { ...n, first: a }  as SplitBranch;
+  const b = removeLeaf(n.second, id); if (b !== null) return { ...n, second: b } as SplitBranch;
+  return null;
+}
+
+function patchRatio(n: PaneNode, splitId: string, ratio: number): PaneNode {
+  if (n.type === "leaf") return n;
+  const b = n as SplitBranch;
+  if (b.id === splitId) return { ...b, ratio };
+  return { ...b, first: patchRatio(b.first, splitId, ratio), second: patchRatio(b.second, splitId, ratio) };
+}
+
+function computeRects(n: PaneNode, r: PaneRect = { top: 0, left: 0, width: 1, height: 1 }): Map<string, PaneRect> {
+  if (n.type === "leaf") return new Map([[n.sessionId, r]]);
+  const { dir, ratio } = n as SplitBranch;
+  const a: PaneRect = dir === "v" ? { ...r, width: r.width * ratio }                              : { ...r, height: r.height * ratio };
+  const b: PaneRect = dir === "v" ? { ...r, left: r.left + r.width * ratio, width: r.width * (1 - ratio) } : { ...r, top: r.top + r.height * ratio, height: r.height * (1 - ratio) };
+  return new Map([...computeRects(n.first, a), ...computeRects(n.second, b)]);
+}
+
+interface HandleInfo { id: string; dir: SplitDir; ratio: number; parentRect: PaneRect; }
+function collectHandles(n: PaneNode, r: PaneRect = { top: 0, left: 0, width: 1, height: 1 }): HandleInfo[] {
+  if (n.type === "leaf") return [];
+  const { id, dir, ratio } = n as SplitBranch;
+  const a: PaneRect = dir === "v" ? { ...r, width: r.width * ratio }                              : { ...r, height: r.height * ratio };
+  const b: PaneRect = dir === "v" ? { ...r, left: r.left + r.width * ratio, width: r.width * (1 - ratio) } : { ...r, top: r.top + r.height * ratio, height: r.height * (1 - ratio) };
+  return [{ id, dir, ratio, parentRect: r }, ...collectHandles(n.first, a), ...collectHandles(n.second, b)];
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Right-side work state badge on a tab: spinner while working, dot when done.
 // memo: re-renders only when this session's work state changes, not on any parent re-render.
@@ -145,6 +204,20 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const [gitRevision, setGitRevision] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [broadcastOpen, setBroadcastOpen] = useState(false);
+  const [sidebarAtTop, setSidebarAtTop] = useState(true);
+  const [sidebarAtBottom, setSidebarAtBottom] = useState(false);
+  const sidebarScrollRef = useRef<HTMLDivElement>(null);
+
+  // Split pane layout. null = single-pane mode (normal). Non-null = one or more
+  // splits active. activeSessionId continues to track which pane has focus.
+  const [paneLayout, setPaneLayout] = useState<PaneNode | null>(null);
+  const paneLayoutRef = useRef<PaneNode | null>(null);
+  paneLayoutRef.current = paneLayout; // always current for closure-captured handlers
+  const workspaceContentRef = useRef<HTMLDivElement>(null);
+  const draggingHandle = useRef<{
+    splitId: string; dir: SplitDir;
+    startClient: number; startRatio: number; containerSize: number;
+  } | null>(null);
 
   // Zen mode: flat worktree list for the single project
   const [zenWorktrees, setZenWorktrees] = useState<Worktree[]>([]);
@@ -225,6 +298,12 @@ export function WorkspaceView({ zen, name, path }: Props) {
         // project.path would be missing from validPaths and pruneOrphanedSessions
         // would wipe the agent root ghost on the next restore cycle.
         validPaths.add(project.path);
+        // One-shot migration: collapse duplicate agent root-session entries left behind
+        // by the old restore bug. Gated behind a flag so it never runs again once done.
+        if (!getRuntimeState().migrations["sessions-v2"]) {
+          dedupeRootSessions(project.path);
+          setRuntimeState({ migrations: { ...getRuntimeState().migrations, "sessions-v2": true } });
+        }
         // Root sessions (agent + terminal) live only in localStorage under unique
         // keys (project.path + "::root::" + sessionId) with no disk directory. Mark
         // each as valid so pruneOrphanedSessions doesn't wipe them on restore.
@@ -274,8 +353,14 @@ export function WorkspaceView({ zen, name, path }: Props) {
 
         // Restore every non-closed root session for this project. Each lives under
         // its own unique key, so both an agent root and a terminal root can coexist.
-        for (const { session: rootSaved } of getRootSessionsForProject(project.path)) {
+        for (const { key: rootStoreKey, session: rootSaved } of getRootSessionsForProject(project.path)) {
           if (rootSaved.closed === true) continue;
+          // Migrate: write instanceId to entries created before this field was introduced.
+          // rootSessionIdFromKey recovers the original PTY id from the key suffix.
+          if (!rootSaved.instanceId) {
+            const inferredId = rootSessionIdFromKey(rootStoreKey);
+            if (inferredId) saveWorktreeSession(rootStoreKey, { ...rootSaved, instanceId: inferredId });
+          }
           await openSession(
             rootSaved.name,
             project.path,
@@ -286,7 +371,8 @@ export function WorkspaceView({ zen, name, path }: Props) {
             rootSaved.agent ? rootSaved.conversationId : undefined,
             true, // isRootSession
             rootSaved.noGit,
-            true  // dedupe: prevent stale-closure double-spawn in restore loop
+            true, // dedupe: prevent stale-closure double-spawn in restore loop
+            rootSessionIdFromKey(rootStoreKey) // reuse original PTY id — keeps storeKey stable
           ).catch(() => {});
         }
       }
@@ -331,8 +417,13 @@ export function WorkspaceView({ zen, name, path }: Props) {
   // Keep keyboard shortcut handler up-to-date without re-registering the listener.
   useEffect(() => {
     shortcutHandlerRef.current = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      const target = e.target as HTMLElement;
+      const tag = target.tagName;
+      // xterm.js routes keystrokes through a hidden helper <textarea>. Let those
+      // events through so app shortcuts still work while a terminal is focused;
+      // TerminalPane's custom key handler keeps the matching keys off the PTY.
+      const isTerminalInput = target.classList.contains("xterm-helper-textarea");
+      if ((tag === "INPUT" || tag === "TEXTAREA") && !isTerminalInput) return;
 
       if (matchesEvent(keybinds.toggleTheme, e)) {
         e.preventDefault(); toggleTheme();
@@ -364,6 +455,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
           const idx = sessions.findIndex((s) => s.id === activeSessionId);
           setActiveSessionId(sessions[(idx - 1 + sessions.length) % sessions.length].id);
         }
+      } else if (matchesEvent(keybinds.splitPaneV, e)) {
+        e.preventDefault(); splitPane("v");
+      } else if (matchesEvent(keybinds.splitPaneH, e)) {
+        e.preventDefault(); splitPane("h");
       }
     };
   });
@@ -374,6 +469,29 @@ export function WorkspaceView({ zen, name, path }: Props) {
     const handler = (e: KeyboardEvent) => shortcutHandlerRef.current(e);
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
+  }, []);
+
+  // Global pointer handlers for pane-resize drag. Registered once; reads
+  // layout through paneLayoutRef to avoid the stale-closure problem.
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      const drag = draggingHandle.current;
+      if (!drag || !paneLayoutRef.current) return;
+      const delta = (drag.dir === "v" ? e.clientX : e.clientY) - drag.startClient;
+      const newRatio = Math.min(0.9, Math.max(0.1, drag.startRatio + delta / drag.containerSize));
+      setPaneLayout(patchRatio(paneLayoutRef.current, drag.splitId, newRatio));
+    }
+    function onMouseUp() {
+      draggingHandle.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
   }, []);
 
   function resetTerminalModal() {
@@ -413,6 +531,16 @@ export function WorkspaceView({ zen, name, path }: Props) {
         sessionManager.unregister(s.id);
       }
       clearWorkState(s.id);
+    });
+    const removedIds = projectSessions.map((s) => s.id);
+    setPaneLayout((prev) => {
+      if (!prev) return null;
+      let updated: PaneNode | null = prev;
+      for (const sid of removedIds) {
+        if (updated) updated = removeLeaf(updated, sid);
+      }
+      if (!updated || updated.type === "leaf") return null;
+      return updated;
     });
     setSessions((prev) => prev.filter((s) => s.projectId !== projectId));
     if (projectSessions.some((s) => s.id === activeSessionId)) setActiveSessionId(null);
@@ -543,7 +671,9 @@ export function WorkspaceView({ zen, name, path }: Props) {
     originalId?: string, // original conversation UUID for resuming an existing agent session
     isRootSession?: boolean,
     noGit?: boolean,
-    dedupe = false // true only in the restore loop — prevents duplicate PTY spawns from stale-closure races
+    dedupe = false, // true only in the restore loop — prevents duplicate PTY spawns from stale-closure races
+    providedSessionId?: string, // pre-minted ID so splitPane() can set up the tree before the PTY spawns
+    parentSessionId?: string // set when spawned via a split — makes this a sub-session of another
   ) {
     // Guard is scoped to the restore loop (dedupe=true). User-triggered opens never block
     // each other, so two root sessions at the same cwd can be opened intentionally.
@@ -551,7 +681,21 @@ export function WorkspaceView({ zen, name, path }: Props) {
     if (dedupe) spawningPaths.current.add(cwd);
 
     try {
-      const sessionId = crypto.randomUUID();
+      const sessionId = providedSessionId ?? crypto.randomUUID();
+
+      // The localStorage key this session persists under. Root sessions (agent OR
+      // plain terminal) use a per-session unique key so they don't collide at the
+      // shared cwd = project root. Worktree sessions key on cwd, and only when they
+      // carry an agent worth resuming — plain terminal worktrees aren't persisted.
+      const rootKey = isRootSession ? rootSessionKey(cwd, sessionId) : null;
+      const storeKey = rootKey ?? (agent ? cwd : undefined);
+
+      // Worktree sessions: the store key (path) is the stable identity — reuse it so
+      // instanceId never changes across restarts. Root sessions have no path anchor, so
+      // the session UUID (stable via providedSessionId on resume) is the right choice.
+      const instanceId = isRootSession
+        ? (providedSessionId ?? sessionId)
+        : (storeKey ?? sessionId);
 
       // Assemble the agent's full argument list (session/resume flags + prompt) here in
       // TypeScript so Rust receives a ready-to-run command. originalId is present only
@@ -562,16 +706,11 @@ export function WorkspaceView({ zen, name, path }: Props) {
       const usesCapturePattern = !!(config?.capturePattern && config.captureResumeArgs);
       const conversationId = usesCapturePattern && !originalId ? undefined : (originalId ?? sessionId);
 
-      // The localStorage key this session persists under. Root sessions (agent OR
-      // plain terminal) use a per-session unique key so they don't collide at the
-      // shared cwd = project root. Worktree sessions key on cwd, and only when they
-      // carry an agent worth resuming — plain terminal worktrees aren't persisted.
-      const rootKey = isRootSession ? rootSessionKey(cwd, sessionId) : null;
-      const storeKey = rootKey ?? (agent ? cwd : undefined);
-
       // Save metadata immediately after the PTY spawns so it survives tab close.
-      if (storeKey) {
-        saveWorktreeSession(storeKey, { name: sessionName, agent, conversationId, projectId, isRootSession, noGit });
+      // Skip during restore (dedupe): the entry already exists and is correct, and
+      // re-writing it would create a duplicate under a freshly minted key.
+      if (storeKey && !dedupe && !parentSessionId) {
+        saveWorktreeSession(storeKey, { name: sessionName, agent, conversationId, instanceId, projectId, isRootSession, noGit });
       }
 
       // Build the optional capture callback for agents that mint their own session ID
@@ -624,8 +763,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
         projectId,
         agent,
         conversationId,
+        instanceId,
         isRootSession,
         noGit,
+        parentSessionId,
         storeKey,
         createdAt: new Date().toISOString(),
         metadata: { resumeCount: 0, hasBeenResumed: false },
@@ -649,7 +790,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
     if (existing) { setActiveSessionId(existing.id); return; }
     const sessionId = crypto.randomUUID();
     setSessions((prev) => [...prev, {
-      id: sessionId, name: "Diff", cwd, projectId, kind: "diff",
+      id: sessionId, instanceId: sessionId, name: "Diff", cwd, projectId, kind: "diff",
       createdAt: new Date().toISOString(),
       metadata: { resumeCount: 0, hasBeenResumed: false },
     }]);
@@ -659,7 +800,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
   function openPreviewTab(projectId: string) {
     const sessionId = crypto.randomUUID();
     setSessions((prev) => [...prev, {
-      id: sessionId, name: "Live Preview", cwd: "", projectId, kind: "preview",
+      id: sessionId, instanceId: sessionId, name: "Live Preview", cwd: "", projectId, kind: "preview",
       createdAt: new Date().toISOString(),
       metadata: { resumeCount: 0, hasBeenResumed: false },
     }]);
@@ -672,7 +813,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
     const sessionId = crypto.randomUUID();
     const fileName = filePath.replace(/\\/g, "/").split("/").pop() ?? filePath;
     setSessions((prev) => [...prev, {
-      id: sessionId, name: fileName, cwd: filePath, projectId, kind: "editor",
+      id: sessionId, instanceId: sessionId, name: fileName, cwd: filePath, projectId, kind: "editor",
       createdAt: new Date().toISOString(),
       metadata: { resumeCount: 0, hasBeenResumed: false },
     }]);
@@ -868,20 +1009,74 @@ export function WorkspaceView({ zen, name, path }: Props) {
   }
 
   function closeSession(sessionId: string) {
-    const closing = sessions.find((s) => s.id === sessionId);
-    if (closing?.kind !== "diff" && closing?.kind !== "preview" && closing?.kind !== "editor") {
-      invoke("close_pty_session", { sessionId }).catch(() => {});
-      // Use storeKey (not cwd) so a session that was never persisted (e.g. a plain terminal
-      // root session sharing cwd with an agent root session) cannot corrupt the agent's entry.
-      if (closing?.storeKey) markWorktreeSessionClosed(closing.storeKey);
-      sessionManager.unregister(sessionId);
+    // Closing a session also closes every sub-session spawned from it via a split.
+    const toClose: string[] = [];
+    const collect = (id: string) => {
+      toClose.push(id);
+      sessions.filter((s) => s.parentSessionId === id).forEach((c) => collect(c.id));
+    };
+    collect(sessionId);
+
+    for (const id of toClose) {
+      const closing = sessions.find((s) => s.id === id);
+      if (closing?.kind !== "diff" && closing?.kind !== "preview" && closing?.kind !== "editor") {
+        invoke("close_pty_session", { sessionId: id }).catch(() => {});
+        // Use storeKey (not cwd) so a session that was never persisted (e.g. a plain terminal
+        // root session sharing cwd with an agent root session) cannot corrupt the agent's entry.
+        if (closing?.storeKey) markWorktreeSessionClosed(closing.storeKey);
+        sessionManager.unregister(id);
+      }
+      clearWorkState(id);
     }
-    clearWorkState(sessionId);
-    const remaining = sessions.filter((s) => s.id !== sessionId);
+
+    setPaneLayout((prev) => {
+      if (!prev) return null;
+      let updated: PaneNode | null = prev;
+      for (const id of toClose) {
+        if (updated) updated = removeLeaf(updated, id);
+      }
+      if (!updated || updated.type === "leaf") return null;
+      return updated;
+    });
+    const closeSet = new Set(toClose);
+    const remaining = sessions.filter((s) => !closeSet.has(s.id));
     setSessions(remaining);
-    if (activeSessionId === sessionId) {
+    if (activeSessionId && closeSet.has(activeSessionId)) {
       setActiveSessionId(remaining.length > 0 ? remaining[remaining.length - 1].id : null);
     }
+  }
+
+  async function splitPane(dir: SplitDir) {
+    if (!activeSessionId) return;
+    const session = sessions.find((s) => s.id === activeSessionId);
+    if (!session || session.kind) return; // only split terminal panes
+    const newId = crypto.randomUUID();
+    const branch: SplitBranch = {
+      type: "split",
+      id: crypto.randomUUID(),
+      dir,
+      ratio: 0.5,
+      first:  { type: "leaf", sessionId: activeSessionId },
+      second: { type: "leaf", sessionId: newId },
+    };
+    setPaneLayout((prev) => {
+      if (!prev) return branch;
+      return replaceLeaf(prev, activeSessionId, branch) ?? prev;
+    });
+    await openSession(
+      session.name,
+      session.cwd,
+      session.projectId,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      session.isRootSession,
+      session.noGit,
+      false,
+      newId,
+      activeSessionId
+    );
   }
 
   const { theme, setTheme } = useTheme();
@@ -924,7 +1119,19 @@ export function WorkspaceView({ zen, name, path }: Props) {
     setActiveSessionId(null);
   }
 
+  function checkSidebarScroll() {
+    const el = sidebarScrollRef.current;
+    if (!el) return;
+    setSidebarAtTop(el.scrollTop < 8);
+    setSidebarAtBottom(el.scrollTop + el.clientHeight >= el.scrollHeight - 8);
+  }
+
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
+
+  // Derived split-pane state. Recomputed every render — tree is tiny so no memo needed.
+  const activeSplitIds = paneLayout ? new Set(paneSessionIds(paneLayout)) : null;
+  const paneRects      = paneLayout ? computeRects(paneLayout) : null;
+  const splitHandles   = paneLayout ? collectHandles(paneLayout) : [];
 
   useEffect(() => {
     if (!activeSession) { setActiveBranch(null); return; }
@@ -932,6 +1139,9 @@ export function WorkspaceView({ zen, name, path }: Props) {
       .then(setActiveBranch)
       .catch(() => setActiveBranch(null));
   }, [activeSession?.cwd]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-check sidebar scroll fades after layout settles (rAF ensures DOM is measured post-paint)
+  useEffect(() => { requestAnimationFrame(checkSidebarScroll); }, [projects, sessions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function worktreeLabel(cwd: string): string {
     return cwd.split(/[/\\]/).filter(Boolean).pop() ?? cwd;
@@ -1016,14 +1226,6 @@ export function WorkspaceView({ zen, name, path }: Props) {
         >
           {isDark ? <Sun size={15} /> : <Moon size={15} />}
         </button>
-        <button
-          className="sub-bar-icon-btn"
-          title="Broadcast to agents (Ctrl+Shift+B)"
-          aria-label="Broadcast to agents"
-          onClick={() => setBroadcastOpen(true)}
-        >
-          <Megaphone size={15} />
-        </button>
         {activeSession && (
           <>
             <span className="sub-bar-divider">/</span>
@@ -1057,13 +1259,19 @@ export function WorkspaceView({ zen, name, path }: Props) {
       <div className="workspace-body">
         <aside className={`sidebar${sidebarOpen ? "" : " sidebar--collapsed"}`} style={{ "--sidebar-fs": `${sidebarFontSize}px` } as CSSProperties}>
 
+          {/* Fixed top: Overview */}
+          <button className={navBtn("overview")} onClick={() => goTo("overview")}>
+            <LayoutGrid size={16} />
+            <span>Overview</span>
+          </button>
+
+          {/* Scrollable middle */}
+          <div className="sidebar-scroll-wrap">
+          <div className={`sidebar-fade-top${sidebarAtTop ? " sidebar-fade--hidden" : ""}`} />
+          <div className="sidebar-scroll" ref={sidebarScrollRef} onScroll={checkSidebarScroll}>
           {zen ? (
             /* ── Zen mode sidebar ── */
             <>
-              <button className={navBtn("overview")} onClick={() => goTo("overview")}>
-                <LayoutGrid size={16} />
-                <span>Overview</span>
-              </button>
               <button
                 className="sidebar-nav-btn"
                 onClick={(e) => openSessionMenu(e, null, "right")}
@@ -1112,25 +1320,53 @@ export function WorkspaceView({ zen, name, path }: Props) {
           ) : (
             /* ── Default mode sidebar ── */
             <>
-              <button className={navBtn("overview")} onClick={() => goTo("overview")}>
-                <LayoutGrid size={16} />
-                <span>Overview</span>
-              </button>
               <div className="sidebar-section-label">Projects</div>
               {projects.length === 0 ? (
                 <div className="agents-empty">No projects added</div>
               ) : (
                 projects.map((project) => {
                   const projectSessions = sessions.filter((s) => s.projectId === project.id);
-                  const activeRootSessions = projectSessions.filter((s) => s.isRootSession && s.kind !== "diff");
-                  // Show closed root sessions in the sidebar so the user can click to resume them.
-                  // Worktrees persist via their .tempest/ directories; root sessions have no disk
-                  // anchor, so we read the store directly. Each root session — agent OR plain
-                  // terminal — is stored under its own unique key, so both kinds coexist as ghosts.
-                  // Render a ghost for every persisted root entry that isn't currently live.
-                  const closedRootEntries = getRootSessionsForProject(project.path).filter(
-                    (entry) => !activeRootSessions.some((s) => s.storeKey === entry.key)
-                  );
+                  // Sub-sessions (spawned via split) are never top-level rows — they render
+                  // nested under their parent.
+                  const renderSubSessions = (parentId: string): React.ReactNode =>
+                    projectSessions
+                      .filter((s) => s.parentSessionId === parentId)
+                      .map((sub) => (
+                        <div key={sub.id} className="sidebar-session-group">
+                          <button
+                            className={`sidebar-project-session sidebar-project-session--sub${sub.id === activeSessionId ? " sidebar-project-session--active" : ""}`}
+                            onClick={() => setActiveSessionId(sub.id)}
+                          >
+                            {sub.agent ? <AgentIcon hint={sub.agent} size={12} /> : <TerminalSquare size={12} />}
+                            <span className="sidebar-session-name">{sub.name}</span>
+                            {sub.agent && <SidebarWorkBadge sessionId={sub.id} />}
+                            <span
+                              className="sidebar-session-close"
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`Close ${sub.name}`}
+                              onClick={(e) => { e.stopPropagation(); closeSession(sub.id); }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); closeSession(sub.id); }
+                              }}
+                            >
+                              <X size={11} />
+                            </span>
+                          </button>
+                          {renderSubSessions(sub.id)}
+                        </div>
+                      ));
+                  // Canonical root session map: one entry per instanceId, live sessions
+                  // take precedence over ghosts. Guarantees exactly one sidebar row per
+                  // logical conversation regardless of how many storage records exist.
+                  const liveRootSessions = projectSessions.filter((s) => s.isRootSession && s.kind !== "diff" && !s.parentSessionId);
+                  const storedRootEntries = getRootSessionsForProject(project.path);
+                  const canonRoots = new Map<string, { session?: Session; ghost?: { key: string; session: WorktreeSession } }>();
+                  for (const s of liveRootSessions) canonRoots.set(s.instanceId, { session: s });
+                  for (const e of storedRootEntries) {
+                    const id = e.session.instanceId ?? rootSessionIdFromKey(e.key);
+                    if (!canonRoots.has(id)) canonRoots.set(id, { ghost: e });
+                  }
                   return (
                     <div key={project.id} className="sidebar-project">
                       <div
@@ -1159,94 +1395,100 @@ export function WorkspaceView({ zen, name, path }: Props) {
                       </div>
                       {project.expanded && (
                         <div className="sidebar-project-sessions">
-                          {/* Root sessions — shown above worktrees */}
-                          {activeRootSessions.map((s) => (
-                            <button
-                              key={s.id}
-                              className={`sidebar-project-session sidebar-project-session--root${s.id === activeSessionId ? " sidebar-project-session--active" : ""}`}
-                              onClick={() => setActiveSessionId(s.id)}
-                              onContextMenu={(e) =>
-                                openCtxMenu(e, null, project.path, project.id, s.id, false, true, s.storeKey)
-                              }
-                            >
-                              <SquareSlash size={12} />
-                              <span className="sidebar-session-name">{s.name}</span>
-                              <span className="sidebar-root-badge">main</span>
-                              {s.agent && <SidebarWorkBadge sessionId={s.id} />}
-                            </button>
-                          ))}
-                          {/* Closed root session ghosts — persist in sidebar so the user can resume.
-                              Both agent and plain terminal root sessions appear here, each keyed by
-                              its unique store key. */}
-                          {closedRootEntries.map((entry) => (
-                            <button
-                              key={entry.key}
-                              className="sidebar-project-session sidebar-project-session--root sidebar-project-session--closed"
-                              onClick={() => {
-                                const saved = entry.session;
-                                // Resuming mints a fresh session under a new unique key, so drop the
-                                // old entry to avoid leaving a duplicate ghost behind.
-                                removeWorktreeSession(entry.key);
-                                openSession(saved.name, project.path, project.id, saved.agent, undefined, undefined, saved.agent ? saved.conversationId : undefined, true, saved.noGit).catch(() => {});
-                              }}
-                              onContextMenu={(e) =>
-                                openCtxMenu(e, null, project.path, project.id, null, false, true, entry.key)
-                              }
-                            >
-                              <SquareSlash size={12} />
-                              <span className="sidebar-session-name">{entry.session.name}</span>
-                              <span className="sidebar-root-badge">main</span>
-                            </button>
-                          ))}
+                          {/* Root sessions — one row per canonical identity (live or ghost) */}
+                          {[...canonRoots.values()].map((entry) => {
+                            if (entry.session) {
+                              const s = entry.session;
+                              return (
+                                <div key={s.instanceId} className="sidebar-session-group">
+                                  <button
+                                    className={`sidebar-project-session sidebar-project-session--root${s.id === activeSessionId ? " sidebar-project-session--active" : ""}`}
+                                    onClick={() => setActiveSessionId(s.id)}
+                                    onContextMenu={(e) =>
+                                      openCtxMenu(e, null, project.path, project.id, s.id, false, true, s.storeKey)
+                                    }
+                                  >
+                                    <SquareSlash size={12} />
+                                    <span className="sidebar-session-name">{s.name}</span>
+                                    <span className="sidebar-root-badge">main</span>
+                                    {s.agent && <SidebarWorkBadge sessionId={s.id} />}
+                                  </button>
+                                  {renderSubSessions(s.id)}
+                                </div>
+                              );
+                            }
+                            const { key, session: ghost } = entry.ghost!;
+                            const resumeId = ghost.instanceId ?? rootSessionIdFromKey(key);
+                            return (
+                              <button
+                                key={key}
+                                className="sidebar-project-session sidebar-project-session--root sidebar-project-session--closed"
+                                onClick={() => {
+                                  openSession(ghost.name, project.path, project.id, ghost.agent, undefined, undefined, ghost.agent ? ghost.conversationId : undefined, true, ghost.noGit, false, resumeId).catch(() => {});
+                                }}
+                                onContextMenu={(e) =>
+                                  openCtxMenu(e, null, project.path, project.id, null, false, true, key)
+                                }
+                              >
+                                <SquareSlash size={12} />
+                                <span className="sidebar-session-name">{ghost.name}</span>
+                                <span className="sidebar-root-badge">main</span>
+                              </button>
+                            );
+                          })}
                           {/* Worktree sessions */}
                           {project.worktrees.map((wt) => {
-                            const session = sessions.find((s) => s.cwd === wt.path);
+                            const session = sessions.find((s) => s.cwd === wt.path && !s.parentSessionId);
                             const savedMeta = !session ? getWorktreeSession(wt.path) : null;
                             const isAgent = !!(session?.agent || savedMeta?.agent);
                             const isActive = session?.id === activeSessionId;
                             return (
-                              <button
-                                key={wt.path}
-                                className={`sidebar-project-session${isActive ? " sidebar-project-session--active" : ""}`}
-                                onClick={() => {
-                                  if (session) {
-                                    setActiveSessionId(session.id);
-                                  } else {
-                                    const saved = savedMeta ?? getWorktreeSession(wt.path);
-                                    if (saved) {
-                                      openSession(saved.name, wt.path, project.id, saved.agent, undefined, undefined, saved.agent ? saved.conversationId : undefined).catch(() => {});
-                                      markWorktreeSessionOpen(wt.path);
+                              <div key={wt.path} className="sidebar-session-group">
+                                <button
+                                  className={`sidebar-project-session${isActive ? " sidebar-project-session--active" : ""}`}
+                                  onClick={() => {
+                                    if (session) {
+                                      setActiveSessionId(session.id);
                                     } else {
-                                      openSession("Terminal", wt.path, project.id).catch(() => {});
+                                      const saved = savedMeta ?? getWorktreeSession(wt.path);
+                                      if (saved) {
+                                        openSession(saved.name, wt.path, project.id, saved.agent, undefined, undefined, saved.agent ? saved.conversationId : undefined).catch(() => {});
+                                        markWorktreeSessionOpen(wt.path);
+                                      } else {
+                                        openSession("Terminal", wt.path, project.id).catch(() => {});
+                                      }
                                     }
+                                  }}
+                                  onContextMenu={(e) =>
+                                    openCtxMenu(e, wt, project.path, project.id, session?.id ?? null)
                                   }
-                                }}
-                                onContextMenu={(e) =>
-                                  openCtxMenu(e, wt, project.path, project.id, session?.id ?? null)
-                                }
-                              >
-                                {isAgent ? <AgentIcon hint={session?.agent ?? savedMeta?.agent} size={12} /> : <TerminalSquare size={12} />}
-                                <span>{wt.name}</span>
-                                {session?.agent && <SidebarWorkBadge sessionId={session.id} />}
-                              </button>
+                                >
+                                  {isAgent ? <AgentIcon hint={session?.agent ?? savedMeta?.agent} size={12} /> : <TerminalSquare size={12} />}
+                                  <span>{wt.name}</span>
+                                  {session?.agent && <SidebarWorkBadge sessionId={session.id} />}
+                                </button>
+                                {session && renderSubSessions(session.id)}
+                              </div>
                             );
                           })}
                           {/* Diff tabs and other non-root non-worktree sessions */}
                           {projectSessions
-                            .filter((s) => !s.isRootSession && !project.worktrees.some((w) => w.path === s.cwd))
+                            .filter((s) => !s.isRootSession && !s.parentSessionId && !project.worktrees.some((w) => w.path === s.cwd))
                             .map((s) => (
-                              <button
-                                key={s.id}
-                                className={`sidebar-project-session${s.id === activeSessionId ? " sidebar-project-session--active" : ""}`}
-                                onClick={() => setActiveSessionId(s.id)}
-                                onContextMenu={(e) =>
-                                  openCtxMenu(e, null, project.path, project.id, s.id)
-                                }
-                              >
-                                {s.kind === "diff" ? <Eye size={12} /> : s.kind === "preview" ? <Globe size={12} /> : s.kind === "editor" ? <FileCode size={12} /> : s.agent ? <AgentIcon hint={s.agent} size={12} /> : <TerminalSquare size={12} />}
-                                <span>{s.name}</span>
-                                {s.agent && <SidebarWorkBadge sessionId={s.id} />}
-                              </button>
+                              <div key={s.id} className="sidebar-session-group">
+                                <button
+                                  className={`sidebar-project-session${s.id === activeSessionId ? " sidebar-project-session--active" : ""}`}
+                                  onClick={() => setActiveSessionId(s.id)}
+                                  onContextMenu={(e) =>
+                                    openCtxMenu(e, null, project.path, project.id, s.id)
+                                  }
+                                >
+                                  {s.kind === "diff" ? <Eye size={12} /> : s.kind === "preview" ? <Globe size={12} /> : s.kind === "editor" ? <FileCode size={12} /> : s.agent ? <AgentIcon hint={s.agent} size={12} /> : <TerminalSquare size={12} />}
+                                  <span>{s.name}</span>
+                                  {s.agent && <SidebarWorkBadge sessionId={s.id} />}
+                                </button>
+                                {renderSubSessions(s.id)}
+                              </div>
                             ))}
                         </div>
                       )}
@@ -1256,6 +1498,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
               )}
             </>
           )}
+
+          </div>{/* end sidebar-scroll */}
+          <div className={`sidebar-fade-bottom${sidebarAtBottom ? " sidebar-fade--hidden" : ""}`} />
+          </div>{/* end sidebar-scroll-wrap */}
 
           <div className="sidebar-bottom">
             <button className="sidebar-nav-btn" onClick={() => openUrl("https://github.com/gsvprharsha/tempest/issues")}>
@@ -1294,7 +1540,8 @@ export function WorkspaceView({ zen, name, path }: Props) {
                 }
               }}
             >
-              {sessions.map((s) => {
+              <div className="session-tab-scroll">
+              {sessions.filter((s) => !s.parentSessionId).map((s) => {
                 const isActive = s.id === activeSessionId;
                 const isDragging = dragTabId === s.id;
                 const isDropTarget = dragOverTabId === s.id && !isDragging;
@@ -1345,6 +1592,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
                     }}
                     onDragEnd={clearTabDrag}
                     onClick={() => {
+                      if (activeSplitIds && !activeSplitIds.has(s.id)) {
+                        // Tab not in the current split → exit split mode, show full screen
+                        setPaneLayout(null);
+                      }
                       setActiveSessionId(s.id);
                       if (isActive && s.agent) setWorkState(s.id, "idle");
                     }}
@@ -1397,43 +1648,150 @@ export function WorkspaceView({ zen, name, path }: Props) {
                   </button>
                 );
               })}
-              <button
-                className="session-tab-add"
-                onClick={(e) => openSessionMenu(e, activeSession?.projectId ?? null, "below")}
-                aria-label="New tab"
-              >
-                <Plus size={13} />
-              </button>
+                <button
+                  className="session-tab-add"
+                  onClick={(e) => openSessionMenu(e, activeSession?.projectId ?? null, "below")}
+                  aria-label="New tab"
+                  title="New tab"
+                >
+                  <Plus size={13} />
+                </button>
+              </div>
+              <div className="session-tab-actions">
+                {activeSession && !activeSession.kind && (
+                  <>
+                    <button
+                      className="session-tab-split-btn session-tab-split-btn--v"
+                      onClick={() => splitPane("v")}
+                      aria-label="Split pane vertically"
+                      title="Split vertical (Ctrl+Shift+|)"
+                    >
+                      <Columns2 size={13} />
+                    </button>
+                    <button
+                      className="session-tab-split-btn session-tab-split-btn--h"
+                      onClick={() => splitPane("h")}
+                      aria-label="Split pane horizontally"
+                      title="Split horizontal (Ctrl+Shift+_)"
+                    >
+                      <Rows2 size={13} />
+                    </button>
+                  </>
+                )}
+                <button
+                  className="session-tab-broadcast"
+                  onClick={() => setBroadcastOpen(true)}
+                  aria-label="Broadcast to agents"
+                  title="Broadcast to agents (Ctrl+Shift+M)"
+                >
+                  <Megaphone size={13} />
+                </button>
+              </div>
             </div>
           )}
 
-          <div className="workspace-content">
-            {sessions.map((s) =>
-              s.kind === "diff" ? (
-                <DiffPane key={s.id} sessionId={s.id} cwd={s.cwd} hidden={s.id !== activeSessionId} gitRevision={gitRevision} />
-              ) : s.kind === "preview" ? (
-                <PreviewPane
+          <div className="workspace-content" ref={workspaceContentRef}>
+            {sessions.map((s) => {
+              const rect = paneRects?.get(s.id);
+              const isInSplit = !!(activeSplitIds?.has(s.id));
+              // Sessions hidden because the split layout doesn't include them (PTY stays alive)
+              const hiddenBySplit = activeSplitIds ? !activeSplitIds.has(s.id) : false;
+              const hidden = hiddenBySplit || (!isInSplit && s.id !== activeSessionId);
+              const slotStyle: React.CSSProperties = rect
+                ? {
+                    position: "absolute",
+                    top:    `${rect.top    * 100}%`,
+                    left:   `${rect.left   * 100}%`,
+                    width:  `${rect.width  * 100}%`,
+                    height: `${rect.height * 100}%`,
+                  }
+                : {};
+              return (
+                <div
                   key={s.id}
-                  sessionId={s.id}
-                  hidden={s.id !== activeSessionId}
-                  previewUrl={s.previewUrl}
-                  onUrlChange={(url) => updateSessionPreviewUrl(s.id, url)}
+                  className={`pane-slot${isInSplit ? " pane-slot--split" : ""}${isInSplit && s.id === activeSessionId ? " pane-slot--focused" : ""}`}
+                  style={slotStyle}
+                  onClick={isInSplit ? () => setActiveSessionId(s.id) : undefined}
+                >
+                  {isInSplit && (
+                    <button
+                      className="pane-close-btn"
+                      onClick={(e) => { e.stopPropagation(); closeSession(s.id); }}
+                      aria-label="Close pane"
+                    >
+                      <X size={10} />
+                    </button>
+                  )}
+                  {s.kind === "diff" ? (
+                    <DiffPane sessionId={s.id} cwd={s.cwd} hidden={hidden} gitRevision={gitRevision} />
+                  ) : s.kind === "preview" ? (
+                    <PreviewPane
+                      sessionId={s.id}
+                      hidden={hidden}
+                      previewUrl={s.previewUrl}
+                      onUrlChange={(url) => updateSessionPreviewUrl(s.id, url)}
+                    />
+                  ) : s.kind === "editor" ? (
+                    <CodeMirrorPane
+                      filePath={s.cwd}
+                      hidden={hidden}
+                    />
+                  ) : (
+                    <TerminalPane
+                      sessionId={s.id}
+                      hidden={hidden}
+                      isAgent={!!s.agent}
+                    />
+                  )}
+                </div>
+              );
+            })}
+            {splitHandles.map((h) => {
+              const isV = h.dir === "v";
+              const handleStyle: React.CSSProperties = isV
+                ? {
+                    position: "absolute",
+                    top:    `${h.parentRect.top    * 100}%`,
+                    left:   `${(h.parentRect.left + h.parentRect.width * h.ratio) * 100}%`,
+                    width:  "4px",
+                    height: `${h.parentRect.height * 100}%`,
+                    transform: "translateX(-50%)",
+                    cursor: "col-resize",
+                  }
+                : {
+                    position: "absolute",
+                    top:    `${(h.parentRect.top + h.parentRect.height * h.ratio) * 100}%`,
+                    left:   `${h.parentRect.left  * 100}%`,
+                    width:  `${h.parentRect.width  * 100}%`,
+                    height: "4px",
+                    transform: "translateY(-50%)",
+                    cursor: "row-resize",
+                  };
+              return (
+                <div
+                  key={h.id}
+                  className="pane-split-handle"
+                  style={handleStyle}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    const container = workspaceContentRef.current;
+                    if (!container) return;
+                    const cbox = container.getBoundingClientRect();
+                    draggingHandle.current = {
+                      splitId: h.id,
+                      dir: h.dir,
+                      startClient: isV ? e.clientX : e.clientY,
+                      startRatio: h.ratio,
+                      containerSize: isV
+                        ? cbox.width  * h.parentRect.width
+                        : cbox.height * h.parentRect.height,
+                    };
+                    document.body.style.cursor = isV ? "col-resize" : "row-resize";
+                    document.body.style.userSelect = "none";
+                  }}
                 />
-              ) : s.kind === "editor" ? (
-                <CodeMirrorPane
-                  key={s.id}
-                  filePath={s.cwd}
-                  hidden={s.id !== activeSessionId}
-                />
-              ) : (
-                <TerminalPane
-                  key={s.id}
-                  sessionId={s.id}
-                  hidden={s.id !== activeSessionId}
-                  isAgent={!!s.agent}
-                />
-              )
-            )}
+              );
+            })}
             {!activeSessionId && (
               <div className="overview-page">
                 <div className="overview-container">

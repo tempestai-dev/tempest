@@ -50,6 +50,29 @@ fn read_file(path: String) -> Result<String, String> {
     std::fs::read_to_string(&path).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn read_runtime_state(app: tauri::AppHandle) -> Result<String, String> {
+    use tauri::Manager;
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let file = dir.join("runtime-state.json");
+    if !file.exists() {
+        return Ok("{}".to_string());
+    }
+    std::fs::read_to_string(&file).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn write_runtime_state(app: tauri::AppHandle, data: String) -> Result<(), String> {
+    use tauri::Manager;
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let file = dir.join("runtime-state.json");
+    let tmp = dir.join("runtime-state.json.tmp");
+    std::fs::write(&tmp, data.as_bytes()).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &file).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Build a `Command` that never opens a console window on Windows.
 /// On every other platform this is identical to `std::process::Command::new`.
 fn new_command(program: &str) -> std::process::Command {
@@ -402,7 +425,8 @@ async fn create_terminal_worktree(project_path: String, name: String) -> Result<
 
 #[derive(serde::Serialize)]
 struct GitStatusEntry {
-    status: String,
+    xy: String,     // raw two-char index+worktree status from git status --short
+    status: String, // kept for RightSidebar backward compat (dominant single char)
     path: String,
 }
 
@@ -422,10 +446,12 @@ fn git_status(path: String) -> Result<Vec<GitStatusEntry>, String> {
         .lines()
         .filter(|line| line.len() >= 4)
         .map(|line| {
-            let xy = &line[..2];
-            let status = xy.trim().chars().next().unwrap_or('?').to_string();
+            let xy = line[..2].to_string();
+            let x = xy.chars().next().unwrap_or(' ');
+            let y = xy.chars().nth(1).unwrap_or(' ');
+            let status = if x != ' ' && x != '?' { x.to_string() } else { y.to_string() };
             let file_path = line[3..].trim().to_string();
-            GitStatusEntry { status, path: file_path }
+            GitStatusEntry { xy, status, path: file_path }
         })
         .filter(|e| !e.path.is_empty())
         .collect();
@@ -664,13 +690,23 @@ async fn git_push_branch(repo_path: String, commit_message: Option<String>) -> R
         return Err("Could not determine current branch".to_string());
     }
 
-    // Commit any uncommitted changes so the push isn't empty.
+    // Commit any pending changes before pushing.
+    // If the user has already staged specific files (via the staging area), commit
+    // only those.  If nothing is staged but there are unstaged changes (quick-push
+    // path), fall back to staging everything so the push is never empty.
     let status_out = run_git(dir, &["status", "--porcelain"])?;
     if !status_out.stdout.is_empty() {
-        let add_out = run_git(dir, &["add", "-A"])?;
-        if !add_out.status.success() {
-            return Err(format!("git add failed: {}", git_stderr(&add_out)));
+        let staged_check = run_git(dir, &["diff", "--cached", "--quiet"])?;
+        let has_staged = !staged_check.status.success(); // exit 1 = something staged
+
+        if !has_staged {
+            // Nothing staged — auto-stage everything (old quick-push behaviour).
+            let add_out = run_git(dir, &["add", "-A"])?;
+            if !add_out.status.success() {
+                return Err(format!("git add failed: {}", git_stderr(&add_out)));
+            }
         }
+
         let base = commit_message
             .filter(|m| !m.trim().is_empty())
             .unwrap_or_else(|| format!("Agent work on {}", branch));
@@ -694,6 +730,77 @@ async fn git_push_branch(repo_path: String, commit_message: Option<String>) -> R
 
     serde_json::to_string(&serde_json::json!({ "remoteUrl": remote_url, "branch": branch }))
         .map_err(|e| e.to_string())
+}
+
+// ── Staging ──────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn git_stage(repo_path: String, file_path: String) -> Result<(), String> {
+    let dir = std::path::Path::new(&repo_path);
+    let out = run_git(dir, &["add", "--", &file_path])?;
+    if out.status.success() { Ok(()) } else { Err(git_stderr(&out)) }
+}
+
+#[tauri::command]
+fn git_unstage(repo_path: String, file_path: String) -> Result<(), String> {
+    let dir = std::path::Path::new(&repo_path);
+    let out = run_git(dir, &["restore", "--staged", "--", &file_path])?;
+    if out.status.success() { Ok(()) } else { Err(git_stderr(&out)) }
+}
+
+#[tauri::command]
+fn git_discard(repo_path: String, file_path: String, untracked: bool) -> Result<(), String> {
+    let dir = std::path::Path::new(&repo_path);
+    if untracked {
+        let full = dir.join(&file_path);
+        std::fs::remove_file(&full)
+            .or_else(|_| std::fs::remove_dir_all(&full))
+            .map_err(|e| format!("Failed to remove: {}", e))
+    } else {
+        let out = run_git(dir, &["restore", "--", &file_path])?;
+        if out.status.success() { Ok(()) } else { Err(git_stderr(&out)) }
+    }
+}
+
+#[tauri::command]
+fn git_commit_staged(repo_path: String, message: String) -> Result<(), String> {
+    if message.trim().is_empty() {
+        return Err("Commit message cannot be empty".to_string());
+    }
+    let dir = std::path::Path::new(&repo_path);
+    let out = run_git(dir, &["commit", "-m", message.trim()])?;
+    if out.status.success() { Ok(()) } else { Err(git_stderr(&out)) }
+}
+
+#[tauri::command]
+fn git_diff_file(path: String, file_path: String, staged: bool, untracked: bool) -> Result<Vec<DiffLine>, String> {
+    let dir = std::path::Path::new(&path);
+
+    if untracked {
+        // Render untracked file as entirely-added lines without running git.
+        let full = dir.join(&file_path);
+        let content = std::fs::read_to_string(&full)
+            .map_err(|e| format!("Failed to read file: {}", e))?;
+        return Ok(content.lines().enumerate().map(|(i, line)| DiffLine {
+            kind: "added".to_string(),
+            line_old: None,
+            line_new: Some((i + 1) as u32),
+            content: format!("+{}", line),
+        }).collect());
+    }
+
+    let out = if staged {
+        run_git(dir, &["diff", "--cached", "--", &file_path])?
+    } else {
+        run_git(dir, &["diff", "--", &file_path])?
+    };
+
+    if !out.status.success() {
+        return Err(git_stderr(&out));
+    }
+
+    let text = String::from_utf8_lossy(&out.stdout);
+    Ok(parse_unified_diff(&text).into_iter().next().map(|f| f.lines).unwrap_or_default())
 }
 
 // ── PTY ──────────────────────────────────────────────────────────────────────
@@ -1267,6 +1374,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(PtyState(Arc::new(DashMap::new())))
         .manage(ZenState(Mutex::new(std::collections::HashMap::new())))
         .setup(|app| {
@@ -1294,6 +1402,11 @@ pub fn run() {
             git_branch_delete,
             git_diff,
             git_push_branch,
+            git_stage,
+            git_unstage,
+            git_discard,
+            git_commit_staged,
+            git_diff_file,
             check_branch_merged,
             write_coauthor_hook,
             remove_coauthor_hook,
@@ -1304,6 +1417,8 @@ pub fn run() {
             destroy_ide_panel,
             get_ide_panel_url,
             read_file,
+            read_runtime_state,
+            write_runtime_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

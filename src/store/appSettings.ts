@@ -1,6 +1,5 @@
 import { useSyncExternalStore } from "react";
-
-const KEY = "tempest-app-settings";
+import { getRuntimeState, setRuntimeState } from "../lib/runtimeState";
 
 export interface AppSettings {
   terminalFontSize: number;
@@ -37,29 +36,28 @@ export const FONT_FAMILY_OPTIONS: { label: string; value: string }[] = [
 type Listener = () => void;
 const listeners = new Set<Listener>();
 
-function load(): AppSettings {
-  try {
-    return { ...SETTINGS_DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) ?? "{}") };
-  } catch {
-    return { ...SETTINGS_DEFAULTS };
-  }
+// Merged cache so useSyncExternalStore gets a stable reference between writes.
+// Initialized lazily on first access (after loadRuntimeState has run).
+let _merged: AppSettings | null = null;
+
+function merged(): AppSettings {
+  if (!_merged) _merged = { ...SETTINGS_DEFAULTS, ...getRuntimeState().settings };
+  return _merged;
 }
 
-let _settings: AppSettings = load();
-
 export function getSettings(): AppSettings {
-  return _settings;
+  return merged();
 }
 
 export function updateSetting<K extends keyof AppSettings>(key: K, value: AppSettings[K]): void {
-  _settings = { ..._settings, [key]: value };
-  localStorage.setItem(KEY, JSON.stringify(_settings));
+  setRuntimeState({ settings: { ...getRuntimeState().settings, [key]: value } });
+  _merged = { ...SETTINGS_DEFAULTS, ...getRuntimeState().settings };
   listeners.forEach((l) => l());
 }
 
 export function useSettings(): AppSettings {
   return useSyncExternalStore(
     (cb) => { listeners.add(cb); return () => listeners.delete(cb); },
-    () => _settings,
+    () => merged(),
   );
 }

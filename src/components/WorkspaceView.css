@@ -176,8 +176,64 @@
 
 /* Nav buttons */
 
-.sidebar-nav-btn:first-child {
+.sidebar > .sidebar-nav-btn:first-of-type {
   margin-top: 8px;
+}
+
+/* Wrapper that holds the scroll area + fade overlays */
+.sidebar-scroll-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Scrollable middle section — grows to fill space between Overview and bottom bar */
+.sidebar-scroll {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tempest-border-subtle) transparent;
+}
+
+/* Scroll fade overlays */
+.sidebar-fade-top,
+.sidebar-fade-bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 80px;
+  pointer-events: none;
+  z-index: 1;
+  transition: opacity 0.18s ease;
+}
+
+.sidebar-fade-top {
+  top: 0;
+  background: linear-gradient(to bottom, var(--tempest-bg-sidebar), transparent);
+}
+
+.sidebar-fade-bottom {
+  bottom: 0;
+  background: linear-gradient(to top, var(--tempest-bg-sidebar), transparent);
+}
+
+.sidebar-fade--hidden {
+  opacity: 0;
+}
+
+.sidebar-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: var(--tempest-border-subtle);
+  border-radius: 2px;
 }
 
 .sidebar-nav-btn {
@@ -287,7 +343,7 @@
 /* Project switcher */
 
 .sidebar-bottom {
-  margin-top: auto;
+  flex-shrink: 0;
   padding: 0 0 10px;
 }
 
@@ -719,13 +775,28 @@
   align-items: stretch;
   background: var(--tempest-bg-panel);
   border-bottom: 1px solid var(--tempest-border-default);
+  overflow: hidden;
+}
+
+.session-tab-scroll {
+  display: flex;
+  align-items: stretch;
+  flex: 1;
+  min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
 }
 
-.session-tab-bar::-webkit-scrollbar {
+.session-tab-scroll::-webkit-scrollbar {
   display: none;
+}
+
+.session-tab-actions {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  border-left: 1px solid var(--tempest-border-default);
 }
 
 .session-tab {
@@ -803,7 +874,9 @@
   color: var(--tempest-fg-default);
 }
 
-.session-tab-add {
+.session-tab-add,
+.session-tab-broadcast,
+.session-tab-split-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -811,13 +884,27 @@
   flex-shrink: 0;
   background: transparent;
   border: none;
-  border-right: 1px solid var(--tempest-border-default);
   color: var(--tempest-fg-subtle);
   cursor: pointer;
   transition: background 0.1s, color 0.1s;
 }
 
-.session-tab-add:hover {
+.session-tab-add {
+  border-right: 1px solid var(--tempest-border-default);
+}
+
+.session-tab-split-btn--v {
+  border-left: 1px solid var(--tempest-border-default);
+}
+
+.session-tab-split-btn--h {
+  border-left: 1px solid var(--tempest-border-default);
+  border-right: 1px solid var(--tempest-border-default);
+}
+
+.session-tab-add:hover,
+.session-tab-broadcast:hover,
+.session-tab-split-btn:hover {
   background: var(--tempest-bg-hover);
   color: var(--tempest-fg-default);
 }
@@ -942,6 +1029,53 @@
 
 .sidebar-project-session--root {
   font-style: italic;
+}
+
+/* Sub-sessions (spawned via split) — nested under their parent row */
+.sidebar-session-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-project-session.sidebar-project-session--sub {
+  position: relative;
+  padding-left: 56px;
+  color: var(--tempest-fg-subtle);
+}
+
+.sidebar-project-session--sub::before {
+  content: "";
+  position: absolute;
+  left: 38px;
+  top: 0;
+  width: 12px;
+  height: 50%;
+  border-left: 1.5px solid var(--tempest-border-default);
+  border-bottom: 1.5px solid var(--tempest-border-default);
+  border-bottom-left-radius: 2px;
+}
+
+.sidebar-session-close {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  color: var(--tempest-fg-subtle);
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.1s, background 0.1s, color 0.1s;
+}
+
+.sidebar-project-session:hover .sidebar-session-close {
+  opacity: 1;
+}
+
+.sidebar-session-close:hover {
+  background: var(--tempest-bg-active);
+  color: var(--tempest-fg-default);
 }
 
 .sidebar-project-sessions {
@@ -1188,4 +1322,66 @@
   font-size: 12px;
   color: var(--tempest-fg-subtle);
   padding: 8px 10px;
+}
+
+/* ─── Split pane slots ─────────────────────────────────────────────────────── */
+
+/* Wrapper div around each session. In single-pane mode fills the content area so
+   the terminal container has real dimensions at mount. In split mode the inline
+   top/left/width/height percentages override inset. */
+.pane-slot {
+  position: absolute;
+  inset: 0;
+}
+
+.pane-slot--split:not(.pane-slot--focused) {
+  box-shadow: inset 0 0 0 1px var(--tempest-border-subtle);
+}
+
+.pane-slot--focused {
+  box-shadow: inset 0 0 0 1.5px var(--tempest-accent-blue);
+  z-index: 1;
+}
+
+/* Close button that appears on hover inside a split pane */
+.pane-close-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: var(--tempest-bg-elevated);
+  border: 1px solid var(--tempest-border-subtle);
+  border-radius: 4px;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.1s;
+}
+
+.pane-slot:hover .pane-close-btn {
+  opacity: 1;
+}
+
+.pane-close-btn:hover {
+  color: var(--tempest-fg-default);
+  background: var(--tempest-bg-hover);
+}
+
+/* Draggable resize handle between split panes */
+.pane-split-handle {
+  position: absolute;
+  z-index: 20;
+  background: var(--tempest-border-subtle);
+  transition: background 0.15s;
+}
+
+.pane-split-handle:hover,
+.pane-split-handle:active {
+  background: var(--tempest-accent-blue);
+  opacity: 0.6;
 }

@@ -1,4 +1,4 @@
-const KEY = "tempest-open-projects";
+import { getRuntimeState, setRuntimeState } from "../lib/runtimeState";
 
 export interface StoredProject {
   id: string;
@@ -8,13 +8,9 @@ export interface StoredProject {
 }
 
 export function getOpenProjects(): StoredProject[] {
-  try {
-    return JSON.parse(localStorage.getItem(KEY) ?? "[]");
-  } catch {
-    return [];
-  }
+  return getRuntimeState().openProjects;
 }
 
 export function saveOpenProjects(projects: StoredProject[]): void {
-  localStorage.setItem(KEY, JSON.stringify(projects));
+  setRuntimeState({ openProjects: projects });
 }

@@ -6,8 +6,10 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { SearchAddon } from "@xterm/addon-search";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import { useTheme } from "../themes/ThemeContext";
 import { getSettings, useSettings } from "../store/appSettings";
+import { getBindings, matchesEvent } from "../store/keybindings";
 import { sessionManager } from "../store/sessionManager";
 import { webglPool } from "../lib/webglPool";
 import "@xterm/xterm/css/xterm.css";
@@ -150,10 +152,53 @@ export const TerminalPane = memo(function TerminalPane({ sessionId, hidden = fal
 
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== "keydown") return true;
+
+      // Ctrl/Cmd+F toggles the in-terminal search bar.
       if ((e.ctrlKey || e.metaKey) && e.key === "f") {
         setSearchOpen((o) => !o);
         return false;
       }
+
+      // Plain Ctrl+C: smart copy-or-SIGINT (Windows Terminal / iTerm2 behaviour).
+      // With a selection, copy it and swallow the key; otherwise let xterm send
+      // SIGINT to the PTY.
+      if (e.ctrlKey && !e.shiftKey && (e.key === "C" || e.key === "c")) {
+        const sel = term.getSelection();
+        if (sel) {
+          navigator.clipboard.writeText(sel).catch(() => {});
+          return false; // copy; don't send SIGINT
+        }
+        return true; // no selection → send SIGINT
+      }
+
+      // Plain Ctrl+V pastes clipboard contents into the terminal.
+      if (e.ctrlKey && !e.shiftKey && (e.key === "V" || e.key === "v")) {
+        readText().then((text) => { if (text) term.paste(text); }).catch(() => {});
+        return false;
+      }
+
+      // Ctrl+Shift+C copies the current terminal selection to the clipboard.
+      if (e.ctrlKey && e.shiftKey && (e.key === "C" || e.key === "c")) {
+        const selection = term.getSelection();
+        if (selection) navigator.clipboard.writeText(selection).catch(() => {});
+        return false;
+      }
+
+      // Ctrl+Shift+V pastes clipboard contents into the terminal.
+      if (e.ctrlKey && e.shiftKey && (e.key === "V" || e.key === "v")) {
+        readText().then((text) => { if (text) term.paste(text); }).catch(() => {});
+        return false;
+      }
+
+      // Let app-level shortcuts (e.g. Ctrl+Shift+T, Ctrl+B, Ctrl+Shift+M) pass
+      // through instead of being consumed by the PTY. Returning false stops xterm
+      // from calling preventDefault, so WorkspaceView's capture-phase keydown
+      // listener can act on them. Bindings are read live so this stays in sync
+      // with any user customisations.
+      if (Object.values(getBindings()).some((sc) => matchesEvent(sc, e))) {
+        return false;
+      }
+
       return true;
     });
 
