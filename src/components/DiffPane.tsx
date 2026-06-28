@@ -5,7 +5,6 @@ import {
   RefreshCw, GitBranch, GitPullRequest, Loader, Check,
   Plus, Minus, X, AlertTriangle,
 } from "lucide-react";
-import { getSettings } from "../store/appSettings";
 import { useAttribution, setAttribution, COAUTHOR_LINE } from "../store/attribution";
 import "./DiffPane.css";
 
@@ -94,9 +93,13 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
   const [commitState, setCommitState] = useState<"idle" | "committing" | "done" | "error">("idle");
   const coauthor = useAttribution();
 
+  const [currentBranch, setCurrentBranch] = useState("");
   const [pushState, setPushState] = useState<"idle" | "pushing" | "done">("idle");
-  const [pushAction, setPushAction] = useState<"push" | "pr" | null>(null);
   const [pushError, setPushError] = useState<string | null>(null);
+
+  const [showBranchInput, setShowBranchInput] = useState(false);
+  const [newBranchName, setNewBranchName] = useState("");
+  const [branchPushState, setBranchPushState] = useState<"idle" | "pushing" | "done" | "error">("idle");
 
   const [discardTarget, setDiscardTarget] = useState<string | null>(null);
 
@@ -106,7 +109,11 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const entries = await invoke<FileEntry[]>("git_status", { path: cwd });
+      const [entries, branch] = await Promise.all([
+        invoke<FileEntry[]>("git_status", { path: cwd }),
+        invoke<string>("get_git_branch", { path: cwd }).catch(() => ""),
+      ]);
+      setCurrentBranch(branch);
       const filtered = entries.filter((e) => !e.path.includes(".tempest-pid"));
       const s: FileEntry[] = [];
       const u: FileEntry[] = [];
@@ -222,28 +229,43 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
 
   // ── Push ─────────────────────────────────────────────────────────────────
 
-  const runPush = useCallback((openPr: boolean) => {
+  const pushToCurrent = useCallback(() => {
     setPushState("pushing");
-    setPushAction(openPr ? "pr" : "push");
     setPushError(null);
-    invoke<string>("git_push_branch", {
-      repoPath: cwd,
-      commitMessage: getSettings().commitMessageTemplate || null,
-    })
-      .then((raw) => {
-        const { remoteUrl, branch } = JSON.parse(raw) as { remoteUrl: string; branch: string };
-        if (openPr) openUrl(buildPrUrl(remoteUrl, branch)).catch(() => {});
+    invoke<string>("git_push_current_branch", { repoPath: cwd })
+      .then(() => {
         setPushState("done");
         load();
-        setTimeout(() => { setPushState("idle"); setPushAction(null); }, 2000);
+        setTimeout(() => setPushState("idle"), 2000);
       })
       .catch((e) => {
         setPushState("idle");
-        setPushAction(null);
         setPushError(String(e));
         setTimeout(() => setPushError(null), 4000);
       });
   }, [cwd, load]);
+
+  const pushToNewBranch = useCallback(() => {
+    if (!newBranchName.trim() || branchPushState === "pushing") return;
+    setBranchPushState("pushing");
+    setPushError(null);
+    invoke<string>("git_create_push_branch", { repoPath: cwd, branchName: newBranchName.trim() })
+      .then((raw) => {
+        const { remoteUrl, branch } = JSON.parse(raw) as { remoteUrl: string; branch: string };
+        setCurrentBranch(branch);
+        setShowBranchInput(false);
+        setNewBranchName("");
+        setBranchPushState("done");
+        openUrl(buildPrUrl(remoteUrl, branch)).catch(() => {});
+        load();
+        setTimeout(() => setBranchPushState("idle"), 2000);
+      })
+      .catch((e) => {
+        setBranchPushState("error");
+        setPushError(String(e));
+        setTimeout(() => { setBranchPushState("idle"); setPushError(null); }, 4000);
+      });
+  }, [cwd, newBranchName, branchPushState, load]);
 
   // ── Render ───────────────────────────────────────────────────────────────
 
@@ -262,30 +284,65 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
           <RefreshCw size={13} />
         </button>
         <div className="dp-header-push">
-          <button
-            className="dp-push-btn"
-            disabled={pushState === "pushing"}
-            onClick={() => runPush(false)}
-          >
-            {pushState === "pushing" && pushAction === "push"
-              ? <Loader size={12} className="dp-spin" />
-              : pushState === "done" && pushAction === "push"
-              ? <Check size={12} />
-              : <GitBranch size={12} />}
-            Push
-          </button>
-          <button
-            className="dp-push-btn dp-push-btn--pr"
-            disabled={pushState === "pushing"}
-            onClick={() => runPush(true)}
-          >
-            {pushState === "pushing" && pushAction === "pr"
-              ? <Loader size={12} className="dp-spin" />
-              : pushState === "done" && pushAction === "pr"
-              ? <Check size={12} />
-              : <GitPullRequest size={12} />}
-            Open PR
-          </button>
+          {!showBranchInput ? (
+            <>
+              <button
+                className="dp-push-btn"
+                disabled={pushState === "pushing"}
+                onClick={pushToCurrent}
+                title={`Push commits to ${currentBranch || "current branch"}`}
+              >
+                {pushState === "pushing"
+                  ? <Loader size={12} className="dp-spin" />
+                  : pushState === "done"
+                  ? <Check size={12} />
+                  : <GitBranch size={12} />}
+                Push{currentBranch ? ` to ${currentBranch}` : ""}
+              </button>
+              <button
+                className="dp-push-btn dp-push-btn--outline"
+                onClick={() => setShowBranchInput(true)}
+                title="Create a new branch and push"
+              >
+                <GitPullRequest size={12} />
+                New Branch
+              </button>
+            </>
+          ) : (
+            <div className="dp-branch-row">
+              <button
+                className="dp-branch-cancel"
+                onClick={() => { setShowBranchInput(false); setNewBranchName(""); }}
+                title="Cancel"
+              >
+                <X size={12} />
+              </button>
+              <input
+                className="dp-branch-input"
+                placeholder="branch-name"
+                value={newBranchName}
+                onChange={(e) => setNewBranchName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") pushToNewBranch();
+                  if (e.key === "Escape") { setShowBranchInput(false); setNewBranchName(""); }
+                }}
+                autoFocus
+              />
+              <button
+                className="dp-push-btn"
+                disabled={!newBranchName.trim() || branchPushState === "pushing"}
+                onClick={pushToNewBranch}
+                title="Create branch, push, and open PR"
+              >
+                {branchPushState === "pushing"
+                  ? <Loader size={12} className="dp-spin" />
+                  : branchPushState === "done"
+                  ? <Check size={12} />
+                  : <GitPullRequest size={12} />}
+                Push & PR
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

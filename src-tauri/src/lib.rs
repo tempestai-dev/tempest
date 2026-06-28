@@ -732,6 +732,67 @@ async fn git_push_branch(repo_path: String, commit_message: Option<String>) -> R
         .map_err(|e| e.to_string())
 }
 
+// ── Push (no auto-commit) ────────────────────────────────────────────────────
+
+#[tauri::command]
+fn git_push_current_branch(repo_path: String) -> Result<String, String> {
+    let dir = std::path::Path::new(&repo_path);
+
+    let branch_out = run_git(dir, &["symbolic-ref", "--short", "HEAD"])?;
+    if !branch_out.status.success() {
+        return Err(git_stderr(&branch_out));
+    }
+    let branch = String::from_utf8_lossy(&branch_out.stdout).trim().to_string();
+    if branch.is_empty() {
+        return Err("Could not determine current branch".to_string());
+    }
+
+    let push_out = run_git(dir, &["push", "-u", "origin", &branch])?;
+    if !push_out.status.success() {
+        return Err(git_stderr(&push_out));
+    }
+
+    let remote_out = run_git(dir, &["remote", "get-url", "origin"])?;
+    if !remote_out.status.success() {
+        return Err(git_stderr(&remote_out));
+    }
+    let remote_url = String::from_utf8_lossy(&remote_out.stdout).trim().to_string();
+
+    serde_json::to_string(&serde_json::json!({ "remoteUrl": remote_url, "branch": branch }))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn git_create_push_branch(repo_path: String, branch_name: String) -> Result<String, String> {
+    let branch_name = branch_name.trim().to_string();
+    if branch_name.is_empty() {
+        return Err("Branch name cannot be empty".to_string());
+    }
+
+    let dir = std::path::Path::new(&repo_path);
+
+    let checkout_out = run_git(dir, &["checkout", "-b", &branch_name])?;
+    if !checkout_out.status.success() {
+        return Err(format!("Failed to create branch: {}", git_stderr(&checkout_out)));
+    }
+
+    let push_out = run_git(dir, &["push", "-u", "origin", &branch_name])?;
+    if !push_out.status.success() {
+        // Switch back to original branch on push failure so the repo isn't left detached
+        let _ = run_git(dir, &["checkout", "-"]);
+        return Err(git_stderr(&push_out));
+    }
+
+    let remote_out = run_git(dir, &["remote", "get-url", "origin"])?;
+    if !remote_out.status.success() {
+        return Err(git_stderr(&remote_out));
+    }
+    let remote_url = String::from_utf8_lossy(&remote_out.stdout).trim().to_string();
+
+    serde_json::to_string(&serde_json::json!({ "remoteUrl": remote_url, "branch": branch_name }))
+        .map_err(|e| e.to_string())
+}
+
 // ── Staging ──────────────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1402,6 +1463,8 @@ pub fn run() {
             git_branch_delete,
             git_diff,
             git_push_branch,
+            git_push_current_branch,
+            git_create_push_branch,
             git_stage,
             git_unstage,
             git_discard,

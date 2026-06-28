@@ -155,6 +155,62 @@
 
 .dp-push-btn:disabled { opacity: 0.4; cursor: default; }
 
+.dp-push-btn--outline {
+  background: transparent;
+  border-color: var(--tempest-border-subtle);
+  color: var(--tempest-fg-muted);
+}
+
+.dp-push-btn--outline:hover:not(:disabled) {
+  background: var(--tempest-bg-hover);
+  border-color: var(--tempest-border-default);
+  color: var(--tempest-fg-default);
+  opacity: 1;
+}
+
+.dp-branch-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dp-branch-cancel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.1s ease, background 0.1s ease;
+}
+
+.dp-branch-cancel:hover {
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
+}
+
+.dp-branch-input {
+  width: 130px;
+  height: 26px;
+  border: 1px solid var(--tempest-border-subtle);
+  border-radius: 5px;
+  background: var(--tempest-bg-editor);
+  color: var(--tempest-fg-default);
+  font-size: 11px;
+  font-family: "Geist Mono", monospace;
+  padding: 0 8px;
+  outline: none;
+  transition: border-color 0.12s ease;
+}
+
+.dp-branch-input:focus { border-color: var(--tempest-accent-blue); }
+.dp-branch-input::placeholder { color: var(--tempest-fg-subtle); opacity: 0.6; }
+
 .dp-push-error {
   flex-shrink: 0;
   padding: 6px 12px;
