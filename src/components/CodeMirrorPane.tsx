@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { EditorView, basicSetup } from "codemirror";
-import { Compartment, EditorState } from "@codemirror/state";
+import { keymap } from "@codemirror/view";
+import { Compartment, EditorState, Prec } from "@codemirror/state";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { javascript } from "@codemirror/lang-javascript";
 import { css } from "@codemirror/lang-css";
@@ -15,6 +16,7 @@ import { FileCode } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
+import rehypeRaw from "rehype-raw";
 import { useTheme } from "../themes/ThemeContext";
 import "./CodeMirrorPane.css";
 
@@ -150,14 +152,24 @@ export function CodeMirrorPane({ filePath, hidden }: Props) {
   const [fileContent, setFileContent] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<"raw" | "preview">("raw");
+  const [isDirty, setIsDirty] = useState(false);
+
+  const fileContentRef = useRef("");
+  const saveRef = useRef<() => void>(() => {});
+  saveRef.current = () => {
+    invoke("write_file", { path: filePath, content: fileContentRef.current })
+      .then(() => setIsDirty(false))
+      .catch((e) => console.error("Save failed:", e));
+  };
 
   const ext = getExtension(filePath);
   const isMarkdown = ext === "md" || ext === "markdown";
   const isDark = theme.name === "Tempest Dark";
 
-  // Reset to the raw view whenever the open file changes.
+  // Reset dirty state and view when file changes.
   useEffect(() => {
     setMode("raw");
+    setIsDirty(false);
   }, [filePath]);
 
   useEffect(() => {
@@ -178,6 +190,15 @@ export function CodeMirrorPane({ filePath, hidden }: Props) {
           themeCompartment.current.of(buildEditorTheme()),
           highlightCompartment.current.of(syntaxHighlighting(buildHighlightStyle())),
           EditorView.lineWrapping,
+          Prec.highest(keymap.of([{ key: "Mod-s", run: () => { saveRef.current(); return true; } }])),
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged) {
+              const text = update.state.doc.toString();
+              fileContentRef.current = text;
+              setFileContent(text);
+              setIsDirty(true);
+            }
+          }),
         ];
         if (langExt) extensions.push(langExt);
 
@@ -219,6 +240,7 @@ export function CodeMirrorPane({ filePath, hidden }: Props) {
       <div className="cmp-header">
         <FileCode size={13} className="cmp-header-icon" />
         <span className="cmp-header-name" title={filePath}>{fileName}</span>
+        {isDirty && <span className="cmp-dirty-dot" title="Unsaved changes (Ctrl+S to save)">•</span>}
         {isMarkdown && (
           <div className="cmp-toggle" role="group" aria-label="Markdown view mode">
             <button
@@ -262,7 +284,7 @@ export function CodeMirrorPane({ filePath, hidden }: Props) {
               >
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
-                  rehypePlugins={[rehypeHighlight]}
+                  rehypePlugins={[rehypeRaw, rehypeHighlight]}
                   components={{
                     img({ src, alt, ...props }) {
                       const resolved = src ? resolveImageSrc(src, filePath) : src;

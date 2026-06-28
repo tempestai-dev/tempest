@@ -51,6 +51,11 @@ fn read_file(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn write_file(path: String, content: String) -> Result<(), String> {
+    std::fs::write(&path, content).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn read_runtime_state(app: tauri::AppHandle) -> Result<String, String> {
     use tauri::Manager;
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
@@ -1571,6 +1576,7 @@ pub fn run() {
             destroy_ide_panel,
             get_ide_panel_url,
             read_file,
+            write_file,
             read_runtime_state,
             write_runtime_state,
         ])

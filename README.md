@@ -1,12 +1,32 @@
-# Tempest
+![Tempest — parallel AI agent sessions](media/wordmark.png)
 
-**Run a fleet of AI coding agents in parallel — each isolated, none colliding.**
+<h2 align="center">
+  <strong>Run a fleet of AI coding agents in parallel — each isolated, none colliding.</strong>
+</h2>
 
-Claude Code, Aider, OpenCode, and more — all from one interface, each on its own branch, each with its own conversation history. No conflicts. No waiting. No context switching.
-
-If you're three tabs deep in Claude Code right now — stashing changes, guessing which agent touched which file, losing the thread of what each one was even doing — that's the exact problem Tempest was built to end.
+<p align="center">
+  <a href="https://github.com/gsvprharsha/tempest/releases">
+    <img src="https://img.shields.io/github/v/release/gsvprharsha/tempest?style=for-the-badge" alt="Version" />
+  </a>
+  <a href="https://github.com/gsvprharsha/tempest">
+    <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=for-the-badge" alt="Platform" />
+  </a>
+  <a href="https://tauri.app/">
+    <img src="https://img.shields.io/badge/built%20with-Tauri%202-orange?style=for-the-badge" alt="Tauri" />
+  </a>
+  <a href="https://github.com/gsvprharsha/tempest/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/license-Apache%202.0-green?style=for-the-badge" alt="License" />
+  </a>
+  <a href="https://github.com/gsvprharsha/tempest/actions/workflows/ci.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/gsvprharsha/tempest/ci.yml?branch=main&label=build&style=for-the-badge" alt="CI" />
+  </a>
+</p>
 
 ![Tempest — parallel AI agent sessions](media/tempest.png)
+
+Bring your favorite AI coding tools together. Claude Code, Aider, OpenCode, and more — all from one interface, each on its own branch, each with its own conversation history. No conflicts. No waiting. No context switching.
+
+If you're three tabs deep in Claude Code right now — stashing changes, guessing which agent touched which file, losing the thread of what each one was even doing — that's the exact problem Tempest was built to end.
 
 **Tempest is built using Tempest** — every feature in this repo was shipped by parallel agents running inside the app.
 

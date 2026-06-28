@@ -2092,12 +2092,12 @@ export function WorkspaceView({ zen, name, path }: Props) {
 
         {activeSession && (
           <RightSidebar
-            cwd={activeSession.cwd}
+            cwd={activeSession.kind === "editor" ? (projects.find((p) => p.id === activeSession.projectId)?.path ?? activeSession.cwd) : activeSession.cwd}
             rootPath={zen ? (path ?? null) : (projects.find((p) => p.id === activeSession.projectId)?.path ?? activeSession.cwd)}
             open={rightSidebarOpen}
             gitRevision={gitRevision}
             noGit={activeSession.noGit}
-            onOpenDiff={activeSession.kind !== "diff" && activeSession.kind !== "preview" ? () => openDiffTab(activeSession.cwd, activeSession.projectId) : undefined}
+            onOpenDiff={activeSession.kind !== "diff" && activeSession.kind !== "preview" ? () => openDiffTab(activeSession.kind === "editor" ? (projects.find((p) => p.id === activeSession.projectId)?.path ?? activeSession.cwd) : activeSession.cwd, activeSession.projectId) : undefined}
             onOpenFile={(filePath) => openEditorTab(filePath, activeSession.projectId)}
           />
         )}
