@@ -430,6 +430,12 @@ struct GitStatusEntry {
     path: String,
 }
 
+#[derive(serde::Serialize)]
+struct BranchInfo {
+    name: String,
+    is_current: bool,
+}
+
 #[tauri::command]
 fn git_status(path: String) -> Result<Vec<GitStatusEntry>, String> {
     let output = new_command("git")
@@ -473,6 +479,48 @@ fn get_git_branch(path: String) -> Result<String, String> {
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[tauri::command]
+fn git_list_branches(repo_path: String) -> Result<Vec<BranchInfo>, String> {
+    let dir = std::path::Path::new(&repo_path);
+    let out = run_git(dir, &["branch"])?;
+    if !out.status.success() {
+        return Err(git_stderr(&out));
+    }
+    let branches = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|l| l.len() >= 2)
+        .map(|l| {
+            let is_current = l.starts_with("* ");
+            let name = l[2..].trim().to_string();
+            BranchInfo { name, is_current }
+        })
+        .filter(|b| !b.name.is_empty())
+        .collect();
+    Ok(branches)
+}
+
+#[tauri::command]
+fn git_switch_branch(repo_path: String, branch: String) -> Result<(), String> {
+    let dir = std::path::Path::new(&repo_path);
+    let out = run_git(dir, &["checkout", &branch])?;
+    if out.status.success() { Ok(()) } else { Err(git_stderr(&out)) }
+}
+
+#[tauri::command]
+fn git_delete_branch(repo_path: String, branch: String, force: bool, delete_remote: bool) -> Result<(), String> {
+    let dir = std::path::Path::new(&repo_path);
+    let flag = if force { "-D" } else { "-d" };
+    let local = run_git(dir, &["branch", flag, &branch])?;
+    if !local.status.success() {
+        return Err(git_stderr(&local));
+    }
+    if delete_remote {
+        // Best-effort — don't fail if the remote branch doesn't exist
+        let _ = run_git(dir, &["push", "origin", "--delete", &branch]);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1465,6 +1513,9 @@ pub fn run() {
             git_push_branch,
             git_push_current_branch,
             git_create_push_branch,
+            git_list_branches,
+            git_switch_branch,
+            git_delete_branch,
             git_stage,
             git_unstage,
             git_discard,

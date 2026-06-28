@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   RefreshCw, GitBranch, GitPullRequest, Loader, Check,
-  Plus, Minus, X, AlertTriangle,
+  Plus, Minus, X, AlertTriangle, ChevronDown, Trash2,
 } from "lucide-react";
 import { useAttribution, setAttribution, COAUTHOR_LINE } from "../store/attribution";
 import "./DiffPane.css";
@@ -24,6 +24,11 @@ interface FileEntry {
 }
 
 type FileSection = "staged" | "unstaged";
+
+interface BranchInfo {
+  name: string;
+  is_current: boolean;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -101,6 +106,13 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
   const [newBranchName, setNewBranchName] = useState("");
   const [branchPushState, setBranchPushState] = useState<"idle" | "pushing" | "done" | "error">("idle");
 
+  const [branches, setBranches] = useState<BranchInfo[]>([]);
+  const [showBranchMenu, setShowBranchMenu] = useState(false);
+  const branchMenuRef = useRef<HTMLDivElement>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleteAlsoRemote, setDeleteAlsoRemote] = useState(true);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   const [discardTarget, setDiscardTarget] = useState<string | null>(null);
 
   // ── Load file list ───────────────────────────────────────────────────────
@@ -109,11 +121,13 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const [entries, branch] = await Promise.all([
+      const [entries, branch, branchList] = await Promise.all([
         invoke<FileEntry[]>("git_status", { path: cwd }),
         invoke<string>("get_git_branch", { path: cwd }).catch(() => ""),
+        invoke<BranchInfo[]>("git_list_branches", { repoPath: cwd }).catch(() => []),
       ]);
       setCurrentBranch(branch);
+      setBranches(branchList);
       const filtered = entries.filter((e) => !e.path.includes(".tempest-pid"));
       const s: FileEntry[] = [];
       const u: FileEntry[] = [];
@@ -267,6 +281,46 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
       });
   }, [cwd, newBranchName, branchPushState, load]);
 
+  // ── Branch menu ───────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!showBranchMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (branchMenuRef.current && !branchMenuRef.current.contains(e.target as Node)) {
+        setShowBranchMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showBranchMenu]);
+
+  const switchBranch = async (name: string) => {
+    setShowBranchMenu(false);
+    try {
+      await invoke("git_switch_branch", { repoPath: cwd, branch: name });
+      await load();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const confirmDelete = async (force: boolean) => {
+    if (!deleteTarget) return;
+    setDeleteError(null);
+    try {
+      await invoke("git_delete_branch", {
+        repoPath: cwd,
+        branch: deleteTarget,
+        force,
+        deleteRemote: deleteAlsoRemote,
+      });
+      setDeleteTarget(null);
+      await load();
+    } catch (e) {
+      setDeleteError(String(e));
+    }
+  };
+
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -283,6 +337,52 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
         >
           <RefreshCw size={13} />
         </button>
+        {/* ── Branch picker ── */}
+        <div className="dp-branch-picker" ref={branchMenuRef}>
+          <button
+            className="dp-branch-pill"
+            onClick={() => setShowBranchMenu((v) => !v)}
+            title="Switch branch"
+          >
+            <GitBranch size={11} />
+            <span className="dp-branch-pill-name">{currentBranch || "branch"}</span>
+            <ChevronDown size={10} className={showBranchMenu ? "dp-chevron--open" : ""} />
+          </button>
+          {showBranchMenu && (
+            <div className="dp-branch-menu">
+              {branches.length === 0 ? (
+                <div className="dp-branch-menu-empty">No branches</div>
+              ) : (
+                branches.map((b) => (
+                  <div
+                    key={b.name}
+                    className={`dp-branch-menu-row${b.is_current ? " dp-branch-menu-row--current" : ""}`}
+                  >
+                    <span className="dp-branch-menu-check">{b.is_current ? <Check size={11} /> : null}</span>
+                    <button
+                      className="dp-branch-menu-name"
+                      onClick={() => !b.is_current && switchBranch(b.name)}
+                      disabled={b.is_current}
+                      title={b.is_current ? "Current branch" : `Switch to ${b.name}`}
+                    >
+                      {b.name}
+                    </button>
+                    {!b.is_current && (
+                      <button
+                        className="dp-branch-menu-del"
+                        onClick={(e) => { e.stopPropagation(); setDeleteTarget(b.name); setDeleteError(null); }}
+                        title={`Delete ${b.name}`}
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
         <div className="dp-header-push">
           {!showBranchInput ? (
             <>
@@ -544,6 +644,50 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
                 Discard
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Branch delete confirmation */}
+      {deleteTarget && (
+        <div className="dp-overlay" onClick={() => { setDeleteTarget(null); setDeleteError(null); }}>
+          <div className="dp-dialog" onClick={(e) => e.stopPropagation()}>
+            <Trash2 size={20} className="dp-dialog-icon dp-dialog-icon--delete" />
+            <p className="dp-dialog-title">Delete branch?</p>
+            <code className="dp-dialog-path">{deleteTarget}</code>
+            {deleteError ? (
+              <>
+                <p className="dp-dialog-warn dp-dialog-warn--error">{deleteError}</p>
+                <div className="dp-dialog-actions">
+                  <button className="dp-dialog-cancel" onClick={() => { setDeleteTarget(null); setDeleteError(null); }}>
+                    Cancel
+                  </button>
+                  <button className="dp-dialog-confirm" onClick={() => confirmDelete(true)}>
+                    Force Delete
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <label className="dp-delete-remote-row">
+                  <input
+                    type="checkbox"
+                    className="dp-toggle"
+                    checked={deleteAlsoRemote}
+                    onChange={(e) => setDeleteAlsoRemote(e.target.checked)}
+                  />
+                  <span className="dp-coauthor-label">Also delete from remote</span>
+                </label>
+                <div className="dp-dialog-actions">
+                  <button className="dp-dialog-cancel" onClick={() => { setDeleteTarget(null); setDeleteError(null); }}>
+                    Cancel
+                  </button>
+                  <button className="dp-dialog-confirm" onClick={() => confirmDelete(false)}>
+                    Delete
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
