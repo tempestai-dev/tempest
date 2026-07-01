@@ -845,6 +845,19 @@ export function WorkspaceView({ zen, name, path }: Props) {
 
       const channel = new Channel<{ session_id: string; data: string }>();
 
+      // Resolve the project's root path for Atlas MCP injection. Worktree sessions
+      // use a cwd inside the worktree, not the original project root, so we look up
+      // the path from the project registry rather than relying on cwd.
+      const projectRootPath = getOpenProjects().find((p) => p.id === projectId)?.path ?? null;
+      const atlasProjectPath =
+        agent &&
+        config?.mcpSupported &&
+        getSettings().atlasEnabled &&
+        projectRootPath &&
+        getRuntimeState().atlasProjects[projectRootPath] === true
+          ? projectRootPath
+          : null;
+
       await invoke<void>("create_pty_session", {
         sessionId,
         cwd,
@@ -852,6 +865,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
         cols: 80,
         command: agent ?? null,
         args,
+        atlasProjectPath,
         onEvent: channel,
       });
 

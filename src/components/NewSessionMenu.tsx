@@ -27,6 +27,9 @@ export interface AgentConfig {
   // captureResumeArgs: resume args to use with the captured ID — "{UUID}" is substituted.
   capturePattern?: RegExp;
   captureResumeArgs?: string[] | null;
+  // true = agent accepts --mcp-server JSON flag; Atlas will be injected automatically
+  // when the project has been indexed and Token Intelligence is enabled.
+  mcpSupported?: boolean;
 }
 
 export const AGENT_CONFIGS: AgentConfig[] = [
@@ -36,6 +39,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
     iconSrc: claudeCodeSrc,
     sessionIdArgs: ["--session-id", "{UUID}"],
     resumeArgs: ["--resume", "{UUID}"],
+    mcpSupported: true,
   },
   {
     name: "Gemini CLI",

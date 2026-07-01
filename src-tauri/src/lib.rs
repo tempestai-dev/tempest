@@ -1113,18 +1113,40 @@ fn resolve_shell() -> String {
 
 #[tauri::command]
 async fn create_pty_session(
+    app: tauri::AppHandle,
     session_id: String,
     cwd: String,
     rows: u16,
     cols: u16,
     command: Option<String>,
     args: Option<Vec<String>>,
+    atlas_project_path: Option<String>,
     on_event: Channel<PtyOutputPayload>,
     state: tauri::State<'_, PtyState>,
 ) -> Result<(), String> {
     // Resolve (and cache) the shell once. Cheap if already populated; the first
     // call performs the ~100–200ms probe so no individual session pays for it twice.
     SHELL.get_or_init(resolve_shell);
+
+    // Resolve the Atlas MCP entry path when the project has been indexed. Done on
+    // the async side (AppHandle is available here) so the path strings can be moved
+    // into spawn_blocking as plain owned Strings.
+    let atlas_mcp: Option<(String, String)> = if let Some(proj_path) = atlas_project_path {
+        use tauri::Manager;
+        let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
+        let entry = resource_dir
+            .join("atlas")
+            .join("dist")
+            .join("mcp")
+            .join("server-entry.js");
+        if entry.exists() {
+            Some((entry.to_string_lossy().into_owned(), proj_path))
+        } else {
+            None // atlas bundle not present; skip injection silently
+        }
+    } else {
+        None
+    };
 
     // The blocking part — opening the PTY and spawning the shell/agent process —
     // runs on a dedicated blocking thread so it never starves Tauri's bounded IPC
@@ -1155,6 +1177,19 @@ async fn create_pty_session(
                         parts.push(arg.clone());
                     }
                 }
+            }
+            // Inject the Atlas MCP server when the project has been indexed.
+            // The JSON is always single-quoted so neither PowerShell nor POSIX sh
+            // tries to interpret the leading '{' as a block/hash literal.
+            if let Some((ref entry, ref proj)) = atlas_mcp {
+                let entry_json = entry.replace('\\', "\\\\").replace('"', "\\\"");
+                let proj_json  = proj.replace('\\', "\\\\").replace('"', "\\\"");
+                let mcp_json = format!(
+                    r#"{{"atlas":{{"type":"stdio","command":"node","args":["{}","--path","{}"]}}}}"#,
+                    entry_json, proj_json
+                );
+                parts.push("--mcp-server".to_string());
+                parts.push(format!("'{}'", mcp_json));
             }
             let agent_invocation = parts.join(" ");
 
