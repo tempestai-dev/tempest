@@ -4,7 +4,7 @@
   "version": "0.1.1",
   "identifier": "com.user.tempest",
   "build": {
-    "beforeDevCommand": "npm run dev:frontend",
+    "beforeDevCommand": "npm run build:atlas && npm run dev:frontend",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build:atlas && npm run build:frontend",
     "frontendDist": "../dist"
