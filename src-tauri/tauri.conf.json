@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev:frontend",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build:frontend",
+    "beforeBuildCommand": "npm run build:atlas && npm run build:frontend",
     "frontendDist": "../dist"
   },
   "app": {
@@ -44,6 +44,9 @@
     "active": true,
     "createUpdaterArtifacts": true,
     "targets": ["nsis", "msi"],
+    "resources": {
+      "resources/atlas/**/*": "atlas/"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

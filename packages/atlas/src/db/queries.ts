@@ -1,0 +1,1873 @@
+/**
+ * Database Queries
+ *
+ * Prepared statements for CRUD operations on the knowledge graph.
+ */
+
+import { SqliteDatabase, SqliteStatement } from './sqlite-adapter';
+import {
+  Node,
+  Edge,
+  FileRecord,
+  UnresolvedReference,
+  NodeKind,
+  EdgeKind,
+  Language,
+  GraphStats,
+  SearchOptions,
+  SearchResult,
+} from '../types';
+import { safeJsonParse } from '../utils';
+import { kindBonus, nameMatchBonus, scorePathRelevance } from '../search/query-utils';
+import { parseQuery, boundedEditDistance } from '../search/query-parser';
+import { isGeneratedFile } from '../extraction/generated-detection';
+
+/**
+ * Path-only heuristic for files that should not be candidates for
+ * "dominant file" detection: test/spec files and tool-generated files.
+ * Generated files (`*.pb.go`, `*.pulsar.go`, mock outputs, …) often
+ * have huge in-file edge counts that dwarf the real source — etcd's
+ * `rpc.pb.go` has 4× the in-file edges of `server.go`.
+ */
+function isLowValueFile(filePath: string): boolean {
+  const lp = filePath.toLowerCase();
+  return (
+    /(?:^|\/)(tests?|__tests?__|spec)\//.test(lp) ||
+    /_test\.go$/.test(lp) ||
+    /(?:^|\/)test_[^/]+\.py$/.test(lp) ||
+    /_test\.py$/.test(lp) ||
+    /_spec\.rb$/.test(lp) ||
+    /_test\.rb$/.test(lp) ||
+    /\.(test|spec)\.[jt]sx?$/.test(lp) ||
+    /(test|spec|tests)\.(java|kt|scala)$/.test(lp) ||
+    /(tests?|spec)\.cs$/.test(lp) ||
+    /tests?\.swift$/.test(lp) ||
+    /_test\.dart$/.test(lp) ||
+    isGeneratedFile(filePath)
+  );
+}
+
+const SQLITE_PARAM_CHUNK_SIZE = 500;
+
+/**
+ * Database row types (snake_case from SQLite)
+ */
+interface NodeRow {
+  id: string;
+  kind: string;
+  name: string;
+  qualified_name: string;
+  file_path: string;
+  language: string;
+  start_line: number;
+  end_line: number;
+  start_column: number;
+  end_column: number;
+  docstring: string | null;
+  signature: string | null;
+  visibility: string | null;
+  is_exported: number;
+  is_async: number;
+  is_static: number;
+  is_abstract: number;
+  decorators: string | null;
+  type_parameters: string | null;
+  return_type: string | null;
+  updated_at: number;
+}
+
+interface EdgeRow {
+  id: number;
+  source: string;
+  target: string;
+  kind: string;
+  metadata: string | null;
+  line: number | null;
+  col: number | null;
+  provenance: string | null;
+}
+
+interface FileRow {
+  path: string;
+  content_hash: string;
+  language: string;
+  size: number;
+  modified_at: number;
+  indexed_at: number;
+  node_count: number;
+  errors: string | null;
+}
+
+interface UnresolvedRefRow {
+  id: number;
+  from_node_id: string;
+  reference_name: string;
+  reference_kind: string;
+  line: number;
+  col: number;
+  candidates: string | null;
+  file_path: string;
+  language: string;
+}
+
+/**
+ * Convert database row to Node object
+ */
+function rowToNode(row: NodeRow): Node {
+  return {
+    id: row.id,
+    kind: row.kind as NodeKind,
+    name: row.name,
+    qualifiedName: row.qualified_name,
+    filePath: row.file_path,
+    language: row.language as Language,
+    startLine: row.start_line,
+    endLine: row.end_line,
+    startColumn: row.start_column,
+    endColumn: row.end_column,
+    docstring: row.docstring ?? undefined,
+    signature: row.signature ?? undefined,
+    visibility: row.visibility as Node['visibility'],
+    isExported: row.is_exported === 1,
+    isAsync: row.is_async === 1,
+    isStatic: row.is_static === 1,
+    isAbstract: row.is_abstract === 1,
+    decorators: row.decorators ? safeJsonParse(row.decorators, undefined) : undefined,
+    typeParameters: row.type_parameters ? safeJsonParse(row.type_parameters, undefined) : undefined,
+    returnType: row.return_type ?? undefined,
+    updatedAt: row.updated_at,
+  };
+}
+
+/**
+ * Convert database row to Edge object
+ */
+function rowToEdge(row: EdgeRow): Edge {
+  return {
+    source: row.source,
+    target: row.target,
+    kind: row.kind as EdgeKind,
+    metadata: row.metadata ? safeJsonParse(row.metadata, undefined) : undefined,
+    line: row.line ?? undefined,
+    column: row.col ?? undefined,
+    provenance: row.provenance as Edge['provenance'],
+  };
+}
+
+/**
+ * Convert database row to FileRecord object
+ */
+function rowToFileRecord(row: FileRow): FileRecord {
+  return {
+    path: row.path,
+    contentHash: row.content_hash,
+    language: row.language as Language,
+    size: row.size,
+    modifiedAt: row.modified_at,
+    indexedAt: row.indexed_at,
+    nodeCount: row.node_count,
+    errors: row.errors ? safeJsonParse(row.errors, undefined) : undefined,
+  };
+}
+
+/**
+ * Query builder for the knowledge graph database
+ */
+export class QueryBuilder {
+  private db: SqliteDatabase;
+
+  // Project-name tokens (go.mod / package.json / repo dir), normalized. A query
+  // word matching one is dropped from path-relevance scoring — it names the
+  // whole project, not a symbol, so it carries no discriminative signal (#720).
+  // Set once by the Atlas instance; empty by default (no down-weighting).
+  private projectNameTokens: Set<string> = new Set();
+
+  // Node cache for frequently accessed nodes (LRU-style, max 1000 entries)
+  private nodeCache: Map<string, Node> = new Map();
+  private readonly maxCacheSize = 1000;
+
+  // Prepared statements (lazily initialized)
+  private stmts: {
+    insertNode?: SqliteStatement;
+    updateNode?: SqliteStatement;
+    deleteNode?: SqliteStatement;
+    deleteNodesByFile?: SqliteStatement;
+    getNodeById?: SqliteStatement;
+    getNodesByFile?: SqliteStatement;
+    getNodesByKind?: SqliteStatement;
+    insertEdge?: SqliteStatement;
+    upsertFile?: SqliteStatement;
+    deleteEdgesBySource?: SqliteStatement;
+    deleteEdgesByTarget?: SqliteStatement;
+    getEdgesBySource?: SqliteStatement;
+    getEdgesByTarget?: SqliteStatement;
+    insertFile?: SqliteStatement;
+    updateFile?: SqliteStatement;
+    deleteFile?: SqliteStatement;
+    getFileByPath?: SqliteStatement;
+    getAllFiles?: SqliteStatement;
+    insertUnresolved?: SqliteStatement;
+    deleteUnresolvedByNode?: SqliteStatement;
+    getUnresolvedByName?: SqliteStatement;
+    getNodesByName?: SqliteStatement;
+    getNodesByQualifiedNameExact?: SqliteStatement;
+    getNodesByLowerName?: SqliteStatement;
+    getUnresolvedCount?: SqliteStatement;
+    getUnresolvedBatch?: SqliteStatement;
+    getAllFilePaths?: SqliteStatement;
+    getAllNodeNames?: SqliteStatement;
+    getDominantFile?: SqliteStatement;
+    getTopRouteFile?: SqliteStatement;
+    getRoutingManifest?: SqliteStatement;
+  } = {};
+
+  constructor(db: SqliteDatabase) {
+    this.db = db;
+  }
+
+  /** Set the normalized project-name tokens used to down-weight non-discriminative
+   * query words in path scoring (#720). Called once when the project opens. */
+  setProjectNameTokens(tokens: Set<string>): void {
+    this.projectNameTokens = tokens;
+  }
+
+  /** The normalized project-name tokens (#720); empty if none were derived. */
+  getProjectNameTokens(): Set<string> {
+    return this.projectNameTokens;
+  }
+
+  // ===========================================================================
+  // Node Operations
+  // ===========================================================================
+
+  /**
+   * Insert a new node
+   */
+  insertNode(node: Node): void {
+    if (!this.stmts.insertNode) {
+      this.stmts.insertNode = this.db.prepare(`
+        INSERT OR REPLACE INTO nodes (
+          id, kind, name, qualified_name, file_path, language,
+          start_line, end_line, start_column, end_column,
+          docstring, signature, visibility,
+          is_exported, is_async, is_static, is_abstract,
+          decorators, type_parameters, return_type, updated_at
+        ) VALUES (
+          @id, @kind, @name, @qualifiedName, @filePath, @language,
+          @startLine, @endLine, @startColumn, @endColumn,
+          @docstring, @signature, @visibility,
+          @isExported, @isAsync, @isStatic, @isAbstract,
+          @decorators, @typeParameters, @returnType, @updatedAt
+        )
+      `);
+    }
+
+    // Validate required fields to prevent SQLite bind errors
+    if (!node.id || !node.kind || !node.name || !node.filePath || !node.language) {
+      console.error('[Atlas] Skipping node with missing required fields:', {
+        id: node.id,
+        kind: node.kind,
+        name: node.name,
+        filePath: node.filePath,
+        language: node.language,
+      });
+      return;
+    }
+
+    // INSERT OR REPLACE may overwrite a node we have cached. Drop the
+    // stale entry so the next getNodeById sees the new row, not the old
+    // one (matches the cache-invalidation pattern used by updateNode and
+    // deleteNode below).
+    this.nodeCache.delete(node.id);
+
+    this.stmts.insertNode.run({
+      id: node.id,
+      kind: node.kind,
+      name: node.name,
+      qualifiedName: node.qualifiedName ?? node.name,
+      filePath: node.filePath,
+      language: node.language,
+      startLine: node.startLine ?? 0,
+      endLine: node.endLine ?? 0,
+      startColumn: node.startColumn ?? 0,
+      endColumn: node.endColumn ?? 0,
+      docstring: node.docstring ?? null,
+      signature: node.signature ?? null,
+      visibility: node.visibility ?? null,
+      isExported: node.isExported ? 1 : 0,
+      isAsync: node.isAsync ? 1 : 0,
+      isStatic: node.isStatic ? 1 : 0,
+      isAbstract: node.isAbstract ? 1 : 0,
+      decorators: node.decorators ? JSON.stringify(node.decorators) : null,
+      typeParameters: node.typeParameters ? JSON.stringify(node.typeParameters) : null,
+      returnType: node.returnType ?? null,
+      updatedAt: node.updatedAt ?? Date.now(),
+    });
+  }
+
+  /**
+   * Insert multiple nodes in a transaction
+   */
+  insertNodes(nodes: Node[]): void {
+    this.db.transaction(() => {
+      for (const node of nodes) {
+        this.insertNode(node);
+      }
+    })();
+  }
+
+  /**
+   * Update an existing node
+   */
+  updateNode(node: Node): void {
+    if (!this.stmts.updateNode) {
+      this.stmts.updateNode = this.db.prepare(`
+        UPDATE nodes SET
+          kind = @kind,
+          name = @name,
+          qualified_name = @qualifiedName,
+          file_path = @filePath,
+          language = @language,
+          start_line = @startLine,
+          end_line = @endLine,
+          start_column = @startColumn,
+          end_column = @endColumn,
+          docstring = @docstring,
+          signature = @signature,
+          visibility = @visibility,
+          is_exported = @isExported,
+          is_async = @isAsync,
+          is_static = @isStatic,
+          is_abstract = @isAbstract,
+          decorators = @decorators,
+          type_parameters = @typeParameters,
+          return_type = @returnType,
+          updated_at = @updatedAt
+        WHERE id = @id
+      `);
+    }
+
+    // Invalidate cache before update
+    this.nodeCache.delete(node.id);
+
+    // Validate required fields
+    if (!node.id || !node.kind || !node.name || !node.filePath || !node.language) {
+      console.error('[Atlas] Skipping node update with missing required fields:', node.id);
+      return;
+    }
+
+    this.stmts.updateNode.run({
+      id: node.id,
+      kind: node.kind,
+      name: node.name,
+      qualifiedName: node.qualifiedName ?? node.name,
+      filePath: node.filePath,
+      language: node.language,
+      startLine: node.startLine ?? 0,
+      endLine: node.endLine ?? 0,
+      startColumn: node.startColumn ?? 0,
+      endColumn: node.endColumn ?? 0,
+      docstring: node.docstring ?? null,
+      signature: node.signature ?? null,
+      visibility: node.visibility ?? null,
+      isExported: node.isExported ? 1 : 0,
+      isAsync: node.isAsync ? 1 : 0,
+      isStatic: node.isStatic ? 1 : 0,
+      isAbstract: node.isAbstract ? 1 : 0,
+      decorators: node.decorators ? JSON.stringify(node.decorators) : null,
+      typeParameters: node.typeParameters ? JSON.stringify(node.typeParameters) : null,
+      returnType: node.returnType ?? null,
+      updatedAt: node.updatedAt ?? Date.now(),
+    });
+  }
+
+  /**
+   * Delete a node by ID
+   */
+  deleteNode(id: string): void {
+    if (!this.stmts.deleteNode) {
+      this.stmts.deleteNode = this.db.prepare('DELETE FROM nodes WHERE id = ?');
+    }
+    // Invalidate cache
+    this.nodeCache.delete(id);
+    this.stmts.deleteNode.run(id);
+  }
+
+  /**
+   * Delete all nodes for a file
+   */
+  deleteNodesByFile(filePath: string): void {
+    if (!this.stmts.deleteNodesByFile) {
+      this.stmts.deleteNodesByFile = this.db.prepare('DELETE FROM nodes WHERE file_path = ?');
+    }
+    // Invalidate cache for nodes in this file
+    for (const [id, node] of this.nodeCache) {
+      if (node.filePath === filePath) {
+        this.nodeCache.delete(id);
+      }
+    }
+    this.stmts.deleteNodesByFile.run(filePath);
+  }
+
+  /**
+   * Get a node by ID
+   */
+  getNodeById(id: string): Node | null {
+    // Check cache first
+    if (this.nodeCache.has(id)) {
+      const cached = this.nodeCache.get(id)!;
+      // Move to end to implement LRU (delete and re-add)
+      this.nodeCache.delete(id);
+      this.nodeCache.set(id, cached);
+      return cached;
+    }
+
+    if (!this.stmts.getNodeById) {
+      this.stmts.getNodeById = this.db.prepare('SELECT * FROM nodes WHERE id = ?');
+    }
+    const row = this.stmts.getNodeById.get(id) as NodeRow | undefined;
+    if (!row) {
+      return null;
+    }
+
+    const node = rowToNode(row);
+    this.cacheNode(node);
+    return node;
+  }
+
+  /**
+   * Batch lookup: fetch many nodes by ID in a single SQL round-trip.
+   *
+   * Replaces the N+1 pattern in graph traversal where every edge would
+   * trigger its own `getNodeById` call. For a function with 50 callers
+   * this collapses 50 point reads into one IN-list query (~10-50x
+   * faster end-to-end).
+   *
+   * Returns a Map keyed by id so callers can preserve their own ordering
+   * (typically the order edges were returned from the graph). Missing IDs
+   * are simply absent from the map.
+   *
+   * Cache-aware: ids already in the LRU cache are served from memory and
+   * the SQL query only touches the misses.
+   */
+  getNodesByIds(ids: readonly string[]): Map<string, Node> {
+    const out = new Map<string, Node>();
+    if (ids.length === 0) return out;
+
+    // Serve cache hits first; build the miss list for SQL.
+    const misses: string[] = [];
+    for (const id of ids) {
+      const cached = this.nodeCache.get(id);
+      if (cached !== undefined) {
+        // LRU touch
+        this.nodeCache.delete(id);
+        this.nodeCache.set(id, cached);
+        out.set(id, cached);
+      } else {
+        misses.push(id);
+      }
+    }
+    if (misses.length === 0) return out;
+
+    // Chunk under SQLite's parameter limit (default 999, raised to 32766
+    // in better-sqlite3 builds — chunk at 500 for safety across both
+    // backends and to keep the query plan simple).
+    for (let i = 0; i < misses.length; i += SQLITE_PARAM_CHUNK_SIZE) {
+      const chunk = misses.slice(i, i + SQLITE_PARAM_CHUNK_SIZE);
+      const placeholders = chunk.map(() => '?').join(',');
+      const rows = this.db
+        .prepare(`SELECT * FROM nodes WHERE id IN (${placeholders})`)
+        .all(...chunk) as NodeRow[];
+      for (const row of rows) {
+        const node = rowToNode(row);
+        out.set(node.id, node);
+        this.cacheNode(node);
+      }
+    }
+    return out;
+  }
+
+  private getExistingNodeIds(ids: readonly string[]): Set<string> {
+    const out = new Set<string>();
+    if (ids.length === 0) return out;
+
+    const uniqueIds = [...new Set(ids)];
+    for (let i = 0; i < uniqueIds.length; i += SQLITE_PARAM_CHUNK_SIZE) {
+      const chunk = uniqueIds.slice(i, i + SQLITE_PARAM_CHUNK_SIZE);
+      const placeholders = chunk.map(() => '?').join(',');
+      const rows = this.db
+        .prepare(`SELECT id FROM nodes WHERE id IN (${placeholders})`)
+        .all(...chunk) as { id: string }[];
+      for (const row of rows) {
+        out.add(row.id);
+      }
+    }
+
+    return out;
+  }
+
+  /**
+   * Add a node to the cache, evicting oldest if needed
+   */
+  private cacheNode(node: Node): void {
+    if (this.nodeCache.size >= this.maxCacheSize) {
+      // Evict oldest (first) entry
+      const firstKey = this.nodeCache.keys().next().value;
+      if (firstKey) {
+        this.nodeCache.delete(firstKey);
+      }
+    }
+    this.nodeCache.set(node.id, node);
+  }
+
+  /**
+   * Clear the node cache
+   */
+  clearCache(): void {
+    this.nodeCache.clear();
+  }
+
+  /**
+   * Get all nodes in a file
+   */
+  getNodesByFile(filePath: string): Node[] {
+    if (!this.stmts.getNodesByFile) {
+      this.stmts.getNodesByFile = this.db.prepare(
+        'SELECT * FROM nodes WHERE file_path = ? ORDER BY start_line'
+      );
+    }
+    const rows = this.stmts.getNodesByFile.all(filePath) as NodeRow[];
+    return rows.map(rowToNode);
+  }
+
+  /**
+   * Find the file that holds the densest concentration of the project's
+   * internal call graph — the "core" file. Used by context-builder to
+   * boost ranking of symbols in that file's directory (so e.g. sinatra
+   * queries surface `lib/sinatra/base.rb`'s `route!` instead of
+   * `sinatra-contrib/lib/sinatra/multi_route.rb`'s `route` extension).
+   *
+   * Returns null if no file has a meaningful concentration (e.g. spread
+   * evenly across many files, or empty index).
+   *
+   * "Internal" = source and target are in the same file. Cross-file
+   * edges aren't useful here — they don't tell us which file is the
+   * functional center.
+   *
+   * Excludes test/spec files from candidacy via path-pattern. The agent's
+   * typical question is "how does X work", not "how is X tested", so
+   * boosting a test file's directory would be a misfire.
+   */
+  getDominantFile(): { filePath: string; edgeCount: number; nextEdgeCount: number } | null {
+    if (!this.stmts.getDominantFile) {
+      // Pull top 20 candidates; we then filter out test/generated files
+      // in code (regex-grade matching that SQL LIKE can't express). The
+      // generated-file filter is critical — without it, etcd's
+      // `api/etcdserverpb/rpc.pb.go` (1916 in-file edges, generated
+      // protobuf stub) outranks the real `server/etcdserver/server.go`
+      // (470 edges) by 4×, and the boost would push the agent toward
+      // generated code.
+      this.stmts.getDominantFile = this.db.prepare(`
+        SELECT n.file_path AS file_path, COUNT(*) AS edge_count
+        FROM edges e
+        JOIN nodes n ON e.source = n.id
+        JOIN nodes m ON e.target = m.id
+        WHERE n.file_path = m.file_path
+        GROUP BY n.file_path
+        ORDER BY edge_count DESC
+        LIMIT 20
+      `);
+    }
+    const rows = this.stmts.getDominantFile.all() as Array<{ file_path: string; edge_count: number }>;
+    const filtered = rows.filter(r => !isLowValueFile(r.file_path));
+    if (filtered.length === 0 || filtered[0]!.edge_count < 20) return null;
+    return {
+      filePath: filtered[0]!.file_path,
+      edgeCount: filtered[0]!.edge_count,
+      nextEdgeCount: filtered[1]?.edge_count ?? 0,
+    };
+  }
+
+  /**
+   * Find the file that holds the densest concentration of the project's
+   * `route` nodes (framework-emitted: Express/Gin/Flask/Rails/Drupal/etc.).
+   * Used by handleContext on small repos to inline the project's routing
+   * config when the agent's query is about request flow — eliminating the
+   * "Glob + Read routes.rb" pattern that beats atlas on tiny realworld
+   * template repos.
+   *
+   * Excludes test/generated files from candidacy. Returns null if there
+   * are fewer than 3 non-test routes total, or if no file holds at least
+   * 30% of them (diffuse routing → no single answer file).
+   */
+  getTopRouteFile(): { filePath: string; routeCount: number; totalRoutes: number } | null {
+    if (!this.stmts.getTopRouteFile) {
+      this.stmts.getTopRouteFile = this.db.prepare(`
+        SELECT file_path, COUNT(*) AS cnt
+        FROM nodes
+        WHERE kind = 'route'
+        GROUP BY file_path
+        ORDER BY cnt DESC
+        LIMIT 20
+      `);
+    }
+    const rows = this.stmts.getTopRouteFile.all() as Array<{ file_path: string; cnt: number }>;
+    const filtered = rows.filter(r => !isLowValueFile(r.file_path));
+    if (filtered.length === 0) return null;
+    const totalRoutes = filtered.reduce((sum, r) => sum + r.cnt, 0);
+    const top = filtered[0]!;
+    if (totalRoutes < 3 || top.cnt < 3) return null;
+    if (top.cnt / totalRoutes < 0.30) return null;
+    return { filePath: top.file_path, routeCount: top.cnt, totalRoutes };
+  }
+
+  /**
+   * Build a URL → handler manifest from the index. Each route node's
+   * `references` edge points at the function/method that handles the
+   * request. We join them in one pass; the agent gets the canonical
+   * routing answer ("POST /users/login → AuthController#login") without
+   * having to parse the framework's route DSL itself.
+   *
+   * Also returns the file with the most handler endpoints — used as the
+   * "top handler file" to inline source for, so the agent has both the
+   * mapping AND the handler implementations.
+   */
+  getRoutingManifest(limit: number = 40): {
+    entries: Array<{ url: string; handler: string; handlerFile: string; handlerLine: number; handlerKind: string }>;
+    topHandlerFile: string | null;
+    topHandlerFileCount: number;
+    totalRoutes: number;
+  } | null {
+    if (!this.stmts.getRoutingManifest) {
+      // Edge kind varies across framework resolvers: Spring/Rails/
+      // Laravel/Drupal emit `references`, Express emits `calls`. Accept
+      // both — the semantic is the same (route → its handler).
+      this.stmts.getRoutingManifest = this.db.prepare(`
+        SELECT
+          r.name AS url,
+          h.name AS handler,
+          h.file_path AS handler_file,
+          h.start_line AS handler_line,
+          h.kind AS handler_kind
+        FROM nodes r
+        JOIN edges e ON e.source = r.id
+        JOIN nodes h ON e.target = h.id
+        WHERE r.kind = 'route'
+          AND e.kind IN ('references', 'calls')
+          AND h.kind IN ('function', 'method', 'class')
+        ORDER BY r.file_path, r.start_line
+        LIMIT ?
+      `);
+    }
+    const rows = this.stmts.getRoutingManifest.all(limit) as Array<{
+      url: string; handler: string; handler_file: string; handler_line: number; handler_kind: string;
+    }>;
+    // Drop test/generated handlers — same hygiene as elsewhere.
+    const filtered = rows.filter(r => !isLowValueFile(r.handler_file));
+    if (filtered.length < 3) return null;
+    // Identify the file holding the most handlers (the "primary handler file").
+    const fileCounts = new Map<string, number>();
+    for (const r of filtered) {
+      fileCounts.set(r.handler_file, (fileCounts.get(r.handler_file) ?? 0) + 1);
+    }
+    let topHandlerFile: string | null = null;
+    let topHandlerFileCount = 0;
+    for (const [file, count] of fileCounts) {
+      if (count > topHandlerFileCount) {
+        topHandlerFile = file;
+        topHandlerFileCount = count;
+      }
+    }
+    return {
+      entries: filtered.map(r => ({
+        url: r.url,
+        handler: r.handler,
+        handlerFile: r.handler_file,
+        handlerLine: r.handler_line,
+        handlerKind: r.handler_kind,
+      })),
+      topHandlerFile,
+      topHandlerFileCount,
+      totalRoutes: filtered.length,
+    };
+  }
+
+  /**
+   * Get all nodes of a specific kind
+   */
+  getNodesByKind(kind: NodeKind): Node[] {
+    if (!this.stmts.getNodesByKind) {
+      this.stmts.getNodesByKind = this.db.prepare('SELECT * FROM nodes WHERE kind = ?');
+    }
+    const rows = this.stmts.getNodesByKind.all(kind) as NodeRow[];
+    return rows.map(rowToNode);
+  }
+
+  /**
+   * Stream every node of a kind one at a time (lazy) instead of materializing
+   * them all like {@link getNodesByKind}. For unbounded kinds (`function`,
+   * `method`) on a symbol-dense project the full array is gigabytes; the
+   * dynamic-edge synthesizers only scan-and-filter, so they iterate to keep
+   * memory O(1) in the node count rather than O(nodes) (#610).
+   */
+  *iterateNodesByKind(kind: NodeKind): IterableIterator<Node> {
+    // Fresh statement per call (not a cached one): an iterator holds an open
+    // cursor, so a shared statement would conflict across overlapping scans.
+    const stmt = this.db.prepare('SELECT * FROM nodes WHERE kind = ?');
+    for (const row of stmt.iterate(kind)) {
+      yield rowToNode(row as NodeRow);
+    }
+  }
+
+  /**
+   * Get all nodes in the database
+   */
+  getAllNodes(): Node[] {
+    const rows = this.db.prepare('SELECT * FROM nodes').all() as NodeRow[];
+    return rows.map(rowToNode);
+  }
+
+  /**
+   * Get nodes by exact name match (uses idx_nodes_name index)
+   */
+  getNodesByName(name: string): Node[] {
+    if (!this.stmts.getNodesByName) {
+      this.stmts.getNodesByName = this.db.prepare('SELECT * FROM nodes WHERE name = ?');
+    }
+    const rows = this.stmts.getNodesByName.all(name) as NodeRow[];
+    return rows.map(rowToNode);
+  }
+
+  /**
+   * Get nodes by exact qualified name match (uses idx_nodes_qualified_name index)
+   */
+  getNodesByQualifiedNameExact(qualifiedName: string): Node[] {
+    if (!this.stmts.getNodesByQualifiedNameExact) {
+      this.stmts.getNodesByQualifiedNameExact = this.db.prepare(
+        'SELECT * FROM nodes WHERE qualified_name = ?'
+      );
+    }
+    const rows = this.stmts.getNodesByQualifiedNameExact.all(qualifiedName) as NodeRow[];
+    return rows.map(rowToNode);
+  }
+
+  /**
+   * Get nodes by lowercase name match (uses idx_nodes_lower_name expression index)
+   */
+  getNodesByLowerName(lowerName: string): Node[] {
+    if (!this.stmts.getNodesByLowerName) {
+      this.stmts.getNodesByLowerName = this.db.prepare(
+        'SELECT * FROM nodes WHERE lower(name) = ?'
+      );
+    }
+    const rows = this.stmts.getNodesByLowerName.all(lowerName) as NodeRow[];
+    return rows.map(rowToNode);
+  }
+
+  /**
+   * Search nodes by name using FTS with fallback to LIKE for better matching
+   *
+   * Search strategy:
+   * 1. Try FTS5 prefix match (query*) for word-start matching
+   * 2. If no results, try LIKE for substring matching (e.g., "signIn" finds "signInWithGoogle")
+   * 3. Score results based on match quality
+   */
+  searchNodes(query: string, options: SearchOptions = {}): SearchResult[] {
+    const { limit = 100, offset = 0 } = options;
+
+    // Parse field-qualified bits out of the raw query (kind:, lang:,
+    // path:, name:). Anything not recognised stays in `text` and goes
+    // to FTS unchanged. Filters compose with the SearchOptions arg —
+    // both are applied (intersection-style).
+    const parsed = parseQuery(query);
+    const mergedKinds =
+      parsed.kinds.length > 0
+        ? Array.from(new Set([...(options.kinds ?? []), ...parsed.kinds]))
+        : options.kinds;
+    const mergedLanguages =
+      parsed.languages.length > 0
+        ? Array.from(new Set([...(options.languages ?? []), ...parsed.languages]))
+        : options.languages;
+    const pathFilters = parsed.pathFilters;
+    const nameFilters = parsed.nameFilters;
+    // The text portion drives FTS/LIKE; if all the user typed was
+    // filters (`kind:function`), we still need *some* candidate set,
+    // so synthesise an empty-text path that returns everything matching
+    // the filters.
+    const text = parsed.text;
+    const kinds = mergedKinds;
+    const languages = mergedLanguages;
+
+    // First try FTS5 with prefix matching
+    let results = text
+      ? this.searchNodesFTS(text, { kinds, languages, limit, offset })
+      // Over-fetch by 5× when running filter-only (no text). The
+      // post-scoring path: + name: filters can be very selective, so
+      // a smaller multiplier risks returning fewer than `limit`
+      // results despite the DB having plenty of matches.
+      : this.searchAllByFilters({ kinds, languages, limit: limit * 5 });
+
+    // If no FTS results, try LIKE-based substring search
+    if (results.length === 0 && text.length >= 2) {
+      results = this.searchNodesLike(text, { kinds, languages, limit, offset });
+    }
+
+    // Final fuzzy fallback: scan all known names and keep those within
+    // a tight Levenshtein distance. Only fires when both FTS and LIKE
+    // returned nothing AND there's a text portion long enough to be
+    // worth fuzzing (1-char queries would match too much).
+    if (results.length === 0 && text.length >= 3) {
+      results = this.searchNodesFuzzy(text, { kinds, languages, limit });
+    }
+
+    // Supplement: ensure exact name matches are always candidates.
+    // BM25 can bury short exact-match names (e.g. "getBean") under hundreds of
+    // compound names (e.g. "getBeanDescriptor") in large codebases,
+    // pushing them past the FTS fetch limit before post-hoc scoring can help.
+    // Use the max BM25 score as the base so the nameMatchBonus (exact=30 vs
+    // prefix=20) actually differentiates them after rescoring.
+    if (results.length > 0 && query) {
+      const existingIds = new Set(results.map(r => r.node.id));
+      const maxFtsScore = Math.max(...results.map(r => r.score));
+      const terms = query.split(/\s+/).filter(t => t.length >= 2);
+      for (const term of terms) {
+        let sql = 'SELECT * FROM nodes WHERE name = ? COLLATE NOCASE';
+        const params: (string | number)[] = [term];
+        if (kinds && kinds.length > 0) {
+          sql += ` AND kind IN (${kinds.map(() => '?').join(',')})`;
+          params.push(...kinds);
+        }
+        if (languages && languages.length > 0) {
+          sql += ` AND language IN (${languages.map(() => '?').join(',')})`;
+          params.push(...languages);
+        }
+        sql += ' LIMIT 20';
+        const rows = this.db.prepare(sql).all(...params) as NodeRow[];
+        for (const row of rows) {
+          if (!existingIds.has(row.id)) {
+            results.push({ node: rowToNode(row), score: maxFtsScore });
+            existingIds.add(row.id);
+          }
+        }
+      }
+    }
+
+    // Apply multi-signal scoring
+    if (results.length > 0 && (text || query)) {
+      const scoringQuery = text || query;
+      results = results.map(r => ({
+        ...r,
+        score: r.score
+          + kindBonus(r.node.kind)
+          + scorePathRelevance(r.node.filePath, scoringQuery, this.projectNameTokens)
+          + nameMatchBonus(r.node.name, scoringQuery),
+      }));
+      results.sort((a, b) => b.score - a.score);
+      // Trim to requested limit after rescoring
+      if (results.length > limit) {
+        results = results.slice(0, limit);
+      }
+    }
+
+    // Apply path: + name: filters AFTER scoring. Scoring already uses
+    // path/name as a soft signal; the explicit filters here are a hard
+    // gate. Done last so the FTS limit fetched plenty of candidates to
+    // narrow from.
+    if (pathFilters.length > 0) {
+      const lowered = pathFilters.map((p) => p.toLowerCase());
+      results = results.filter((r) => {
+        const fp = r.node.filePath.toLowerCase();
+        return lowered.some((p) => fp.includes(p));
+      });
+    }
+    if (nameFilters.length > 0) {
+      const lowered = nameFilters.map((n) => n.toLowerCase());
+      results = results.filter((r) => {
+        const nm = r.node.name.toLowerCase();
+        return lowered.some((n) => nm.includes(n));
+      });
+    }
+
+    return results;
+  }
+
+  /**
+   * Match-everything path used when the user supplied only field
+   * filters (`kind:function lang:typescript`) with no text. Returns
+   * candidates ordered by name; the caller's filter pass narrows to
+   * what was asked for.
+   */
+  private searchAllByFilters(options: {
+    kinds?: NodeKind[];
+    languages?: Language[];
+    limit: number;
+  }): SearchResult[] {
+    const { kinds, languages, limit } = options;
+    let sql = 'SELECT * FROM nodes WHERE 1=1';
+    const params: (string | number)[] = [];
+    if (kinds && kinds.length > 0) {
+      sql += ` AND kind IN (${kinds.map(() => '?').join(',')})`;
+      params.push(...kinds);
+    }
+    if (languages && languages.length > 0) {
+      sql += ` AND language IN (${languages.map(() => '?').join(',')})`;
+      params.push(...languages);
+    }
+    sql += ' ORDER BY name LIMIT ?';
+    params.push(limit);
+    const rows = this.db.prepare(sql).all(...params) as NodeRow[];
+    return rows.map((row) => ({ node: rowToNode(row), score: 1 }));
+  }
+
+  /**
+   * Fuzzy fallback: when zero FTS/LIKE hits, try an edit-distance
+   * sweep over the distinct symbol-name set. Caps `maxDist` at 2 so
+   * `getUssr` finds `getUser` but `process` doesn't match `prosody`.
+   * Bounded edit distance keeps each comparison cheap; the per-query
+   * scan is O(distinct-name-count) which is far smaller than total
+   * node count on any real codebase.
+   */
+  private searchNodesFuzzy(
+    text: string,
+    options: { kinds?: NodeKind[]; languages?: Language[]; limit: number }
+  ): SearchResult[] {
+    const { kinds, languages, limit } = options;
+    const lowered = text.toLowerCase();
+    const maxDist = lowered.length <= 4 ? 1 : 2;
+
+    // Pull the distinct name list once. The set is cached on QueryBuilder
+    // by getAllNodeNames(); even on a 200k-node project the distinct
+    // name set is typically O(10k) because most names repeat. The
+    // candidate-cap below bounds memory regardless.
+    const allNames = this.getAllNodeNames();
+    const candidates: Array<{ name: string; dist: number }> = [];
+    for (const name of allNames) {
+      const dist = boundedEditDistance(name.toLowerCase(), lowered, maxDist);
+      if (dist <= maxDist) candidates.push({ name, dist });
+    }
+    candidates.sort((a, b) => a.dist - b.dist);
+
+    // Cap the per-name follow-up queries. Each survivor triggers a
+    // separate `SELECT * FROM nodes WHERE name = ?`; without this cap
+    // a project with many similar names (`getUser1`, `getUser2`...)
+    // could fan out far beyond `limit` queries before the inner-loop
+    // limit kicks in.
+    const FUZZY_FOLLOWUP_CAP = Math.max(limit * 2, 50);
+    const cappedCandidates = candidates.slice(0, FUZZY_FOLLOWUP_CAP);
+
+    const results: SearchResult[] = [];
+    const seen = new Set<string>();
+    for (const c of cappedCandidates) {
+      if (results.length >= limit) break;
+      let sql = 'SELECT * FROM nodes WHERE name = ?';
+      const params: (string | number)[] = [c.name];
+      if (kinds && kinds.length > 0) {
+        sql += ` AND kind IN (${kinds.map(() => '?').join(',')})`;
+        params.push(...kinds);
+      }
+      if (languages && languages.length > 0) {
+        sql += ` AND language IN (${languages.map(() => '?').join(',')})`;
+        params.push(...languages);
+      }
+      sql += ' LIMIT 5';
+      const rows = this.db.prepare(sql).all(...params) as NodeRow[];
+      for (const row of rows) {
+        if (seen.has(row.id)) continue;
+        seen.add(row.id);
+        // Lower the score for each edit step away from the query so
+        // exact-match fallbacks (dist 0) outrank dist-2 typos.
+        results.push({ node: rowToNode(row), score: 1 / (1 + c.dist) });
+        if (results.length >= limit) break;
+      }
+    }
+    return results;
+  }
+
+  /**
+   * FTS5 search with prefix matching
+   */
+  private searchNodesFTS(query: string, options: SearchOptions): SearchResult[] {
+    const { kinds, languages, limit = 100, offset = 0 } = options;
+
+    // Add prefix wildcard for better matching (e.g., "auth" matches "AuthService", "authenticate")
+    // Escape special FTS5 characters and add prefix wildcard.
+    //
+    // `::` is a qualifier separator in Rust/C++/Ruby, not a token char,
+    // so treat it as whitespace before the strip step. Otherwise queries
+    // like `stage_apply::run` collapse to `stage_applyrun` (the colons
+    // are stripped without splitting) and find nothing. See #173.
+    const ftsQuery = query
+      .replace(/::/g, ' ') // Rust/C++/Ruby qualifier separator
+      .replace(/['"*():^]/g, '') // Remove FTS5 special chars
+      .split(/\s+/)
+      .filter(term => term.length > 0)
+      // Strip FTS5 boolean operators to prevent query manipulation
+      .filter(term => !/^(AND|OR|NOT|NEAR)$/i.test(term))
+      .map(term => `"${term}"*`) // Prefix match each term
+      .join(' OR ');
+
+    if (!ftsQuery) {
+      return [];
+    }
+
+    // BM25 column weights: id=0, name=20, qualified_name=5, docstring=1, signature=2
+    // Heavy name weight ensures exact/prefix name matches rank above incidental
+    // mentions in long docstrings or qualified names of nested symbols.
+    // Fetch 5x requested limit so post-hoc rescoring (kindBonus, pathRelevance,
+    // nameMatchBonus) can promote results that BM25 alone undervalues.
+    const ftsLimit = Math.max(limit * 5, 100);
+
+    let sql = `
+      SELECT nodes.*, bm25(nodes_fts, 0, 20, 5, 1, 2) as score
+      FROM nodes_fts
+      JOIN nodes ON nodes_fts.id = nodes.id
+      WHERE nodes_fts MATCH ?
+    `;
+
+    const params: (string | number)[] = [ftsQuery];
+
+    if (kinds && kinds.length > 0) {
+      sql += ` AND nodes.kind IN (${kinds.map(() => '?').join(',')})`;
+      params.push(...kinds);
+    }
+
+    if (languages && languages.length > 0) {
+      sql += ` AND nodes.language IN (${languages.map(() => '?').join(',')})`;
+      params.push(...languages);
+    }
+
+    sql += ' ORDER BY score LIMIT ? OFFSET ?';
+    params.push(ftsLimit, offset);
+
+    try {
+      const rows = this.db.prepare(sql).all(...params) as (NodeRow & { score: number })[];
+      return rows.map((row) => ({
+        node: rowToNode(row),
+        score: Math.abs(row.score), // bm25 returns negative scores
+      }));
+    } catch {
+      // FTS query failed, return empty
+      return [];
+    }
+  }
+
+  /**
+   * LIKE-based substring search for cases where FTS doesn't match
+   * Useful for camelCase matching (e.g., "signIn" finds "signInWithGoogle")
+   */
+  private searchNodesLike(query: string, options: SearchOptions): SearchResult[] {
+    const { kinds, languages, limit = 100, offset = 0 } = options;
+
+    let sql = `
+      SELECT nodes.*,
+        CASE
+          WHEN name = ? THEN 1.0
+          WHEN name LIKE ? THEN 0.9
+          WHEN name LIKE ? THEN 0.8
+          WHEN qualified_name LIKE ? THEN 0.7
+          ELSE 0.5
+        END as score
+      FROM nodes
+      WHERE (
+        name LIKE ? OR
+        qualified_name LIKE ? OR
+        name LIKE ?
+      )
+    `;
+
+    // Pattern variants for better matching
+    const exactMatch = query;
+    const startsWith = `${query}%`;
+    const contains = `%${query}%`;
+
+    const params: (string | number)[] = [
+      exactMatch,     // Exact match score
+      startsWith,     // Starts with score
+      contains,       // Contains score
+      contains,       // Qualified name score
+      contains,       // WHERE: name contains
+      contains,       // WHERE: qualified_name contains
+      startsWith,     // WHERE: name starts with
+    ];
+
+    if (kinds && kinds.length > 0) {
+      sql += ` AND kind IN (${kinds.map(() => '?').join(',')})`;
+      params.push(...kinds);
+    }
+
+    if (languages && languages.length > 0) {
+      sql += ` AND language IN (${languages.map(() => '?').join(',')})`;
+      params.push(...languages);
+    }
+
+    sql += ' ORDER BY score DESC, length(name) ASC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+
+    const rows = this.db.prepare(sql).all(...params) as (NodeRow & { score: number })[];
+
+    return rows.map((row) => ({
+      node: rowToNode(row),
+      score: row.score,
+    }));
+  }
+
+  /**
+   * Find nodes by exact name match
+   *
+   * Used for hybrid search - looks up symbols by exact name or case-insensitive match.
+   * Returns high-confidence matches for known symbol names extracted from query.
+   *
+   * @param names - Array of symbol names to look up
+   * @param options - Search options (kinds, languages, limit)
+   * @returns SearchResult array with exact matches scored at 1.0
+   */
+  findNodesByExactName(names: string[], options: SearchOptions = {}): SearchResult[] {
+    if (names.length === 0) return [];
+
+    const { kinds, languages, limit = 50 } = options;
+
+    // Two-pass approach to handle common names (e.g., "run" has 40+ matches):
+    // Pass 1: Find which files contain distinctive (rare) symbols from the query.
+    // Pass 2: Query each name, boosting results that co-locate with distinctive symbols.
+
+    // Pass 1: Find files containing each queried name, identify distinctive names
+    const nameToFiles = new Map<string, Set<string>>();
+    for (const name of names) {
+      let sql = 'SELECT DISTINCT file_path FROM nodes WHERE name COLLATE NOCASE = ?';
+      const params: (string | number)[] = [name];
+      if (kinds && kinds.length > 0) {
+        sql += ` AND kind IN (${kinds.map(() => '?').join(',')})`;
+        params.push(...kinds);
+      }
+      sql += ' LIMIT 100';
+      const rows = this.db.prepare(sql).all(...params) as { file_path: string }[];
+      nameToFiles.set(name.toLowerCase(), new Set(rows.map(r => r.file_path)));
+    }
+
+    // Distinctive names are those with fewer than 10 file matches (e.g., "scrapeLoop" = 1 file)
+    const distinctiveFiles = new Set<string>();
+    for (const [, files] of nameToFiles) {
+      if (files.size > 0 && files.size < 10) {
+        for (const f of files) distinctiveFiles.add(f);
+      }
+    }
+
+    // Pass 2: Query each name with per-name limit, scoring by co-location
+    const perNameLimit = Math.max(8, Math.ceil(limit / names.length));
+    const allResults: SearchResult[] = [];
+    const seenIds = new Set<string>();
+
+    for (const name of names) {
+      let sql = `
+        SELECT nodes.*, 1.0 as score
+        FROM nodes
+        WHERE name COLLATE NOCASE = ?
+      `;
+      const params: (string | number)[] = [name];
+
+      if (kinds && kinds.length > 0) {
+        sql += ` AND kind IN (${kinds.map(() => '?').join(',')})`;
+        params.push(...kinds);
+      }
+
+      if (languages && languages.length > 0) {
+        sql += ` AND language IN (${languages.map(() => '?').join(',')})`;
+        params.push(...languages);
+      }
+
+      // Fetch enough to find co-located results among common names
+      sql += ' LIMIT ?';
+      params.push(Math.max(perNameLimit * 3, 50));
+
+      const rows = this.db.prepare(sql).all(...params) as (NodeRow & { score: number })[];
+      const nameResults: SearchResult[] = [];
+      for (const row of rows) {
+        const node = rowToNode(row);
+        if (seenIds.has(node.id)) continue;
+        // Boost results in files that also contain distinctive symbols
+        const coLocationBoost = distinctiveFiles.has(node.filePath) ? 20 : 0;
+        nameResults.push({ node, score: row.score + coLocationBoost });
+      }
+
+      // Sort by score (co-located first), take per-name limit
+      nameResults.sort((a, b) => b.score - a.score);
+      for (const r of nameResults.slice(0, perNameLimit)) {
+        seenIds.add(r.node.id);
+        allResults.push(r);
+      }
+    }
+
+    // Sort all results by score so co-located results bubble up
+    allResults.sort((a, b) => b.score - a.score);
+    return allResults.slice(0, limit);
+  }
+
+  /**
+   * Find nodes whose name contains a substring (LIKE-based).
+   * Useful for CamelCase-part matching where FTS fails because
+   * e.g. "TransportSearchAction" is one FTS token, not matchable by "Search"*.
+   *
+   * Results are ordered by name length (shorter = more likely to be the core type).
+   */
+  findNodesByNameSubstring(
+    substring: string,
+    options: SearchOptions & { excludePrefix?: boolean } = {}
+  ): SearchResult[] {
+    const { kinds, languages, limit = 30, excludePrefix } = options;
+
+    let sql = `
+      SELECT nodes.*, 1.0 as score
+      FROM nodes
+      WHERE name LIKE ?
+    `;
+    const params: (string | number)[] = [`%${substring}%`];
+
+    // Exclude prefix matches (handled by FTS-based prefix search in Step 2b)
+    if (excludePrefix) {
+      sql += ` AND name NOT LIKE ?`;
+      params.push(`${substring}%`);
+    }
+
+    if (kinds && kinds.length > 0) {
+      sql += ` AND kind IN (${kinds.map(() => '?').join(',')})`;
+      params.push(...kinds);
+    }
+
+    if (languages && languages.length > 0) {
+      sql += ` AND language IN (${languages.map(() => '?').join(',')})`;
+      params.push(...languages);
+    }
+
+    sql += ' ORDER BY length(name) ASC LIMIT ?';
+    params.push(limit);
+
+    const rows = this.db.prepare(sql).all(...params) as (NodeRow & { score: number })[];
+    return rows.map((row) => ({
+      node: rowToNode(row),
+      score: row.score,
+    }));
+  }
+
+  // ===========================================================================
+  // Edge Operations
+  // ===========================================================================
+
+  /**
+   * Insert a new edge
+   */
+  insertEdge(edge: Edge): void {
+    if (!this.stmts.insertEdge) {
+      this.stmts.insertEdge = this.db.prepare(`
+        INSERT OR IGNORE INTO edges (source, target, kind, metadata, line, col, provenance)
+        VALUES (@source, @target, @kind, @metadata, @line, @col, @provenance)
+      `);
+    }
+
+    this.stmts.insertEdge.run({
+      source: edge.source,
+      target: edge.target,
+      kind: edge.kind,
+      metadata: edge.metadata ? JSON.stringify(edge.metadata) : null,
+      line: edge.line ?? null,
+      col: edge.column ?? null,
+      provenance: edge.provenance ?? null,
+    });
+  }
+
+  /**
+   * Insert multiple edges in a transaction
+   */
+  insertEdges(edges: Edge[]): void {
+    if (edges.length === 0) return;
+
+    this.db.transaction(() => {
+      const endpointIds = new Set<string>();
+      for (const edge of edges) {
+        endpointIds.add(edge.source);
+        endpointIds.add(edge.target);
+      }
+      const existingNodeIds = this.getExistingNodeIds([...endpointIds]);
+
+      for (const edge of edges) {
+        if (!existingNodeIds.has(edge.source) || !existingNodeIds.has(edge.target)) {
+          continue;
+        }
+        this.insertEdge(edge);
+      }
+    })();
+  }
+
+  /**
+   * Delete all edges from a source node
+   */
+  deleteEdgesBySource(sourceId: string): void {
+    if (!this.stmts.deleteEdgesBySource) {
+      this.stmts.deleteEdgesBySource = this.db.prepare('DELETE FROM edges WHERE source = ?');
+    }
+    this.stmts.deleteEdgesBySource.run(sourceId);
+  }
+
+  /**
+   * Get outgoing edges from a node
+   */
+  getOutgoingEdges(sourceId: string, kinds?: EdgeKind[], provenance?: string): Edge[] {
+    if ((kinds && kinds.length > 0) || provenance) {
+      let sql = 'SELECT * FROM edges WHERE source = ?';
+      const params: (string | number)[] = [sourceId];
+
+      if (kinds && kinds.length > 0) {
+        sql += ` AND kind IN (${kinds.map(() => '?').join(',')})`;
+        params.push(...kinds);
+      }
+
+      if (provenance) {
+        sql += ' AND provenance = ?';
+        params.push(provenance);
+      }
+
+      const rows = this.db.prepare(sql).all(...params) as EdgeRow[];
+      return rows.map(rowToEdge);
+    }
+
+    if (!this.stmts.getEdgesBySource) {
+      this.stmts.getEdgesBySource = this.db.prepare('SELECT * FROM edges WHERE source = ?');
+    }
+    const rows = this.stmts.getEdgesBySource.all(sourceId) as EdgeRow[];
+    return rows.map(rowToEdge);
+  }
+
+  /**
+   * Get incoming edges to a node
+   */
+  getIncomingEdges(targetId: string, kinds?: EdgeKind[]): Edge[] {
+    if (kinds && kinds.length > 0) {
+      const sql = `SELECT * FROM edges WHERE target = ? AND kind IN (${kinds.map(() => '?').join(',')})`;
+      const rows = this.db.prepare(sql).all(targetId, ...kinds) as EdgeRow[];
+      return rows.map(rowToEdge);
+    }
+
+    if (!this.stmts.getEdgesByTarget) {
+      this.stmts.getEdgesByTarget = this.db.prepare('SELECT * FROM edges WHERE target = ?');
+    }
+    const rows = this.stmts.getEdgesByTarget.all(targetId) as EdgeRow[];
+    return rows.map(rowToEdge);
+  }
+
+  /**
+   * Find all edges where both source and target are in the given node set.
+   * Useful for recovering inter-node connectivity after BFS.
+   */
+  findEdgesBetweenNodes(nodeIds: string[], kinds?: EdgeKind[]): Edge[] {
+    if (nodeIds.length === 0) return [];
+
+    const idsJson = JSON.stringify(nodeIds);
+    let sql = `SELECT * FROM edges WHERE source IN (SELECT value FROM json_each(?)) AND target IN (SELECT value FROM json_each(?))`;
+    const params: string[] = [idsJson, idsJson];
+
+    if (kinds && kinds.length > 0) {
+      sql += ` AND kind IN (${kinds.map(() => '?').join(',')})`;
+      params.push(...kinds);
+    }
+
+    const rows = this.db.prepare(sql).all(...params) as EdgeRow[];
+    return rows.map(rowToEdge);
+  }
+
+  /**
+   * Distinct file paths that DEPEND ON `filePath`: every file containing a
+   * symbol with a cross-file edge (any kind except `contains`) into a symbol
+   * of this file. This is the file-level projection of the symbol dependency
+   * graph and the basis for blast-radius / `affected` test selection.
+   *
+   * It deliberately does NOT restrict to `imports` edges. In this graph an
+   * `imports` edge connects a file to its own local import declarations
+   * (it is always same-file), so an imports-only lookup returns zero
+   * cross-file dependents for every file. The real cross-file dependency
+   * signal is the resolved call/reference graph — calls, references,
+   * instantiates, extends, implements, overrides, type_of, returns,
+   * decorates — exactly what {@link GraphTraverser.getImpactRadius} traverses.
+   * `contains` is excluded: a parent containing a symbol does not *depend* on
+   * it. One indexed query (idx_nodes_file_path + idx_edges_target_kind).
+   */
+  getDependentFilePaths(filePath: string): string[] {
+    const sql = `SELECT DISTINCT src.file_path AS fp
+      FROM edges e
+      JOIN nodes tgt ON tgt.id = e.target
+      JOIN nodes src ON src.id = e.source
+      WHERE tgt.file_path = ?
+        AND e.kind != 'contains'
+        AND src.file_path != ?`;
+    const rows = this.db.prepare(sql).all(filePath, filePath) as Array<{ fp: string }>;
+    return rows.map((r) => r.fp);
+  }
+
+  /**
+   * Distinct file paths that `filePath` DEPENDS ON — the inverse of
+   * {@link getDependentFilePaths}: every file containing a symbol that a
+   * symbol of this file has a cross-file edge into. Same edge-kind rules
+   * (all kinds except `contains`); same reason imports-only is insufficient.
+   */
+  getDependencyFilePaths(filePath: string): string[] {
+    const sql = `SELECT DISTINCT tgt.file_path AS fp
+      FROM edges e
+      JOIN nodes src ON src.id = e.source
+      JOIN nodes tgt ON tgt.id = e.target
+      WHERE src.file_path = ?
+        AND e.kind != 'contains'
+        AND tgt.file_path != ?`;
+    const rows = this.db.prepare(sql).all(filePath, filePath) as Array<{ fp: string }>;
+    return rows.map((r) => r.fp);
+  }
+
+  /**
+   * Cross-file edges whose TARGET is a node in `filePath` and whose SOURCE is a
+   * node in a *different* file, paired with the target node's (name, kind) so a
+   * caller can re-resolve the edge to the re-indexed target's new ID (node IDs
+   * are `sha256(filePath:kind:name:line)`, so any line shift in the callee file
+   * changes target IDs and a naive re-insert by old ID silently drops them).
+   * Used by `storeExtractionResult` to preserve incoming edges across a file
+   * re-index (issue #899). Same edge-kind rules as
+   * {@link getDependentFilePaths}: all kinds except `contains`.
+   */
+  getCrossFileIncomingEdgesWithTarget(filePath: string): Array<Edge & { targetName: string; targetKind: NodeKind }> {
+    const sql = `SELECT e.*, tgt.name AS target_name, tgt.kind AS target_kind
+      FROM edges e
+      JOIN nodes tgt ON tgt.id = e.target
+      JOIN nodes src ON src.id = e.source
+      WHERE tgt.file_path = ?
+        AND e.kind != 'contains'
+        AND src.file_path != ?`;
+    const rows = this.db.prepare(sql).all(filePath, filePath) as Array<EdgeRow & { target_name: string; target_kind: NodeKind }>;
+    return rows.map(row => ({
+      ...rowToEdge(row),
+      targetName: row.target_name,
+      targetKind: row.target_kind,
+    }));
+  }
+
+  // ===========================================================================
+  // File Operations
+  // ===========================================================================
+
+  /**
+   * Insert or update a file record
+   */
+  upsertFile(file: FileRecord): void {
+    if (!this.stmts.upsertFile) {
+      this.stmts.upsertFile = this.db.prepare(`
+        INSERT INTO files (path, content_hash, language, size, modified_at, indexed_at, node_count, errors)
+        VALUES (@path, @contentHash, @language, @size, @modifiedAt, @indexedAt, @nodeCount, @errors)
+        ON CONFLICT(path) DO UPDATE SET
+          content_hash = @contentHash,
+          language = @language,
+          size = @size,
+          modified_at = @modifiedAt,
+          indexed_at = @indexedAt,
+          node_count = @nodeCount,
+          errors = @errors
+      `);
+    }
+
+    this.stmts.upsertFile.run({
+      path: file.path,
+      contentHash: file.contentHash,
+      language: file.language,
+      size: file.size,
+      modifiedAt: file.modifiedAt,
+      indexedAt: file.indexedAt,
+      nodeCount: file.nodeCount,
+      errors: file.errors ? JSON.stringify(file.errors) : null,
+    });
+  }
+
+  /**
+   * Delete a file record and its nodes
+   */
+  deleteFile(filePath: string): void {
+    this.db.transaction(() => {
+      this.deleteNodesByFile(filePath);
+      if (!this.stmts.deleteFile) {
+        this.stmts.deleteFile = this.db.prepare('DELETE FROM files WHERE path = ?');
+      }
+      this.stmts.deleteFile.run(filePath);
+    })();
+  }
+
+  /**
+   * Get a file record by path
+   */
+  getFileByPath(filePath: string): FileRecord | null {
+    if (!this.stmts.getFileByPath) {
+      this.stmts.getFileByPath = this.db.prepare('SELECT * FROM files WHERE path = ?');
+    }
+    const row = this.stmts.getFileByPath.get(filePath) as FileRow | undefined;
+    return row ? rowToFileRecord(row) : null;
+  }
+
+  /**
+   * Get all tracked files
+   */
+  getAllFiles(): FileRecord[] {
+    if (!this.stmts.getAllFiles) {
+      this.stmts.getAllFiles = this.db.prepare('SELECT * FROM files ORDER BY path');
+    }
+    const rows = this.stmts.getAllFiles.all() as FileRow[];
+    return rows.map(rowToFileRecord);
+  }
+
+  /**
+   * Most recent index timestamp (ms since epoch) across all tracked files, or
+   * null when nothing is indexed yet. One indexed aggregate, no per-row scan. (#329)
+   */
+  getLastIndexedAt(): number | null {
+    const row = this.db
+      .prepare('SELECT MAX(indexed_at) AS last FROM files')
+      .get() as { last: number | null } | undefined;
+    return row?.last ?? null;
+  }
+
+  /**
+   * Get files that need re-indexing (hash changed)
+   */
+  getStaleFiles(currentHashes: Map<string, string>): FileRecord[] {
+    const files = this.getAllFiles();
+    return files.filter((f) => {
+      const currentHash = currentHashes.get(f.path);
+      return currentHash && currentHash !== f.contentHash;
+    });
+  }
+
+  // ===========================================================================
+  // Unresolved References
+  // ===========================================================================
+
+  /**
+   * Insert an unresolved reference
+   */
+  insertUnresolvedRef(ref: UnresolvedReference): void {
+    if (!this.stmts.insertUnresolved) {
+      this.stmts.insertUnresolved = this.db.prepare(`
+        INSERT INTO unresolved_refs (from_node_id, reference_name, reference_kind, line, col, candidates, file_path, language)
+        VALUES (@fromNodeId, @referenceName, @referenceKind, @line, @col, @candidates, @filePath, @language)
+      `);
+    }
+
+    this.stmts.insertUnresolved.run({
+      fromNodeId: ref.fromNodeId,
+      referenceName: ref.referenceName,
+      referenceKind: ref.referenceKind,
+      line: ref.line,
+      col: ref.column,
+      candidates: ref.candidates ? JSON.stringify(ref.candidates) : null,
+      filePath: ref.filePath ?? '',
+      language: ref.language ?? 'unknown',
+    });
+  }
+
+  /**
+   * Insert multiple unresolved references in a transaction
+   */
+  insertUnresolvedRefsBatch(refs: UnresolvedReference[]): void {
+    if (refs.length === 0) return;
+    const insert = this.db.transaction(() => {
+      for (const ref of refs) {
+        this.insertUnresolvedRef(ref);
+      }
+    });
+    insert();
+  }
+
+  /**
+   * Delete unresolved references from a node
+   */
+  deleteUnresolvedByNode(nodeId: string): void {
+    if (!this.stmts.deleteUnresolvedByNode) {
+      this.stmts.deleteUnresolvedByNode = this.db.prepare(
+        'DELETE FROM unresolved_refs WHERE from_node_id = ?'
+      );
+    }
+    this.stmts.deleteUnresolvedByNode.run(nodeId);
+  }
+
+  /**
+   * Get unresolved references by name (for resolution)
+   */
+  getUnresolvedByName(name: string): UnresolvedReference[] {
+    if (!this.stmts.getUnresolvedByName) {
+      this.stmts.getUnresolvedByName = this.db.prepare(
+        'SELECT * FROM unresolved_refs WHERE reference_name = ?'
+      );
+    }
+    const rows = this.stmts.getUnresolvedByName.all(name) as UnresolvedRefRow[];
+    return rows.map((row) => ({
+      fromNodeId: row.from_node_id,
+      referenceName: row.reference_name,
+      referenceKind: row.reference_kind as EdgeKind,
+      line: row.line,
+      column: row.col,
+      candidates: row.candidates ? safeJsonParse(row.candidates, undefined) : undefined,
+      filePath: row.file_path,
+      language: row.language as Language,
+    }));
+  }
+
+  /**
+   * Get all unresolved references
+   */
+  getUnresolvedReferences(): UnresolvedReference[] {
+    const rows = this.db.prepare('SELECT * FROM unresolved_refs').all() as UnresolvedRefRow[];
+    return rows.map((row) => ({
+      fromNodeId: row.from_node_id,
+      referenceName: row.reference_name,
+      referenceKind: row.reference_kind as EdgeKind,
+      line: row.line,
+      column: row.col,
+      candidates: row.candidates ? safeJsonParse(row.candidates, undefined) : undefined,
+      filePath: row.file_path,
+      language: row.language as Language,
+    }));
+  }
+
+  /**
+   * Get the count of unresolved references without loading them into memory
+   */
+  getUnresolvedReferencesCount(): number {
+    if (!this.stmts.getUnresolvedCount) {
+      this.stmts.getUnresolvedCount = this.db.prepare(
+        'SELECT COUNT(*) as count FROM unresolved_refs'
+      );
+    }
+    const row = this.stmts.getUnresolvedCount.get() as { count: number };
+    return row.count;
+  }
+
+  /**
+   * Get a batch of unresolved references using LIMIT/OFFSET pagination.
+   * Used to process references in bounded memory chunks.
+   */
+  getUnresolvedReferencesBatch(offset: number, limit: number): UnresolvedReference[] {
+    if (!this.stmts.getUnresolvedBatch) {
+      this.stmts.getUnresolvedBatch = this.db.prepare(
+        'SELECT * FROM unresolved_refs LIMIT ? OFFSET ?'
+      );
+    }
+    const rows = this.stmts.getUnresolvedBatch.all(limit, offset) as UnresolvedRefRow[];
+    return rows.map((row) => ({
+      fromNodeId: row.from_node_id,
+      referenceName: row.reference_name,
+      referenceKind: row.reference_kind as EdgeKind,
+      line: row.line,
+      column: row.col,
+      candidates: row.candidates ? safeJsonParse(row.candidates, undefined) : undefined,
+      filePath: row.file_path,
+      language: row.language as Language,
+    }));
+  }
+
+  /**
+   * Get all tracked file paths (lightweight — no full FileRecord objects)
+   */
+  getAllFilePaths(): string[] {
+    if (!this.stmts.getAllFilePaths) {
+      this.stmts.getAllFilePaths = this.db.prepare('SELECT path FROM files ORDER BY path');
+    }
+    const rows = this.stmts.getAllFilePaths.all() as Array<{ path: string }>;
+    return rows.map((r) => r.path);
+  }
+
+  /**
+   * Get all distinct node names (lightweight — just name strings for pre-filtering)
+   */
+  getAllNodeNames(): string[] {
+    if (!this.stmts.getAllNodeNames) {
+      this.stmts.getAllNodeNames = this.db.prepare('SELECT DISTINCT name FROM nodes');
+    }
+    const rows = this.stmts.getAllNodeNames.all() as Array<{ name: string }>;
+    return rows.map((r) => r.name);
+  }
+
+  /**
+   * Get unresolved references scoped to specific file paths.
+   * Uses the idx_unresolved_file_path index for efficient lookup.
+   */
+  getUnresolvedReferencesByFiles(filePaths: string[]): UnresolvedReference[] {
+    if (filePaths.length === 0) return [];
+
+    // Chunk under SQLite's parameter limit: the first sync of a very large repo
+    // passes every changed file here, which an unbounded `IN (...)` would bind
+    // as one parameter each — exceeding MAX_VARIABLE_NUMBER and aborting with
+    // "too many SQL variables". (#540)
+    const rows: UnresolvedRefRow[] = [];
+    for (let i = 0; i < filePaths.length; i += SQLITE_PARAM_CHUNK_SIZE) {
+      const chunk = filePaths.slice(i, i + SQLITE_PARAM_CHUNK_SIZE);
+      const placeholders = chunk.map(() => '?').join(',');
+      const chunkRows = this.db
+        .prepare(`SELECT * FROM unresolved_refs WHERE file_path IN (${placeholders})`)
+        .all(...chunk) as UnresolvedRefRow[];
+      rows.push(...chunkRows);
+    }
+
+    return rows.map((row) => ({
+      fromNodeId: row.from_node_id,
+      referenceName: row.reference_name,
+      referenceKind: row.reference_kind as EdgeKind,
+      line: row.line,
+      column: row.col,
+      candidates: row.candidates ? safeJsonParse(row.candidates, undefined) : undefined,
+      filePath: row.file_path,
+      language: row.language as Language,
+    }));
+  }
+
+  /**
+   * Delete all unresolved references (after resolution)
+   */
+  clearUnresolvedReferences(): void {
+    this.db.exec('DELETE FROM unresolved_refs');
+  }
+
+  /**
+   * Delete resolved references by their IDs
+   */
+  deleteResolvedReferences(fromNodeIds: string[]): void {
+    if (fromNodeIds.length === 0) return;
+    // Chunk under SQLite's parameter limit, matching every other IN-list in
+    // this file. The internal resolution path uses deleteSpecificResolvedReferences
+    // instead, but QueryBuilder is part of the public API, so a library consumer
+    // passing more ids than SQLITE_MAX_VARIABLE_NUMBER (32766 on the bundled
+    // node:sqlite) would otherwise hit "too many SQL variables". (#540, #1001)
+    for (let i = 0; i < fromNodeIds.length; i += SQLITE_PARAM_CHUNK_SIZE) {
+      const chunk = fromNodeIds.slice(i, i + SQLITE_PARAM_CHUNK_SIZE);
+      const placeholders = chunk.map(() => '?').join(',');
+      this.db.prepare(`DELETE FROM unresolved_refs WHERE from_node_id IN (${placeholders})`).run(...chunk);
+    }
+  }
+
+  /**
+   * Delete specific resolved references by (fromNodeId, referenceName, referenceKind) tuples.
+   * More precise than deleteResolvedReferences — only removes refs that were actually resolved.
+   */
+  deleteSpecificResolvedReferences(refs: Array<{ fromNodeId: string; referenceName: string; referenceKind: string }>): void {
+    if (refs.length === 0) return;
+    const stmt = this.db.prepare(
+      'DELETE FROM unresolved_refs WHERE from_node_id = ? AND reference_name = ? AND reference_kind = ?'
+    );
+    const deleteMany = this.db.transaction((items: typeof refs) => {
+      for (const ref of items) {
+        stmt.run(ref.fromNodeId, ref.referenceName, ref.referenceKind);
+      }
+    });
+    deleteMany(refs);
+  }
+
+  // ===========================================================================
+  // Statistics
+  // ===========================================================================
+
+  /**
+   * Lightweight (nodes, edges) count snapshot. Used around an index/sync
+   * run to compute true additions across extraction + resolution +
+   * synthesis — the per-phase counter in the orchestrator only sees
+   * extraction's contribution, which is why the CLI summary under-reported
+   * the edge count (resolution + synthesizer edges were invisible).
+   */
+  getNodeAndEdgeCount(): { nodes: number; edges: number } {
+    return this.db
+      .prepare('SELECT (SELECT COUNT(*) FROM nodes) AS nodes, (SELECT COUNT(*) FROM edges) AS edges')
+      .get() as { nodes: number; edges: number };
+  }
+
+  /**
+   * Get graph statistics
+   */
+  getStats(): GraphStats {
+    // Single query for all three aggregate counts
+    const counts = this.db.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM nodes) AS node_count,
+        (SELECT COUNT(*) FROM edges) AS edge_count,
+        (SELECT COUNT(*) FROM files) AS file_count
+    `).get() as { node_count: number; edge_count: number; file_count: number };
+
+    const nodesByKind = {} as Record<NodeKind, number>;
+    const nodeKindRows = this.db
+      .prepare('SELECT kind, COUNT(*) as count FROM nodes GROUP BY kind')
+      .all() as Array<{ kind: string; count: number }>;
+    for (const row of nodeKindRows) {
+      nodesByKind[row.kind as NodeKind] = row.count;
+    }
+
+    const edgesByKind = {} as Record<EdgeKind, number>;
+    const edgeKindRows = this.db
+      .prepare('SELECT kind, COUNT(*) as count FROM edges GROUP BY kind')
+      .all() as Array<{ kind: string; count: number }>;
+    for (const row of edgeKindRows) {
+      edgesByKind[row.kind as EdgeKind] = row.count;
+    }
+
+    const filesByLanguage = {} as Record<Language, number>;
+    const languageRows = this.db
+      .prepare('SELECT language, COUNT(*) as count FROM files GROUP BY language')
+      .all() as Array<{ language: string; count: number }>;
+    for (const row of languageRows) {
+      filesByLanguage[row.language as Language] = row.count;
+    }
+
+    return {
+      nodeCount: counts.node_count,
+      edgeCount: counts.edge_count,
+      fileCount: counts.file_count,
+      nodesByKind,
+      edgesByKind,
+      filesByLanguage,
+      dbSizeBytes: 0, // Set by caller using DatabaseConnection.getSize()
+      lastUpdated: Date.now(),
+    };
+  }
+
+  // ===========================================================================
+  // Project Metadata
+  // ===========================================================================
+
+  /**
+   * Get a metadata value by key
+   */
+  getMetadata(key: string): string | null {
+    const row = this.db.prepare('SELECT value FROM project_metadata WHERE key = ?').get(key) as { value: string } | undefined;
+    return row?.value ?? null;
+  }
+
+  /**
+   * Set a metadata key-value pair (upsert)
+   */
+  setMetadata(key: string, value: string): void {
+    this.db.prepare(
+      'INSERT INTO project_metadata (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at'
+    ).run(key, value, Date.now());
+  }
+
+  /**
+   * Get all metadata as a key-value record
+   */
+  getAllMetadata(): Record<string, string> {
+    const rows = this.db.prepare('SELECT key, value FROM project_metadata').all() as { key: string; value: string }[];
+    const result: Record<string, string> = {};
+    for (const row of rows) {
+      result[row.key] = row.value;
+    }
+    return result;
+  }
+
+  /**
+   * Clear all data from the database
+   */
+  clear(): void {
+    this.nodeCache.clear();
+    this.db.transaction(() => {
+      this.db.exec('DELETE FROM unresolved_refs');
+      this.db.exec('DELETE FROM edges');
+      this.db.exec('DELETE FROM nodes');
+      this.db.exec('DELETE FROM files');
+    })();
+  }
+}
