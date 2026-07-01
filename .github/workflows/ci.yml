@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat-atlas]
   pull_request:
     branches: [main]
 
@@ -50,7 +50,7 @@ jobs:
             libxdo-dev
 
       - name: Stub atlas bundle for cargo check
-        run: mkdir -p src-tauri/resources/atlas
+        run: mkdir -p src-tauri/resources/atlas && touch src-tauri/resources/atlas/.keep
 
       - name: Check
         working-directory: src-tauri

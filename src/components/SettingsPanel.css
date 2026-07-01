@@ -440,6 +440,12 @@
   background: var(--tempest-bg-active);
 }
 
+.sp-toggle-row--indent {
+  margin-top: 6px;
+  padding-left: 26px;
+  border-color: var(--tempest-border-subtle);
+}
+
 .sp-toggle-text {
   display: flex;
   flex-direction: column;

@@ -3,6 +3,7 @@ use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use dashmap::DashMap;
 use tauri::ipc::Channel;
+use tauri::Emitter;
 
 #[tauri::command]
 fn create_workspace(location: String, name: String) -> Result<String, String> {
@@ -53,6 +54,179 @@ fn read_file(path: String) -> Result<String, String> {
 #[tauri::command]
 fn write_file(path: String, content: String) -> Result<(), String> {
     std::fs::write(&path, content).map_err(|e| e.to_string())
+}
+
+/// Returns the atlas resource directory: in dev builds uses the cargo manifest
+/// path (src-tauri/resources/atlas/) so the dev-mode binary finds the files
+/// that bundle-atlas.mjs copies there; in release builds uses the standard
+/// Tauri resource dir where the bundle copies them.
+fn atlas_resource_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    #[cfg(debug_assertions)]
+    {
+        let _ = app;
+        Ok(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("atlas"))
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        use tauri::Manager;
+        Ok(app.path().resource_dir().map_err(|e| e.to_string())?.join("atlas"))
+    }
+}
+
+/// Spawn `node .../atlas/dist/mcp/server-entry.js --init --path <project>` in the
+/// background. The Node process initialises the .atlas/ directory and builds the
+/// first full code-graph index, then exits. Fire-and-forget — any errors are
+/// written to stderr by the Node process itself.
+#[tauri::command]
+fn start_atlas_index(app: tauri::AppHandle, project_path: String) -> Result<(), String> {
+    let entry = atlas_resource_dir(&app)?
+        .join("dist")
+        .join("mcp")
+        .join("server-entry.js");
+    if !entry.exists() {
+        return Err("Atlas not bundled — run npm run build:atlas first".to_string());
+    }
+
+    let mut child = new_command("node")
+        .arg("--liftoff-only") // prevents V8 turboshaft Zone OOM on tree-sitter WASM grammars (Node >=22)
+        .arg(&entry)
+        .arg("--init")
+        .arg("--path")
+        .arg(&project_path)
+        .current_dir(&project_path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn Atlas index: {e}"))?;
+
+    // Stream stdout + stderr to the frontend as `atlas:log` events so output
+    // appears live in the browser DevTools console. Each handle gets its own
+    // thread so neither blocks the other. Child is moved into the stderr thread
+    // which waits for exit — stdout is drained separately and will finish first.
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+
+    let app_out = app.clone();
+    let path_out = project_path.clone();
+    std::thread::spawn(move || {
+        use std::io::BufRead;
+        if let Some(h) = stdout {
+            for line in std::io::BufReader::new(h).lines().flatten() {
+                let _ = app_out.emit("atlas:log", serde_json::json!({ "path": path_out, "line": line }));
+            }
+        }
+    });
+
+    let app_err = app.clone();
+    let path_err = project_path.clone();
+    std::thread::spawn(move || {
+        use std::io::BufRead;
+        if let Some(h) = stderr {
+            for line in std::io::BufReader::new(h).lines().flatten() {
+                let _ = app_err.emit("atlas:log", serde_json::json!({ "path": path_err, "line": line }));
+            }
+        }
+        let _ = child.wait();
+    });
+
+    // Write agent MCP config files now that we know the entry path.
+    write_atlas_mcp_config(&project_path, &entry)?;
+
+    Ok(())
+}
+
+fn write_atlas_mcp_config(project_path: &str, entry: &std::path::Path) -> Result<(), String> {
+    let entry_str = entry.to_string_lossy().replace('\\', "/");
+    let proj_str  = project_path.replace('\\', "/");
+    let root = std::path::Path::new(project_path);
+
+    // Shared helper: read existing JSON, merge `mcpServers.atlas`, write back.
+    // Used by Claude Code, Gemini CLI, Cursor, and Kiro — all use the same shape.
+    let upsert_mcp_servers = |file: &std::path::Path| -> Result<(), String> {
+        let existing = std::fs::read_to_string(file).unwrap_or_default();
+        let mut v: serde_json::Value = serde_json::from_str(&existing)
+            .unwrap_or_else(|_| serde_json::json!({}));
+        v["mcpServers"]["atlas"] = serde_json::json!({
+            "type": "stdio",
+            "command": "node",
+            "args": ["--liftoff-only", &entry_str, "--path", &proj_str]
+        });
+        let out = serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?;
+        if let Some(parent) = file.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(file, out + "\n").map_err(|e| e.to_string())
+    };
+
+    // Claude Code — .mcp.json (also read by Cline/Roo, Zed, Windsurf)
+    upsert_mcp_servers(&root.join(".mcp.json"))?;
+
+    // Cursor — .cursor/mcp.json
+    upsert_mcp_servers(&root.join(".cursor").join("mcp.json"))?;
+
+    // Gemini CLI — .gemini/settings.json
+    upsert_mcp_servers(&root.join(".gemini").join("settings.json"))?;
+
+    // Kiro (AWS) — .kiro/settings/mcp.json
+    upsert_mcp_servers(&root.join(".kiro").join("settings").join("mcp.json"))?;
+
+    // opencode — opencode.jsonc (falls back to opencode.json if it already exists).
+    // Shape differs: `mcp.<name>` with `type: "local"` and `command` as an array.
+    {
+        let oc_path = {
+            let json = root.join("opencode.json");
+            if json.exists() { json } else { root.join("opencode.jsonc") }
+        };
+        let existing = std::fs::read_to_string(&oc_path).unwrap_or_default();
+        let mut v: serde_json::Value = serde_json::from_str(&existing)
+            .unwrap_or_else(|_| serde_json::json!({}));
+        v["mcp"]["atlas"] = serde_json::json!({
+            "type": "local",
+            "command": ["node", "--liftoff-only", &entry_str, "--path", &proj_str],
+            "enabled": true
+        });
+        let out = serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?;
+        std::fs::write(&oc_path, out + "\n").map_err(|e| e.to_string())?;
+    }
+
+    // All config files contain absolute machine-specific paths — keep out of git.
+    ensure_atlas_mcp_gitignore(project_path);
+
+    Ok(())
+}
+
+fn ensure_atlas_mcp_gitignore(project_path: &str) {
+    let gitignore = std::path::Path::new(project_path).join(".gitignore");
+    let existing = std::fs::read_to_string(&gitignore).unwrap_or_default();
+    let entries = [
+        ".mcp.json",
+        ".cursor/mcp.json",
+        ".gemini/settings.json",
+        ".kiro/settings/mcp.json",
+        "opencode.jsonc",
+        "opencode.json",
+    ];
+    let lines_to_add: Vec<&str> = entries
+        .iter()
+        .filter(|e| !existing.lines().any(|l| l.trim() == **e))
+        .copied()
+        .collect();
+    if lines_to_add.is_empty() { return; }
+    let suffix = if existing.ends_with('\n') || existing.is_empty() { "" } else { "\n" };
+    let addition = lines_to_add.join("\n");
+    let _ = std::fs::write(&gitignore, format!("{}{}{}\n", existing, suffix, addition));
+}
+
+#[tauri::command]
+fn check_atlas_db(project_path: String) -> bool {
+    std::path::Path::new(&project_path)
+        .join(".tempest")
+        .join("atlas")
+        .join("atlas.db")
+        .exists()
 }
 
 #[tauri::command]
@@ -1579,6 +1753,8 @@ pub fn run() {
             write_file,
             read_runtime_state,
             write_runtime_state,
+            start_atlas_index,
+            check_atlas_db,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -28,6 +28,7 @@ export interface RuntimeState {
   sessionOrder: string[];         // instanceIds in tab-bar order
   activeInstanceId: string | null; // instanceId of the last focused session
   prompts: Array<{ id: string; title: string; body: string; enabled: boolean; isBuiltin: boolean }>;
+  atlasProjects: Record<string, boolean>; // path → true (index) | false (skip); absent = not yet decided
 }
 
 const DEFAULT_STATE: RuntimeState = {
@@ -43,6 +44,7 @@ const DEFAULT_STATE: RuntimeState = {
   sessionOrder: [],
   activeInstanceId: null,
   prompts: [],
+  atlasProjects: {},
 };
 
 let _state: RuntimeState = { ...DEFAULT_STATE };
@@ -74,6 +76,7 @@ export async function loadRuntimeState(): Promise<void> {
       sessionOrder:     parsed.sessionOrder     ?? [],
       activeInstanceId: parsed.activeInstanceId ?? null,
       prompts:          parsed.prompts          ?? [],
+      atlasProjects:    parsed.atlasProjects    ?? {},
     };
   } catch {
     // File doesn't exist yet — import whatever is in localStorage.
@@ -90,6 +93,7 @@ export async function loadRuntimeState(): Promise<void> {
       sessionOrder:     [],
       activeInstanceId: null,
       prompts:          [],
+      atlasProjects:    {},
     };
   }
   persist();

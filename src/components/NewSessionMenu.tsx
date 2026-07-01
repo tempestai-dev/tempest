@@ -27,6 +27,7 @@ export interface AgentConfig {
   // captureResumeArgs: resume args to use with the captured ID — "{UUID}" is substituted.
   capturePattern?: RegExp;
   captureResumeArgs?: string[] | null;
+  mcpSupported?: boolean; // unused — MCP injection now via .mcp.json written at index time
 }
 
 export const AGENT_CONFIGS: AgentConfig[] = [
@@ -36,6 +37,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
     iconSrc: claudeCodeSrc,
     sessionIdArgs: ["--session-id", "{UUID}"],
     resumeArgs: ["--resume", "{UUID}"],
+    mcpSupported: true,
   },
   {
     name: "Gemini CLI",

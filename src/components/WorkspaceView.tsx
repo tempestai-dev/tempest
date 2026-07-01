@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, memo, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { invoke, Channel } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { sessionManager } from "../store/sessionManager";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -39,11 +40,13 @@ import {
   BookOpen,
   Copy,
   Check,
+  Cpu,
+  Database,
 } from "lucide-react";
 import { useWorkState, setWorkState, clearWorkState } from "../store/workState";
 import { useKeybindings, matchesEvent, formatShortcut } from "../store/keybindings";
 import { useAttribution, getAttribution, COAUTHOR_LINE } from "../store/attribution";
-import { useSettings } from "../store/appSettings";
+import { useSettings, getSettings, updateSetting } from "../store/appSettings";
 import { TopBar } from "./TopBar";
 import { TerminalPane } from "./TerminalPane";
 import { DiffPane } from "./DiffPane";
@@ -59,6 +62,8 @@ import { dequeue, useQueue } from "../store/messageQueue";
 import { getPrompts, type PromptEntry } from "../store/prompts";
 import { useTheme, builtinThemes } from "../themes/ThemeContext";
 import { Mark } from "../assets/Mark";
+import { AtlasIndexToast } from "./AtlasIndexToast";
+import "./AtlasIndexToast.css";
 import "./WorkspaceView.css";
 
 interface Props {
@@ -227,6 +232,9 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialSection, setSettingsInitialSection] = useState<string>("appearance");
   const [broadcastOpen, setBroadcastOpen] = useState(false);
+  const [atlasPromptPath, setAtlasPromptPath] = useState<string | null>(null);
+  const [atlasAutoIndexLocal, setAtlasAutoIndexLocal] = useState(false);
+  const [atlasIndexingPaths, setAtlasIndexingPaths] = useState<string[]>([]);
   const [queueOpenSessionId, setQueueOpenSessionId] = useState<string | null>(null);
   const [promptPickerOpen, setPromptPickerOpen] = useState(false);
   const [promptPickerItems, setPromptPickerItems] = useState<PromptEntry[]>([]);
@@ -294,6 +302,14 @@ export function WorkspaceView({ zen, name, path }: Props) {
     loading: boolean;
     error: string | null;
   } | null>(null);
+
+  // Stream Atlas indexer output to the browser DevTools console
+  useEffect(() => {
+    const p = listen<{ path: string; line: string }>("atlas:log", (e) => {
+      console.log(`[Atlas] ${e.payload.line}`);
+    });
+    return () => { p.then((fn) => fn()); };
+  }, []);
 
   // Persist projects list to localStorage whenever it changes
   useEffect(() => {
@@ -1342,6 +1358,20 @@ export function WorkspaceView({ zen, name, path }: Props) {
     if (getAttribution()) {
       invoke("write_coauthor_hook", { repoPath: selected, coauthorLine: COAUTHOR_LINE }).catch(() => {});
     }
+    const atlasSettings = getSettings();
+    if (atlasSettings.atlasEnabled) {
+      const decided = getRuntimeState().atlasProjects ?? {};
+      if (atlasSettings.atlasAutoIndex) {
+        if (decided[selected] === undefined) {
+          setRuntimeState({ atlasProjects: { ...decided, [selected]: true } });
+          invoke("start_atlas_index", { projectPath: selected }).catch((e) => console.error("[Atlas] start_atlas_index failed:", e));
+          setAtlasIndexingPaths((prev) => prev.includes(selected) ? prev : [...prev, selected]);
+        }
+      } else if (decided[selected] === undefined) {
+        setAtlasAutoIndexLocal(false);
+        setAtlasPromptPath(selected);
+      }
+    }
   }
 
   async function addWorkspace() {
@@ -2175,6 +2205,26 @@ export function WorkspaceView({ zen, name, path }: Props) {
                 Delete workspace
               </button>
             )}
+            {ctxMenu.isProjectHeader && getSettings().atlasEnabled && (
+              <button
+                className="ctx-item"
+                onClick={() => {
+                  const decided = getRuntimeState().atlasProjects ?? {};
+                  setRuntimeState({ atlasProjects: { ...decided, [ctxMenu.projectPath]: true } });
+                  invoke("start_atlas_index", { projectPath: ctxMenu.projectPath })
+                    .catch((e) => console.error("[Atlas] start_atlas_index failed:", e));
+                  setAtlasIndexingPaths((prev) =>
+                    prev.includes(ctxMenu.projectPath) ? prev : [...prev, ctxMenu.projectPath]
+                  );
+                  setCtxMenu(null);
+                }}
+              >
+                <Database size={13} />
+                {(getRuntimeState().atlasProjects ?? {})[ctxMenu.projectPath] === true
+                  ? "Re-index project"
+                  : "Index project"}
+              </button>
+            )}
             {ctxMenu.isProjectHeader && (
               <button
                 className="ctx-item ctx-item--danger"
@@ -2433,6 +2483,58 @@ export function WorkspaceView({ zen, name, path }: Props) {
 
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} initialSection={settingsInitialSection as any} />}
 
+      {atlasPromptPath && createPortal(
+        <div className="naming-modal-overlay" onClick={() => setAtlasPromptPath(null)}>
+          <div className="naming-modal atlas-prompt" onClick={(e) => e.stopPropagation()}>
+            <div className="naming-modal-header">
+              <Cpu size={15} />
+              Index this project?
+            </div>
+            <p className="naming-modal-desc">
+              Token Intelligence can analyze <strong>{folderName(atlasPromptPath)}</strong> locally
+              and give AI agents a pre-built code graph — reducing repeated file reads and token usage.
+              Everything stays on your machine.
+            </p>
+            <label className="atlas-prompt-checkbox-row">
+              <input
+                type="checkbox"
+                checked={atlasAutoIndexLocal}
+                onChange={(e) => setAtlasAutoIndexLocal(e.target.checked)}
+              />
+              <span>Auto-index all future projects</span>
+            </label>
+            <div className="naming-modal-actions">
+              <button
+                className="naming-modal-btn naming-modal-btn--cancel"
+                onClick={() => {
+                  const decided = getRuntimeState().atlasProjects ?? {};
+                  setRuntimeState({ atlasProjects: { ...decided, [atlasPromptPath]: false } });
+                  setAtlasPromptPath(null);
+                }}
+              >
+                Skip
+              </button>
+              <button
+                className="naming-modal-btn naming-modal-btn--create"
+                onClick={() => {
+                  const decided = getRuntimeState().atlasProjects ?? {};
+                  setRuntimeState({ atlasProjects: { ...decided, [atlasPromptPath]: true } });
+                  if (atlasAutoIndexLocal) {
+                    updateSetting("atlasAutoIndex", true);
+                  }
+                  invoke("start_atlas_index", { projectPath: atlasPromptPath }).catch((e) => console.error("[Atlas] start_atlas_index failed:", e));
+                  setAtlasIndexingPaths((prev) => prev.includes(atlasPromptPath) ? prev : [...prev, atlasPromptPath]);
+                  setAtlasPromptPath(null);
+                }}
+              >
+                Index Project
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {broadcastOpen && (() => {
         const agentSessions: BroadcastSession[] = sessions
           .filter((s) => s.agent && (!s.kind || s.kind === "terminal"))
@@ -2450,6 +2552,20 @@ export function WorkspaceView({ zen, name, path }: Props) {
           />
         );
       })()}
+
+      {atlasIndexingPaths.length > 0 && createPortal(
+        <div className="atlas-toast-container">
+          {atlasIndexingPaths.map((p) => (
+            <AtlasIndexToast
+              key={p}
+              projectPath={p}
+              projectName={folderName(p)}
+              onDismiss={() => setAtlasIndexingPaths((prev) => prev.filter((x) => x !== p))}
+            />
+          ))}
+        </div>,
+        document.body
+      )}
 
     </div>
   );

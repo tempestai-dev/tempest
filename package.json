@@ -3,10 +3,15 @@
   "private": true,
   "version": "0.1.1",
   "type": "module",
+  "workspaces": [
+    "packages/atlas"
+  ],
   "scripts": {
     "dev": "tauri dev",
     "dev:frontend": "vite",
+    "setup": "npm run build:atlas",
     "build": "tauri build && node scripts/collect-artifacts.mjs",
+    "build:atlas": "npm run build --workspace=@tempest/atlas && node scripts/bundle-atlas.mjs",
     "build:frontend": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri"
