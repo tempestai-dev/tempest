@@ -1,22 +1,22 @@
 /**
  * Directory Management
  *
- * Manages the .atlas/ directory structure for Atlas data.
+ * Manages the .tempest/atlas/ directory structure for Atlas data.
  */
 
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-/** The default per-project data directory name. */
-const DEFAULT_ATLAS_DIR = '.atlas';
+/** The default per-project data directory name (lives inside .tempest/). */
+const DEFAULT_ATLAS_DIR = 'atlas';
 
 let warnedBadDirName = false;
 
 /**
  * Resolve the per-project data directory name, honoring the `ATLAS_DIR`
- * environment override (default `.atlas`). The override is a single path
- * segment that lives in the project root.
+ * environment override (default `atlas`). The override is a single path
+ * segment that lives inside `.tempest/` in the project root.
  *
  * Why this exists: two environments that share one working tree must NOT share
  * one `.atlas/` — most concretely Windows-native and WSL (issue #636). The
@@ -80,10 +80,10 @@ export function isAtlasDataDir(name: string): boolean {
 }
 
 /**
- * Get the .atlas directory path for a project
+ * Get the atlas data directory path for a project (.tempest/atlas/ inside the project root)
  */
 export function getAtlasDir(projectRoot: string): string {
-  return path.join(projectRoot, atlasDirName());
+  return path.join(projectRoot, '.tempest', atlasDirName());
 }
 
 /**
@@ -395,7 +395,7 @@ export function planFrontload(cwd: string, prompt: string): FrontloadPlan {
  * runtime files were silently committed.
  */
 const GITIGNORE_CONTENT = `# Atlas data files — local to each machine, not for committing.
-# Ignore everything in .atlas/ except this file itself, so transient
+# Ignore everything in .tempest/atlas/ except this file itself, so transient
 # files (the database, daemon.pid, sockets, logs) never show up in git.
 *
 !.gitignore
