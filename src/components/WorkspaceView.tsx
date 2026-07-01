@@ -39,11 +39,12 @@ import {
   BookOpen,
   Copy,
   Check,
+  Cpu,
 } from "lucide-react";
 import { useWorkState, setWorkState, clearWorkState } from "../store/workState";
 import { useKeybindings, matchesEvent, formatShortcut } from "../store/keybindings";
 import { useAttribution, getAttribution, COAUTHOR_LINE } from "../store/attribution";
-import { useSettings } from "../store/appSettings";
+import { useSettings, getSettings, updateSetting } from "../store/appSettings";
 import { TopBar } from "./TopBar";
 import { TerminalPane } from "./TerminalPane";
 import { DiffPane } from "./DiffPane";
@@ -227,6 +228,8 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialSection, setSettingsInitialSection] = useState<string>("appearance");
   const [broadcastOpen, setBroadcastOpen] = useState(false);
+  const [atlasPromptPath, setAtlasPromptPath] = useState<string | null>(null);
+  const [atlasAutoIndexLocal, setAtlasAutoIndexLocal] = useState(false);
   const [queueOpenSessionId, setQueueOpenSessionId] = useState<string | null>(null);
   const [promptPickerOpen, setPromptPickerOpen] = useState(false);
   const [promptPickerItems, setPromptPickerItems] = useState<PromptEntry[]>([]);
@@ -1342,6 +1345,18 @@ export function WorkspaceView({ zen, name, path }: Props) {
     if (getAttribution()) {
       invoke("write_coauthor_hook", { repoPath: selected, coauthorLine: COAUTHOR_LINE }).catch(() => {});
     }
+    const atlasSettings = getSettings();
+    if (atlasSettings.atlasEnabled) {
+      const decided = getRuntimeState().atlasProjects ?? {};
+      if (atlasSettings.atlasAutoIndex) {
+        if (decided[selected] === undefined) {
+          setRuntimeState({ atlasProjects: { ...decided, [selected]: true } });
+        }
+      } else if (decided[selected] === undefined) {
+        setAtlasAutoIndexLocal(false);
+        setAtlasPromptPath(selected);
+      }
+    }
   }
 
   async function addWorkspace() {
@@ -2432,6 +2447,56 @@ export function WorkspaceView({ zen, name, path }: Props) {
 
 
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} initialSection={settingsInitialSection as any} />}
+
+      {atlasPromptPath && createPortal(
+        <div className="naming-modal-overlay" onClick={() => setAtlasPromptPath(null)}>
+          <div className="naming-modal atlas-prompt" onClick={(e) => e.stopPropagation()}>
+            <div className="naming-modal-header">
+              <Cpu size={15} />
+              Index this project?
+            </div>
+            <p className="naming-modal-desc">
+              Token Intelligence can analyze <strong>{folderName(atlasPromptPath)}</strong> locally
+              and give AI agents a pre-built code graph — reducing repeated file reads and token usage.
+              Everything stays on your machine.
+            </p>
+            <label className="atlas-prompt-checkbox-row">
+              <input
+                type="checkbox"
+                checked={atlasAutoIndexLocal}
+                onChange={(e) => setAtlasAutoIndexLocal(e.target.checked)}
+              />
+              <span>Auto-index all future projects</span>
+            </label>
+            <div className="naming-modal-actions">
+              <button
+                className="naming-modal-btn naming-modal-btn--cancel"
+                onClick={() => {
+                  const decided = getRuntimeState().atlasProjects ?? {};
+                  setRuntimeState({ atlasProjects: { ...decided, [atlasPromptPath]: false } });
+                  setAtlasPromptPath(null);
+                }}
+              >
+                Skip
+              </button>
+              <button
+                className="naming-modal-btn naming-modal-btn--create"
+                onClick={() => {
+                  const decided = getRuntimeState().atlasProjects ?? {};
+                  setRuntimeState({ atlasProjects: { ...decided, [atlasPromptPath]: true } });
+                  if (atlasAutoIndexLocal) {
+                    updateSetting("atlasAutoIndex", true);
+                  }
+                  setAtlasPromptPath(null);
+                }}
+              >
+                Index Project
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {broadcastOpen && (() => {
         const agentSessions: BroadcastSession[] = sessions

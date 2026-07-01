@@ -10,6 +10,8 @@ export interface AppSettings {
   sidebarFontSize: number;
   branchPrefix: string;
   commitMessageTemplate: string;
+  atlasEnabled: boolean;
+  atlasAutoIndex: boolean;
 }
 
 export const SETTINGS_DEFAULTS: AppSettings = {
@@ -21,6 +23,8 @@ export const SETTINGS_DEFAULTS: AppSettings = {
   sidebarFontSize: 14,
   branchPrefix: "",
   commitMessageTemplate: "Agent work",
+  atlasEnabled: false,
+  atlasAutoIndex: false,
 };
 
 export const FONT_FAMILY_OPTIONS: { label: string; value: string }[] = [

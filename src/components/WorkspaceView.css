@@ -736,6 +736,36 @@
   cursor: not-allowed;
 }
 
+/* ── Atlas index prompt ───────────────────────────────────────────────────── */
+
+.atlas-prompt {
+  width: 360px;
+}
+
+.atlas-prompt .naming-modal-desc strong {
+  color: var(--tempest-fg-default);
+  font-weight: 500;
+}
+
+.atlas-prompt-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+  font-size: 12px;
+  color: var(--tempest-fg-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.atlas-prompt-checkbox-row input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--tempest-accent-blue);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
 @keyframes spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }

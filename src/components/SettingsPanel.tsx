@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { X, Palette, Keyboard, Info, RotateCcw, GitCommitHorizontal, Terminal as TerminalIcon, GitBranch, BookOpen, GripVertical, Pencil, Copy, Trash2, Plus } from "lucide-react";
+import { X, Palette, Keyboard, Info, RotateCcw, GitCommitHorizontal, Terminal as TerminalIcon, GitBranch, BookOpen, GripVertical, Pencil, Copy, Trash2, Plus, Cpu } from "lucide-react";
 import { useTheme } from "../themes/ThemeContext";
 import type { Theme } from "../themes/types";
 import {
@@ -30,7 +30,7 @@ import {
 } from "../store/prompts";
 import "./SettingsPanel.css";
 
-type Section = "appearance" | "terminal" | "git" | "prompts" | "keyboard" | "attribution" | "about";
+type Section = "appearance" | "terminal" | "git" | "intelligence" | "prompts" | "keyboard" | "attribution" | "about";
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -86,6 +86,13 @@ export function SettingsPanel({ onClose, onAttributionToggle, initialSection }: 
               Git
             </button>
             <button
+              className={`sp-nav-item${activeSection === "intelligence" ? " sp-nav-item--active" : ""}`}
+              onClick={() => setActiveSection("intelligence")}
+            >
+              <Cpu size={14} />
+              Token Intelligence
+            </button>
+            <button
               className={`sp-nav-item${activeSection === "prompts" ? " sp-nav-item--active" : ""}`}
               onClick={() => setActiveSection("prompts")}
             >
@@ -122,6 +129,7 @@ export function SettingsPanel({ onClose, onAttributionToggle, initialSection }: 
             )}
             {activeSection === "terminal" && <TerminalSection />}
             {activeSection === "git" && <GitSection />}
+            {activeSection === "intelligence" && <TokenIntelligenceSection />}
             {activeSection === "prompts" && <PromptsSection />}
             {activeSection === "keyboard" && <KeyboardSection />}
             {activeSection === "attribution" && <AttributionSection onToggle={onAttributionToggle} />}
@@ -342,6 +350,56 @@ function GitSection() {
             onChange={(e) => updateSetting("commitMessageTemplate", e.target.value)}
           />
         </SettingRow>
+      </div>
+    </div>
+  );
+}
+
+/* ── Token Intelligence ──────────────────────────────────────────────────── */
+
+function TokenIntelligenceSection() {
+  const s = useSettings();
+  return (
+    <div className="sp-section">
+      <div className="sp-section-heading">Token Intelligence</div>
+      <p className="sp-section-desc">
+        Atlas indexes your codebase locally and gives AI agents a pre-built semantic
+        code graph — reducing repeated file reads and cutting token usage. No data
+        leaves your machine.
+      </p>
+
+      <div className="sp-rows">
+        <div className="sp-toggle-row" onClick={() => updateSetting("atlasEnabled", !s.atlasEnabled)}>
+          <div className="sp-toggle-text">
+            <span className="sp-toggle-label">Enable Token Intelligence</span>
+            <span className="sp-toggle-desc">Off by default — entirely your choice.</span>
+          </div>
+          <button
+            className={`sp-toggle${s.atlasEnabled ? " sp-toggle--on" : ""}`}
+            onClick={(e) => { e.stopPropagation(); updateSetting("atlasEnabled", !s.atlasEnabled); }}
+            role="switch"
+            aria-checked={s.atlasEnabled}
+          >
+            <span className="sp-toggle-thumb" />
+          </button>
+        </div>
+
+        {s.atlasEnabled && (
+          <div className="sp-toggle-row sp-toggle-row--indent" onClick={() => updateSetting("atlasAutoIndex", !s.atlasAutoIndex)}>
+            <div className="sp-toggle-text">
+              <span className="sp-toggle-label">Auto-index new projects</span>
+              <span className="sp-toggle-desc">Skip the prompt and index every project automatically.</span>
+            </div>
+            <button
+              className={`sp-toggle${s.atlasAutoIndex ? " sp-toggle--on" : ""}`}
+              onClick={(e) => { e.stopPropagation(); updateSetting("atlasAutoIndex", !s.atlasAutoIndex); }}
+              role="switch"
+              aria-checked={s.atlasAutoIndex}
+            >
+              <span className="sp-toggle-thumb" />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
