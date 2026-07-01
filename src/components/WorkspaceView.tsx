@@ -1351,6 +1351,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
       if (atlasSettings.atlasAutoIndex) {
         if (decided[selected] === undefined) {
           setRuntimeState({ atlasProjects: { ...decided, [selected]: true } });
+          invoke("start_atlas_index", { projectPath: selected }).catch(() => {});
         }
       } else if (decided[selected] === undefined) {
         setAtlasAutoIndexLocal(false);
@@ -2487,6 +2488,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
                   if (atlasAutoIndexLocal) {
                     updateSetting("atlasAutoIndex", true);
                   }
+                  invoke("start_atlas_index", { projectPath: atlasPromptPath }).catch(() => {});
                   setAtlasPromptPath(null);
                 }}
               >

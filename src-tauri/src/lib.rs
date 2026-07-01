@@ -55,6 +55,35 @@ fn write_file(path: String, content: String) -> Result<(), String> {
     std::fs::write(&path, content).map_err(|e| e.to_string())
 }
 
+/// Spawn `node .../atlas/dist/mcp/server-entry.js --init --path <project>` in the
+/// background. The Node process initialises the .atlas/ directory and builds the
+/// first full code-graph index, then exits. Fire-and-forget — any errors are
+/// written to stderr by the Node process itself.
+#[tauri::command]
+fn start_atlas_index(app: tauri::AppHandle, project_path: String) -> Result<(), String> {
+    use tauri::Manager;
+    let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
+    let entry = resource_dir
+        .join("atlas")
+        .join("dist")
+        .join("mcp")
+        .join("server-entry.js");
+    if !entry.exists() {
+        return Err("Atlas not bundled — run npm run build:atlas first".to_string());
+    }
+    new_command("node")
+        .arg(&entry)
+        .arg("--init")
+        .arg("--path")
+        .arg(&project_path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn Atlas index: {e}"))?;
+    Ok(())
+}
+
 #[tauri::command]
 fn read_runtime_state(app: tauri::AppHandle) -> Result<String, String> {
     use tauri::Manager;
@@ -1579,6 +1608,7 @@ pub fn run() {
             write_file,
             read_runtime_state,
             write_runtime_state,
+            start_atlas_index,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
