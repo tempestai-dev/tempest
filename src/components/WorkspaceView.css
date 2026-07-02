@@ -1107,6 +1107,16 @@
   filter: brightness(1.15);
 }
 
+/* Atlas MCP active indicator on agent tabs */
+.session-tab-atlas-badge {
+  flex-shrink: 0;
+  color: var(--tempest-accent-blue);
+  opacity: 0.65;
+}
+.session-tab--active .session-tab-atlas-badge {
+  opacity: 0.9;
+}
+
 /* Workspace content */
 
 .workspace-content {

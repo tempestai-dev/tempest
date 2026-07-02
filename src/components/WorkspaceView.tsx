@@ -198,6 +198,11 @@ const SidebarWorkBadge = memo(function SidebarWorkBadge({ sessionId }: { session
   return null;
 });
 
+// Atlas MCP active badge — shown on agent tabs when token intelligence is indexed for the project.
+const AtlasBadge = memo(function AtlasBadge() {
+  return <Cpu size={10} className="session-tab-atlas-badge" aria-label="Token Intelligence active" />;
+});
+
 export function WorkspaceView({ zen, name, path }: Props) {
   const [activeSection, setActiveSection] = useState<NavSection>("overview");
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -511,7 +516,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
 
   const keybinds = useKeybindings();
   const attribution = useAttribution();
-  const { sidebarFontSize, branchPrefix } = useSettings();
+  const { sidebarFontSize, branchPrefix, atlasEnabled } = useSettings();
 
   // Apply or remove the co-author hook across all projects when the setting changes.
   const prevAttribution = useRef<boolean | null>(null);
@@ -1877,6 +1882,12 @@ export function WorkspaceView({ zen, name, path }: Props) {
                         }}
                       />
                     )}
+                    {s.agent && atlasEnabled && (() => {
+                      const proj = getOpenProjects().find(p => p.id === s.projectId);
+                      return proj && getRuntimeState().atlasProjects[proj.path] === true
+                        ? <AtlasBadge />
+                        : null;
+                    })()}
                     <span
                       className="session-tab-close"
                       role="button"
