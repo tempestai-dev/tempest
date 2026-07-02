@@ -73,11 +73,11 @@ fn get_notification_icon_path(app: tauri::AppHandle) -> String {
     }
     #[cfg(not(debug_assertions))]
     {
-        use tauri::Manager;
-        app.path()
-            .resource_dir()
+        let _ = app;
+        std::env::current_exe()
             .ok()
-            .map(|p| p.join("icon.png").to_string_lossy().into_owned())
+            .and_then(|p| p.parent().map(|d| d.join("resources").join("icons").join("128x128.png")))
+            .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_default()
     }
 }
@@ -92,8 +92,15 @@ fn atlas_resource_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, Stri
     }
     #[cfg(not(debug_assertions))]
     {
-        use tauri::Manager;
-        Ok(app.path().resource_dir().map_err(|e| e.to_string())?.join("atlas"))
+        let _ = app;
+        // Use current_exe() instead of Tauri's resource_dir(): on Windows,
+        // resource_dir() can return a drive-relative path (e.g. "D:resources\...")
+        // instead of an absolute path ("D:\resources\..."), which causes Node to
+        // fail resolving the script with EISDIR: lstat 'D:'.
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let exe_dir = exe.parent()
+            .ok_or_else(|| "Cannot determine executable directory".to_string())?;
+        Ok(exe_dir.join("resources").join("atlas"))
     }
 }
 
@@ -107,8 +114,9 @@ fn start_atlas_index(app: tauri::AppHandle, project_path: String) -> Result<(), 
         .join("dist")
         .join("mcp")
         .join("server-entry.js");
+    let _ = app.emit("atlas:log", serde_json::json!({ "path": &project_path, "line": format!("[atlas-init] entry: {}", entry.display()) }));
     if !entry.exists() {
-        return Err("Atlas not bundled — run npm run build:atlas first".to_string());
+        return Err(format!("Atlas not bundled — entry not found at: {}", entry.display()));
     }
 
     let mut child = new_command("node")

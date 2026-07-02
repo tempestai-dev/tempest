@@ -44,10 +44,10 @@
     "active": true,
     "createUpdaterArtifacts": true,
     "targets": ["nsis"],
-    "resources": {
-      "resources/atlas/**/*": "atlas/",
-      "icons/128x128.png": "icon.png"
-    },
+    "resources": [
+      "resources/atlas/**/*",
+      "icons/128x128.png"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

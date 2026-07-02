@@ -32,3 +32,9 @@ src-tauri/resources/atlas/
 .tempest
 .tempest-pid
 .claude
+.mcp.json
+.cursor/mcp.json
+.gemini/settings.json
+.kiro/settings/mcp.json
+opencode.jsonc
+opencode.json

@@ -28,6 +28,17 @@
 
 ![Tempest — parallel AI agent sessions](media/tempest.png)
 
+## Why Tempest uses far fewer tokens
+
+Run five agents in parallel and each one reads your entire codebase from scratch — the same files, the same context, five times over. You pay for every token, every time.
+
+**Token Intelligence** is a local code-knowledge graph that lives on your machine and is shared across every parallel agent session. When an agent needs to understand your codebase, it pulls from the shared graph instead of scanning files on its own. The work is done once. Every session benefits.
+
+- **Up to 64% less context token consumption**
+- **Up to 58% fewer tool calls**
+
+No other parallel-agent tool does this.
+
 ## One window. Every agent. No collisions.
 
 Claude Code, Aider, OpenCode, Copilot CLI, Cline, Goose — all running in parallel, each in its own isolated git worktree and branch. Agents never touch each other's files. No merge conflicts mid-run. No stashing. No detective work about who changed what.
