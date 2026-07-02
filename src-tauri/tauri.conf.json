@@ -43,7 +43,7 @@
   "bundle": {
     "active": true,
     "createUpdaterArtifacts": true,
-    "targets": ["nsis", "msi"],
+    "targets": ["nsis"],
     "resources": {
       "resources/atlas/**/*": "atlas/",
       "icons/128x128.png": "icon.png"

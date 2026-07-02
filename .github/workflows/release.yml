@@ -15,7 +15,7 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            bundles: nsis,msi
+            bundles: nsis
           - os: ubuntu-22.04
             bundles: appimage,deb
           - os: macos-latest
@@ -58,7 +58,7 @@ jobs:
       - run: npm ci
 
       - name: Build
-        run: npx tauri build --bundles ${{ matrix.bundles }} --verbose
+        run: npx tauri build --bundles ${{ matrix.bundles }}
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -72,7 +72,6 @@ jobs:
             "src-tauri/target/release/tempest.exe"
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/nsis/*.exe.sig
-            src-tauri/target/release/bundle/msi/*.msi
           )
           gh release upload ${{ github.ref_name }} "${files[@]}" --clobber
         env:
