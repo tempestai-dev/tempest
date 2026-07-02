@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, readdirSync, existsSync } from 'fs'
+﻿import { copyFileSync, mkdirSync, readdirSync, existsSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
@@ -23,7 +23,7 @@ if (!msiFile) throw new Error('MSI artifact not found in ' + msiDir)
 copyFileSync(join(msiDir, msiFile), join(outDir, msiFile))
 console.log('  MSI package:   ', msiFile)
 
-// 3. Portable exe — the raw compiled binary, runs without installation
+// 3. Portable exe -- the raw compiled binary, runs without installation
 const portableSrc = join(releaseDir, 'tempest.exe')
 if (!existsSync(portableSrc)) throw new Error('tempest.exe not found at ' + portableSrc)
 const portableDest = 'tempest.exe'
