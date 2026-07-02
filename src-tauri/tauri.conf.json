@@ -45,7 +45,8 @@
     "createUpdaterArtifacts": true,
     "targets": ["nsis", "msi"],
     "resources": {
-      "resources/atlas/**/*": "atlas/"
+      "resources/atlas/**/*": "atlas/",
+      "icons/128x128.png": "icon.png"
     },
     "icon": [
       "icons/32x32.png",

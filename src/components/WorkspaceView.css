@@ -1107,14 +1107,23 @@
   filter: brightness(1.15);
 }
 
-/* Atlas MCP active indicator on agent tabs */
-.session-tab-atlas-badge {
+/* Atlas MCP indicators — sidebar project header + session rows */
+.sidebar-project-atlas-icon {
   flex-shrink: 0;
   color: var(--tempest-accent-blue);
-  opacity: 0.65;
+  opacity: 0.7;
+  margin-right: 2px;
 }
-.session-tab--active .session-tab-atlas-badge {
-  opacity: 0.9;
+
+.sidebar-session-atlas-badge {
+  flex-shrink: 0;
+  color: var(--tempest-accent-blue);
+  opacity: 0.6;
+  margin-left: auto;
+}
+
+.sidebar-session-atlas-badge + * {
+  margin-left: 4px;
 }
 
 /* Workspace content */
@@ -1479,6 +1488,59 @@
   width: 420px;
 }
 
+.overview-recents-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 8px;
+  margin-bottom: 4px;
+}
+
+.overview-recents-header .overview-card-label {
+  margin-bottom: 0;
+}
+
+.overview-recents-pagination {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.overview-recents-page-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--tempest-border-subtle);
+  border-radius: 4px;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  transition: color 100ms ease, border-color 100ms ease, background 100ms ease;
+}
+
+.overview-recents-page-btn:hover:not(:disabled) {
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-muted);
+  border-color: var(--tempest-border-default);
+}
+
+.overview-recents-page-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.overview-recents-page-info {
+  font-size: 10px;
+  font-family: "Geist Mono", monospace;
+  color: var(--tempest-fg-subtle);
+  min-width: 28px;
+  text-align: center;
+  user-select: none;
+}
+
 .overview-recent-row {
   display: flex;
   align-items: center;
@@ -1524,6 +1586,39 @@
   font-family: "Geist Mono", monospace;
   color: var(--tempest-fg-subtle);
   flex-shrink: 0;
+}
+
+.overview-recent-right {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 6px;
+}
+
+.overview-recent-remove-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 100ms ease, background 100ms ease, color 100ms ease;
+}
+
+.overview-recent-row:hover .overview-recent-remove-btn {
+  opacity: 1;
+}
+
+.overview-recent-remove-btn:hover {
+  background: var(--tempest-git-deleted-bg, color-mix(in srgb, var(--tempest-git-deleted) 15%, transparent));
+  color: var(--tempest-git-deleted);
 }
 
 .overview-recents-empty {

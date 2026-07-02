@@ -6,7 +6,8 @@ import { sessionManager } from "../store/sessionManager";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { createWorktree, gitInit, NotAGitRepoError } from "../lib/worktree";
-import { addRecent, getRecents } from "../store/recents";
+import { notifyIfUnfocused } from "../lib/notify";
+import { addRecent, getRecents, removeRecent } from "../store/recents";
 import { getOpenProjects, saveOpenProjects } from "../store/openProjects";
 import { getWorktreeSession, saveWorktreeSession, removeWorktreeSession, markWorktreeSessionClosed, markWorktreeSessionOpen, pruneOrphanedSessions, dedupeRootSessions, rootSessionKey, rootSessionIdFromKey, getRootSessionsForProject, type WorktreeSession } from "../store/sessions";
 import { getRuntimeState, setRuntimeState, type PersistedTab } from "../lib/runtimeState";
@@ -25,6 +26,7 @@ import {
   Eye,
   X,
   Plus,
+  ChevronLeft,
   ChevronRight,
   ChevronDown,
   Trash2,
@@ -198,10 +200,6 @@ const SidebarWorkBadge = memo(function SidebarWorkBadge({ sessionId }: { session
   return null;
 });
 
-// Atlas MCP active badge — shown on agent tabs when token intelligence is indexed for the project.
-const AtlasBadge = memo(function AtlasBadge() {
-  return <Cpu size={10} className="session-tab-atlas-badge" aria-label="Token Intelligence active" />;
-});
 
 export function WorkspaceView({ zen, name, path }: Props) {
   const [activeSection, setActiveSection] = useState<NavSection>("overview");
@@ -238,6 +236,8 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const [settingsInitialSection, setSettingsInitialSection] = useState<string>("appearance");
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const [atlasPromptPath, setAtlasPromptPath] = useState<string | null>(null);
+  const [recentPage, setRecentPage] = useState(0);
+  const [recentsVersion, setRecentsVersion] = useState(0);
   const [atlasAutoIndexLocal, setAtlasAutoIndexLocal] = useState(false);
   const [atlasIndexingPaths, setAtlasIndexingPaths] = useState<string[]>([]);
   const [queueOpenSessionId, setQueueOpenSessionId] = useState<string | null>(null);
@@ -881,6 +881,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
         !!agent,
         agent ? () => {
           setGitRevision((r) => r + 1);
+          notifyIfUnfocused("Tempest", `${sessionName} is done`);
           const item = dequeue(sessionId);
           if (item) {
             const bytes = Array.from(new TextEncoder().encode(item.text + "\r"));
@@ -1630,6 +1631,9 @@ export function WorkspaceView({ zen, name, path }: Props) {
                             : <ChevronRight size={12} />}
                           <span>{project.name}</span>
                         </button>
+                        {atlasEnabled && getRuntimeState().atlasProjects[project.path] === true && (
+                          <Cpu size={11} className="sidebar-project-atlas-icon" aria-label="Token Intelligence indexed" />
+                        )}
                         <button
                           className="sidebar-project-add-btn"
                           onClick={(e) => openSessionMenu(e, project.id, "right")}
@@ -1657,6 +1661,9 @@ export function WorkspaceView({ zen, name, path }: Props) {
                                     <SquareSlash size={12} />
                                     <span className="sidebar-session-name">{s.name}</span>
                                     <span className="sidebar-root-badge">main</span>
+                                    {s.agent && atlasEnabled && getRuntimeState().atlasProjects[project.path] === true && (
+                                      <Cpu size={10} className="sidebar-session-atlas-badge" aria-label="Token Intelligence active" />
+                                    )}
                                     {s.agent && <SidebarWorkBadge sessionId={s.id} />}
                                   </button>
                                   {renderSubSessions(s.id)}
@@ -1711,6 +1718,9 @@ export function WorkspaceView({ zen, name, path }: Props) {
                                 >
                                   {isAgent ? <AgentIcon hint={session?.agent ?? savedMeta?.agent} size={12} /> : <TerminalSquare size={12} />}
                                   <span>{wt.name}</span>
+                                  {isAgent && atlasEnabled && getRuntimeState().atlasProjects[project.path] === true && (
+                                    <Cpu size={10} className="sidebar-session-atlas-badge" aria-label="Token Intelligence active" />
+                                  )}
                                   {session?.agent && <SidebarWorkBadge sessionId={session.id} />}
                                 </button>
                                 {session && renderSubSessions(session.id)}
@@ -1882,12 +1892,6 @@ export function WorkspaceView({ zen, name, path }: Props) {
                         }}
                       />
                     )}
-                    {s.agent && atlasEnabled && (() => {
-                      const proj = getOpenProjects().find(p => p.id === s.projectId);
-                      return proj && getRuntimeState().atlasProjects[proj.path] === true
-                        ? <AtlasBadge />
-                        : null;
-                    })()}
                     <span
                       className="session-tab-close"
                       role="button"
@@ -2109,22 +2113,68 @@ export function WorkspaceView({ zen, name, path }: Props) {
                   <div className="overview-divider" />
 
                   {/* Recents */}
-                  <div className="overview-recents-card">
-                    <span className="overview-card-label">Recent</span>
-                    {getRecents().slice(0, 5).length === 0 ? (
-                      <span className="overview-recents-empty">No recent projects</span>
-                    ) : (
-                      getRecents().slice(0, 5).map(({ name, path, lastOpened }) => (
-                        <div className="overview-recent-row" key={path} onClick={() => openProjectByPath(path)}>
-                          <div className="overview-recent-text">
-                            <span className="overview-recent-name">{name}</span>
-                            <span className="overview-recent-path">{path}</span>
-                          </div>
-                          <span className="overview-recent-time">{timeAgo(lastOpened)}</span>
+                  {(() => {
+                    void recentsVersion;
+                    const allRecents = getRecents();
+                    const totalPages = Math.max(1, Math.ceil(allRecents.length / 5));
+                    const page = Math.min(recentPage, totalPages - 1);
+                    const pageRecents = allRecents.slice(page * 5, page * 5 + 5);
+                    return (
+                      <div className="overview-recents-card">
+                        <div className="overview-recents-header">
+                          <span className="overview-card-label">Recent</span>
+                          {totalPages > 1 && (
+                            <div className="overview-recents-pagination">
+                              <button
+                                className="overview-recents-page-btn"
+                                disabled={page === 0}
+                                onClick={() => setRecentPage(p => p - 1)}
+                              >
+                                <ChevronLeft size={12} />
+                              </button>
+                              <span className="overview-recents-page-info">{page + 1} / {totalPages}</span>
+                              <button
+                                className="overview-recents-page-btn"
+                                disabled={page >= totalPages - 1}
+                                onClick={() => setRecentPage(p => p + 1)}
+                              >
+                                <ChevronRight size={12} />
+                              </button>
+                            </div>
+                          )}
                         </div>
-                      ))
-                    )}
-                  </div>
+                        {allRecents.length === 0 ? (
+                          <span className="overview-recents-empty">No recent projects</span>
+                        ) : (
+                          pageRecents.map(({ name, path, lastOpened }) => (
+                            <div className="overview-recent-row" key={path} onClick={() => openProjectByPath(path)}>
+                              <div className="overview-recent-text">
+                                <span className="overview-recent-name">{name}</span>
+                                <span className="overview-recent-path">{path}</span>
+                              </div>
+                              <div className="overview-recent-right">
+                                <span className="overview-recent-time">{timeAgo(lastOpened)}</span>
+                                <button
+                                  className="overview-recent-remove-btn"
+                                  title="Remove from recents"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeRecent(path);
+                                    const newTotal = allRecents.length - 1;
+                                    const newTotalPages = Math.max(1, Math.ceil(newTotal / 5));
+                                    if (page >= newTotalPages) setRecentPage(newTotalPages - 1);
+                                    setRecentsVersion(v => v + 1);
+                                  }}
+                                >
+                                  <X size={11} />
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             )}

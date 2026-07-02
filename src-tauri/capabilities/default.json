@@ -8,6 +8,7 @@
     "opener:default",
     "dialog:allow-open",
     "clipboard-manager:allow-read-text",
+    "notification:default",
     "core:window:allow-close",
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",

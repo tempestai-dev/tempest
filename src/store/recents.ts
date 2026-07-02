@@ -16,3 +16,7 @@ export function addRecent(ws: Pick<RecentWorkspace, "name" | "path">): void {
   all.unshift({ ...ws, id: crypto.randomUUID(), lastOpened: new Date().toISOString() });
   setRuntimeState({ recents: all.slice(0, 50) });
 }
+
+export function removeRecent(path: string): void {
+  setRuntimeState({ recents: getRecents().filter((r) => r.path !== path) });
+}
