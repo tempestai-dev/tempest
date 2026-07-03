@@ -6,7 +6,6 @@ import { sessionManager } from "../store/sessionManager";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { createWorktree, gitInit, NotAGitRepoError } from "../lib/worktree";
-import { notifyIfUnfocused } from "../lib/notify";
 import { addRecent, getRecents, removeRecent } from "../store/recents";
 import { getOpenProjects, saveOpenProjects } from "../store/openProjects";
 import { getWorktreeSession, saveWorktreeSession, removeWorktreeSession, markWorktreeSessionClosed, markWorktreeSessionOpen, pruneOrphanedSessions, dedupeRootSessions, rootSessionKey, rootSessionIdFromKey, getRootSessionsForProject, type WorktreeSession } from "../store/sessions";
@@ -109,6 +108,10 @@ interface Project {
 }
 
 type NavSection = "overview";
+
+// Directories under .tempest/ that are internal to Tempest and must never be
+// treated as git worktrees in the sidebar.
+const TEMPEST_INTERNAL_DIRS = new Set(["atlas", "logs"]);
 
 function folderName(p: string): string {
   return p.replace(/[/\\]+$/, "").split(/[/\\]/).pop() ?? p;
@@ -376,7 +379,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
             "list_directory",
             { path: `${project.path}/.tempest` }
           );
-          entries.filter((e) => e.is_dir).forEach((e) => {
+          entries.filter((e) => e.is_dir && !TEMPEST_INTERNAL_DIRS.has(e.name)).forEach((e) => {
             wts.push({ name: e.name, path: e.path });
             validPaths.add(e.path);
           });
@@ -508,7 +511,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
     })
       .then((entries) =>
         setZenWorktrees(
-          entries.filter((e) => e.is_dir).map((e) => ({ name: e.name, path: e.path }))
+          entries.filter((e) => e.is_dir && !TEMPEST_INTERNAL_DIRS.has(e.name)).map((e) => ({ name: e.name, path: e.path }))
         )
       )
       .catch(() => {});
@@ -881,7 +884,6 @@ export function WorkspaceView({ zen, name, path }: Props) {
         !!agent,
         agent ? () => {
           setGitRevision((r) => r + 1);
-          notifyIfUnfocused("Tempest", `${sessionName} is done`);
           const item = dequeue(sessionId);
           if (item) {
             const bytes = Array.from(new TextEncoder().encode(item.text + "\r"));
@@ -890,6 +892,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
           }
         } : undefined,
         captureOnChunk,
+        agent ?? undefined,
       );
 
       const newSession: Session = {
@@ -1358,7 +1361,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
     setProjects((prev) => [...prev, newProject]);
     invoke<{ name: string; path: string; is_dir: boolean }[]>("list_directory", { path: `${selected}/.tempest` })
       .then((entries) => {
-        setProjects((prev) => prev.map((p) => p.id === newProject.id ? { ...p, worktrees: entries.filter((e) => e.is_dir).map((e) => ({ name: e.name, path: e.path })) } : p));
+        setProjects((prev) => prev.map((p) => p.id === newProject.id ? { ...p, worktrees: entries.filter((e) => e.is_dir && !TEMPEST_INTERNAL_DIRS.has(e.name)).map((e) => ({ name: e.name, path: e.path })) } : p));
       })
       .catch(() => {});
     if (getAttribution()) {

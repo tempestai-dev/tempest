@@ -8,6 +8,11 @@ const DEAD_ZONE_MS = 300;
 // Hard ceiling: max ms in "working" state before forcing done (safety net for agents
 // that emit keepalive bytes indefinitely and never reach a true quiet window).
 const CEIL_MS = 12_000;
+// Minimum bytes received since the last user Enter before the quiet timer or ceiling
+// may fire a "done" via heuristic. Gates false-positives during the agent's silent
+// pre-output thinking window (e.g. Claude extended thinking before first token).
+// Explicit OSC/DEC signals bypass this gate entirely and always fire immediately.
+const TURN_STARTED_BYTES = 200;
 // Maximum bytes to keep in each session's replay buffer.
 const BUFFER_MAX_BYTES = 2 * 1024 * 1024;
 // Maximum bytes of tail carried across chunks for OSC/CSI sequence reassembly.
@@ -26,6 +31,7 @@ const DEC_MODE_RE = /\x1b\[\?([0-9;]+)(h|l)/g;
 
 interface SessionRecord {
   isAgent: boolean;
+  agentHint: string; // CLI command hint e.g. "claude", "gemini" — used for title classification
   onDone: (() => void) | null;
   onChunk: ((data: string) => void) | null;
   buffer: string[];
@@ -33,6 +39,12 @@ interface SessionRecord {
   quietTimer: ReturnType<typeof setTimeout> | null;
   ceilTimer: ReturnType<typeof setTimeout> | null;
   deadZoneUntil: number;
+  // Bytes received since the last user Enter, used to gate heuristic timers.
+  outputSinceInput: number;
+  // Set true when the agent's OSC 0/2 title indicates it is actively working.
+  // While true, heuristic timers (quiet, ceiling) do not fire done — they wait.
+  // Cleared on each new user input turn and when a title signals idle.
+  senderBusy: boolean;
   // Tail of the previous chunk kept for cross-chunk OSC/CSI sequence reassembly.
   seqTail: string;
   listeners: Set<(data: string) => void>;
@@ -47,9 +59,11 @@ class SessionManager {
     isAgent: boolean,
     onDone?: () => void,
     onChunk?: (data: string) => void,
+    agentHint?: string,
   ) {
     const record: SessionRecord = {
       isAgent,
+      agentHint: agentHint ?? "",
       onDone: onDone ?? null,
       onChunk: onChunk ?? null,
       buffer: [],
@@ -57,6 +71,8 @@ class SessionManager {
       quietTimer: null,
       ceilTimer: null,
       deadZoneUntil: 0,
+      outputSinceInput: 0,
+      senderBusy: false,
       seqTail: "",
       listeners: new Set(),
     };
@@ -90,9 +106,51 @@ class SessionManager {
     const record = this.sessions.get(sessionId);
     if (!record?.isAgent) return;
     record.deadZoneUntil = Date.now() + DEAD_ZONE_MS;
+    record.outputSinceInput = 0;
+    record.senderBusy = false;
     setWorkState(sessionId, "working");
     this.scheduleQuiet(record, sessionId);
     this.scheduleCeiling(record, sessionId);
+  }
+
+  // Called by TerminalPane via term.onTitleChange(). Classifies the title as
+  // busy/idle per agent CLI and updates senderBusy accordingly.
+  updateTitle(sessionId: string, title: string) {
+    const record = this.sessions.get(sessionId);
+    if (!record?.isAgent) return;
+    const state = this.classifyTitle(record.agentHint, title);
+    if (state === "busy") {
+      record.senderBusy = true;
+    } else if (state === "idle") {
+      record.senderBusy = false;
+      this.markDone(record, sessionId);
+    }
+    // null = unrecognised title, leave senderBusy unchanged
+  }
+
+  // Classify an OSC 0/2 terminal title as busy, idle, or unknown (null).
+  // Logic is per CLI — each agent has its own title conventions.
+  private classifyTitle(agentHint: string, title: string): "busy" | "idle" | null {
+    const t = title.trim();
+    if (!t) return null;
+
+    if (agentHint === "claude") {
+      // Claude Code sets "✳ <task name>" when idle at its prompt.
+      // Any other non-alphanumeric leading character is a Braille or Unicode
+      // spinner frame emitted while the model is thinking or generating.
+      if (/^\s*✳/.test(t)) return "idle";
+      if (/^\s*[^\w\s]/.test(t)) return "busy";
+      return null;
+    }
+
+    if (agentHint === "gemini") {
+      // Gemini CLI: "◇ …" = idle, "✦ …" or "✋ …" = busy/thinking.
+      if (/^\s*◇/.test(t)) return "idle";
+      if (/^\s*[✦✋]/.test(t)) return "busy";
+      return null;
+    }
+
+    return null;
   }
 
   // Update the per-chunk capture callback (for opencode session ID sniffing).
@@ -115,6 +173,7 @@ class SessionManager {
     record.onChunk?.(data);
 
     if (record.isAgent) {
+      record.outputSinceInput += data.length;
       // Prepend the tail saved from the previous chunk so that escape sequences
       // split across chunk boundaries are still matched by the regexes.
       const scan = record.seqTail + data;
@@ -244,20 +303,30 @@ class SessionManager {
     if (record.quietTimer !== null) clearTimeout(record.quietTimer);
     record.quietTimer = setTimeout(() => {
       record.quietTimer = null;
+      // Suppress if the agent's title says it is still busy, or if it hasn't
+      // produced enough output yet to confirm the turn actually started.
+      if (record.senderBusy || record.outputSinceInput < TURN_STARTED_BYTES) {
+        this.scheduleQuiet(record, sessionId);
+        return;
+      }
       this.markDone(record, sessionId);
     }, QUIET_MS);
   }
 
   // Arms a hard ceiling: if the session is still "working" after CEIL_MS, force done.
   // The ceiling bypasses the dead zone — by 12s we are well past the 300ms submit echo.
+  // Suppressed while senderBusy (title says agent is still thinking).
   private scheduleCeiling(record: SessionRecord, sessionId: string) {
     if (record.ceilTimer !== null) clearTimeout(record.ceilTimer);
     record.ceilTimer = setTimeout(() => {
       record.ceilTimer = null;
-      if (getWorkState(sessionId) === "working") {
-        setWorkState(sessionId, "done");
-        record.onDone?.();
+      if (getWorkState(sessionId) !== "working") return;
+      if (record.senderBusy || record.outputSinceInput < TURN_STARTED_BYTES) {
+        this.scheduleCeiling(record, sessionId);
+        return;
       }
+      setWorkState(sessionId, "done");
+      record.onDone?.();
     }, CEIL_MS);
   }
 }

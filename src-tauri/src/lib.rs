@@ -5,6 +5,7 @@ use dashmap::DashMap;
 use tauri::ipc::Channel;
 use tauri::Emitter;
 
+
 #[tauri::command]
 fn create_workspace(location: String, name: String) -> Result<String, String> {
     let path = std::path::Path::new(&location).join(&name);
@@ -60,28 +61,6 @@ fn write_file(path: String, content: String) -> Result<(), String> {
 /// path (src-tauri/resources/atlas/) so the dev-mode binary finds the files
 /// that bundle-atlas.mjs copies there; in release builds uses the standard
 /// Tauri resource dir where the bundle copies them.
-#[tauri::command]
-fn get_notification_icon_path(app: tauri::AppHandle) -> String {
-    #[cfg(debug_assertions)]
-    {
-        let _ = app;
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("icons")
-            .join("128x128.png")
-            .to_string_lossy()
-            .into_owned()
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        let _ = app;
-        std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.join("resources").join("icons").join("128x128.png")))
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_default()
-    }
-}
-
 fn atlas_resource_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     #[cfg(debug_assertions)]
     {
@@ -1733,7 +1712,6 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_notification::init())
         .manage(PtyState(Arc::new(DashMap::new())))
         .manage(ZenState(Mutex::new(std::collections::HashMap::new())))
         .setup(|app| {
@@ -1786,7 +1764,6 @@ pub fn run() {
             write_runtime_state,
             start_atlas_index,
             check_atlas_db,
-            get_notification_icon_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

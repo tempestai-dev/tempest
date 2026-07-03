@@ -143,6 +143,12 @@ export const TerminalPane = memo(function TerminalPane({ sessionId, hidden = fal
       if (isAgent && data.includes("\r")) sessionManager.markUserInput(sessionId);
     });
 
+    // Feed OSC 0/2 title changes into the Session Manager so it can classify
+    // the agent's busy/idle state from the title (e.g. Claude Code's ✳ glyph).
+    if (isAgent) {
+      term.onTitleChange((title) => sessionManager.updateTitle(sessionId, title));
+    }
+
     const observer = new ResizeObserver(() => {
       if (el.offsetWidth === 0 || el.offsetHeight === 0) return;
       if (resizeTimerRef.current !== null) clearTimeout(resizeTimerRef.current);
