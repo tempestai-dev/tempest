@@ -5,7 +5,7 @@
 </h2>
 
 <p align="center">
-  Run Claude Code, Aider, OpenCode, Copilot CLI, and more in parallel — each isolated in its own git worktree and branch. Zero merge conflicts, live status, built-in diff and PR.
+  Run Claude Code, Aider, OpenCode, Copilot CLI, and more in parallel. Each isolated in its own git worktree and branch. Zero merge conflicts, live status, built-in diff and PR.
 </p>
 
 <p align="center">
