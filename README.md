@@ -10,19 +10,19 @@
 
 <p align="center">
   <a href="https://github.com/gsvprharsha/tempest/releases">
-    <img src="https://img.shields.io/github/v/release/gsvprharsha/tempest?style=for-the-badge" alt="Version" />
+    <img src="https://img.shields.io/github/v/release/gsvprharsha/tempest" alt="Version" />
   </a>
   <a href="https://github.com/gsvprharsha/tempest">
-    <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=for-the-badge" alt="Platform" />
+    <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Platform" />
   </a>
   <a href="https://tauri.app/">
-    <img src="https://img.shields.io/badge/built%20with-Tauri%202-orange?style=for-the-badge" alt="Tauri" />
+    <img src="https://img.shields.io/badge/built%20with-Tauri%202-orange" alt="Tauri" />
   </a>
   <a href="https://github.com/gsvprharsha/tempest/blob/main/LICENSE">
-    <img src="https://img.shields.io/badge/license-Apache%202.0-green?style=for-the-badge" alt="License" />
+    <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License" />
   </a>
   <a href="https://github.com/gsvprharsha/tempest/actions/workflows/ci.yml">
-    <img src="https://img.shields.io/github/actions/workflow/status/gsvprharsha/tempest/ci.yml?branch=main&label=build&style=for-the-badge" alt="CI" />
+    <img src="https://img.shields.io/github/actions/workflow/status/gsvprharsha/tempest/ci.yml?branch=main&label=build" alt="CI" />
   </a>
 </p>
 
