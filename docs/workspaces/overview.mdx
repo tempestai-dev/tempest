@@ -1,0 +1,167 @@
+---
+title: "Workspaces"
+description: "Isolated git worktrees and branches for parallel agent work with zero merge conflicts."
+icon: "object-group"
+---
+
+# Workspaces
+
+A workspace in Tempest is an isolated git worktree with its own branch. Each workspace is a complete copy of your project files, checked out to a unique branch, allowing multiple agents to work simultaneously without conflicts.
+
+## What is a Workspace?
+
+Tempest workspaces are powered by [git worktrees](https://git-scm.com/docs/git-worktree). When you create a workspace, Tempest:
+
+1. Creates a new git worktree under `.tempest/<workspace-name>`
+2. Creates a corresponding git branch with the same name as the workspace
+3. Copies shared dependencies (like `node_modules` and `.venv`) as symlinks or junctions to save disk space
+4. Opens a terminal or agent session in the workspace directory
+
+Each workspace is completely isolated. One agent running in a workspace cannot see or interfere with changes made by agents in other workspaces.
+
+## Creating a Workspace
+
+<Steps>
+  <Step title="Open the session menu">
+    Click the **+** button next to a project name in the sidebar, or press the keyboard shortcut for "New Workspace".
+  </Step>
+  <Step title="Enter workspace details">
+    Provide a name for your workspace. Optionally add a prompt that will be sent to the agent when the session launches.
+  </Step>
+  <Step title="Select session type">
+    Choose between running a terminal session or launching an agent (Claude Code, Aider, OpenCode, etc.).
+  </Step>
+  <Step title="Workspace created">
+    Tempest creates the worktree and opens a session. You can now run code or start an agent.
+  </Step>
+</Steps>
+
+### Workspace Naming
+
+Workspace names become git branch names. If you configure a branch prefix in settings, it will be prepended to the name. For example:
+
+- Workspace name: `fix-login`
+- Branch prefix: `agents/`
+- Result: branch name is `agents/fix-login`
+
+## Switching Workspaces
+
+Click any workspace in the sidebar to switch to it. If the workspace session is closed, clicking it will reopen the session exactly where it left off (agent sessions resume via stored conversation IDs).
+
+In default mode (multiple projects), workspaces are grouped under their parent project. In zen mode (single project), all workspaces appear in a flat list.
+
+## Managing Workspaces
+
+### Viewing Workspace Changes
+
+Each workspace appears in the Overview tab with:
+
+- **Branch name** - the git branch this workspace is checked out to
+- **Changed files** - files modified by the agent or local work
+- **Status** - whether the session is working, done, or idle
+- **Last activity time** - how long ago the workspace was last active
+
+Click "Open" to switch to the workspace, or use the "View diff" button to see all changes at once.
+
+### Deleting a Workspace
+
+Right-click a workspace in the sidebar and select delete. Tempest will:
+
+1. Close any open session for that workspace
+2. Kill the running PTY child process (shell or agent CLI)
+3. Remove the workspace directory from disk
+4. Remove the git worktree registration
+
+Optionally, delete the corresponding git branch as well during deletion.
+
+## Workspace Storage
+
+### File Layout
+
+```
+project-root/
+  .tempest/
+    workspace-1/        (git worktree directory)
+    workspace-2/
+    ...
+  .git/
+    worktrees/          (git worktree metadata)
+      workspace-1/
+      workspace-2/
+```
+
+### Session Persistence
+
+Workspace sessions are persisted in browser storage (localStorage) and survive app restarts. When you reopen Tempest:
+
+- Terminal workspaces reopen to where they left off
+- Agent workspaces resume via stored conversation IDs, so the agent can continue where it stopped
+- The entire workspace state (including scrollback history) is preserved
+
+Session data includes:
+
+- Workspace name and path
+- Current git branch
+- Agent configuration (if running an agent)
+- Conversation ID for resuming agent sessions
+- Terminal scrollback buffer (kept in memory)
+
+### Worktree Metadata
+
+Git stores worktree metadata in `.git/worktrees/<name>/`. Tempest also writes a `.tempest-pid` file to each worktree's git info/exclude, allowing Tempest to track and kill the shell process if the app crashes.
+
+## Advanced: Shared Files and Symlinks
+
+To save disk space, Tempest creates symlinks (macOS/Linux) or directory junctions (Windows) for large shared directories:
+
+- `node_modules` - shared Node.js dependencies
+- `.venv` - shared Python virtual environment
+
+These directories are shared across all workspaces in a project. If one workspace runs `npm install`, all workspaces see the updates immediately.
+
+If a symlink or junction fails to create, Tempest logs the error but continues, allowing the workspace to function normally.
+
+## Git Initialization
+
+If your project is not yet a git repository, Tempest will prompt you when creating the first workspace. You can:
+
+1. Let Tempest initialize git and optionally add a remote URL
+2. Skip git initialization and continue without version control
+3. Go back and initialize git manually in your project root
+
+Root sessions (sessions in the project root without a worktree) require git initialization before creating additional workspaces.
+
+## Data Structure
+
+### WorktreeSession
+
+Each workspace session is stored with:
+
+```typescript
+interface WorktreeSession {
+  name: string;                     // Workspace name
+  agent?: string;                   // Agent CLI if running (e.g., "claude")
+  conversationId?: string;          // Agent conversation UUID for resuming
+  instanceId?: string;              // Permanent session identity
+  projectId: string;                // Parent project ID
+  closed?: boolean;                 // Whether the session was closed
+  isRootSession?: boolean;          // True for root sessions (not in a worktree)
+  noGit?: boolean;                  // True if git was skipped for root sessions
+}
+```
+
+### Worktree Object
+
+In the UI, workspaces are represented as:
+
+```typescript
+interface Worktree {
+  name: string;      // Workspace name
+  path: string;      // Full path to .tempest/<name>
+}
+```
+
+## Closing vs Deleting
+
+- **Closing a session** removes the tab from the UI but leaves the workspace directory intact. You can reopen it later.
+- **Deleting a workspace** removes both the session and the entire directory from disk. This action cannot be undone.

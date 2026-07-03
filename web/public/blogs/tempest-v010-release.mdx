@@ -1,0 +1,67 @@
+---
+slug: tempest-v010-release
+title: "Tempest v0.1.0: Parallel AI Agent Sessions Are Here"
+date: 2026-06-29
+type: dev-log
+description: "Tempest v0.1.0 ships the core: isolated git worktrees per agent session, full conversation history, live status, built-in diff and push, and live preview."
+author: "Tempest Team"
+tags: [release, parallel-agents, worktrees, git]
+---
+
+This is the one we have been building toward. Tempest v0.1.0 is out, and it ships the core idea in full: run a fleet of AI coding agents in parallel, each on its own branch, none stepping on each other's work.
+
+Here is everything that shipped.
+
+## Isolated git worktrees per session
+
+Every session in Tempest runs in its own git worktree. That is not a metaphor or a soft isolation layer. It is a real, separate working directory linked to your repository, with its own branch that no other agent touches.
+
+When you open a new session, Tempest creates the worktree automatically. When you close the tab, the worktree persists. The agent's files are exactly where you left them, waiting for you to come back.
+
+This is the only way parallel agents can actually work. Anything less is just more chaos in more windows.
+
+## One interface for every agent
+
+Claude Code, Aider, OpenCode, Copilot CLI, Cline, Goose — they all run inside Tempest. If it runs in a terminal, you can run it here.
+
+Switch between tools the same way you switch tabs. Each one has its own session, its own branch, and its own conversation history. You are not managing separate terminal windows or trying to remember which agent touched which file. It is all in one place, organized.
+
+## Session continuity
+
+Close a tab. Reopen it. The agent picks up exactly where it left off — full conversation history, same branch, same state. Nothing is lost because nothing was lost. Tempest persists the session the moment you close it.
+
+This sounds simple. It is not, and it matters every time you do it.
+
+## Live status across every session
+
+You can see, at a glance, which agents are working and which just finished. A live status indicator on every tab updates in real time. No watching a terminal scroll. No checking if the cursor is blinking. You know who is done and who is still running without clicking into anything.
+
+## Built-in diff and push
+
+When an agent finishes, you review what it changed in a stream diff viewer. Every file, every line, right there. When you are satisfied, you stage, commit, push, and open a PR without leaving Tempest.
+
+The feedback loop is tight by design: agent runs, you review, you ship.
+
+## Live preview
+
+Your local dev server updates live as agents make changes. Open the live preview pane and watch the result appear without switching to a browser. It is not a screenshot. It is your actual running app, inside Tempest, updating as the agent writes code.
+
+## Native terminal
+
+Every session has a real terminal. ANSI color, in-session search, clickable URLs — the things you expect from a terminal, not stripped down. If the agent needs to run a command, you can see it happen, and you can run your own commands in the same session.
+
+## What comes next
+
+Two capabilities are in active development:
+
+**Token Intelligence** — a local code-knowledge graph that cuts redundant file reads across agent sessions. Early numbers: up to 64% reduction in context consumption, up to 58% fewer tool calls.
+
+**Database Branches** — isolated Postgres instances per agent session so parallel runs never corrupt each other's data. Real copy, no shared state, no coordination required.
+
+See the roadmap for the full picture.
+
+## Get it
+
+Tempest v0.1.0 is free and open source under Apache 2.0. Windows binary is available now. Build from source on macOS and Linux.
+
+[Download Tempest v0.1.0 on GitHub.](https://github.com/gsvprharsha/tempest)

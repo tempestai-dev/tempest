@@ -1,0 +1,317 @@
+---
+title: "Agent System Overview"
+description: "How Tempest manages AI agent sessions, work detection, and session persistence."
+icon: "microchip"
+---
+
+# Agent System Overview
+
+Tempest provides a unified interface for running multiple CLI-based AI coding agents (Claude Code, Gemini CLI, Opencode, and others) within isolated worktree environments. This guide explains how the agent system works internally and how sessions are managed.
+
+## What Is an Agent Session?
+
+An agent session in Tempest represents a single running instance of a CLI agent with the following components:
+
+<Steps>
+  <Step>
+    **PTY (Pseudo-Terminal)**: A pseudo-terminal spawned by the Tauri backend that captures all input and output between the agent and the user.
+  </Step>
+  <Step>
+    **Working Directory (cwd)**: Either a git worktree branch or the project root. Each session is anchored to a filesystem location where the agent operates.
+  </Step>
+  <Step>
+    **Git Context**: Worktree sessions run on isolated git branches created automatically by Tempest. Root sessions run directly in the project root.
+  </Step>
+  <Step>
+    **Conversation ID**: A unique UUID that identifies the logical conversation thread. For resumable agents (Claude Code, Gemini CLI), this ID persists across restarts to maintain conversation context.
+  </Step>
+  <Step>
+    **Session ID**: An ephemeral PTY identifier that changes each time the session is reopened. Distinct from the conversation ID.
+  </Step>
+</Steps>
+
+A session combines these elements to create an isolated, resumable environment where an agent can work autonomously on code changes.
+
+## How Agents Are Launched
+
+### Command Construction
+
+When you create a new agent session, Tempest performs these steps:
+
+1. **Generate a Session ID**: A UUID is minted to uniquely identify this PTY instance.
+
+2. **Build the Agent Command**: Tempest constructs the full command line based on the agent's configuration in `AGENT_CONFIGS`:
+   - The agent's executable name (e.g., `claude`, `gemini`)
+   - Session/resume flags (if the agent supports resumption)
+   - An optional prompt passed by the user
+
+3. **Spawn the PTY**: The Rust backend invokes the native PTY system to create a pseudo-terminal at the session's working directory.
+
+### Shell Integration
+
+On **Windows**, agents run inside PowerShell with these flags:
+```bash
+pwsh -NoLogo -NoExit -Command "<agent-command>"
+```
+
+On **macOS/Linux**, agents run inside the user's shell (bash or zsh) with:
+```bash
+/bin/bash -c "<agent-command>; exec $SHELL -i"
+```
+
+The `-NoExit` / `exec $SHELL -i` flags ensure the terminal remains interactive after the agent process exits, allowing the user to type follow-up commands.
+
+### Argument Passing
+
+Arguments are pre-assembled on the frontend in `buildAgentArgs()` before being sent to the Rust backend. This includes:
+
+- **Session ID args**: Passed on first spawn (e.g., `--session-id <UUID>`)
+- **Resume args**: Passed when reopening a saved session (e.g., `--resume <UUID>`)
+- **Capture resume args**: For agents like Opencode that print their ID (e.g., `-s <captured-id>`)
+- **User prompt**: Optional text the user wants the agent to start with
+
+Example command for Claude Code on first spawn:
+```bash
+claude --session-id 550e8400-e29b-41d4-a716-446655440000
+```
+
+Example command when resuming:
+```bash
+claude --resume 550e8400-e29b-41d4-a716-446655440000
+```
+
+## Work-Done Detection
+
+Tempest automatically detects when an agent finishes its task so you know when to provide the next prompt. This is a multi-layered system that combines explicit signals from the agent with heuristic fallbacks.
+
+### Work State States
+
+A session can be in one of three work states:
+
+- **Idle**: No task is running; the agent is at its prompt waiting for input.
+- **Working**: An agent is actively processing (after the user presses Enter).
+- **Done**: The agent has finished its task and returned to its prompt, ready for the next input.
+
+### Signal-Based Detection (Explicit)
+
+The SessionManager listens for explicit end-of-work signals encoded in terminal escape sequences:
+
+**OSC 9;4 (Progress Bar)**
+Windows Terminal and ConEmu's progress bar protocol. State 0 signals task completion; other states indicate ongoing work.
+
+**OSC 9 (Notification)**
+An iTerm2 notification signal that many agents (including Claude Code) emit at turn completion. Highest priority signal.
+
+**OSC 133 (FinalTerm Shell Integration)**
+Shell integration protocol used by bash, zsh, and other modern shells:
+- `OSC 133;C`: Command execution started (agent is busy)
+- `OSC 133;B` or `OSC 133;D`: Command finished (agent is done)
+
+**OSC 777 (VTE Notification)**
+Used by rxvt-unicode and VTE-based terminals to signal completion.
+
+**DEC Mode 2004 (Bracketed Paste)**
+When enabled (h), the line editor is accepting input at the prompt (agent is done). When disabled (l), the agent is about to execute (busy).
+
+**DEC Mode 1049 (Alternate Screen)**
+When exited (l), a full-screen TUI app (vim, less, fzf) has closed and the shell is returning to the normal screen.
+
+### Title-Based Detection (Agent-Specific)
+
+For agents that set the terminal title via OSC 0/2, Tempest classifies the title to infer busy/idle state:
+
+**Claude Code**
+- Title starts with `✳` (white dot): Agent is idle at its prompt.
+- Title starts with any other Unicode character: Agent is busy (spinner frames during thinking).
+
+**Gemini CLI**
+- Title starts with `◇`: Idle at the prompt.
+- Title starts with `✦` or `✋`: Busy/thinking.
+
+### Heuristic-Based Fallback (Timing)
+
+If no explicit signals are detected, Tempest uses timing heuristics as a safety net:
+
+- **Quiet Timer**: Fires when 5 seconds pass with no PTY output.
+- **Ceiling Timer**: Fires if the session remains in "working" state for more than 12 seconds (prevents false positives during long thinking).
+- **Dead Zone**: Disables detection for 300ms after user input to avoid false positives during the agent's silent thinking phase.
+- **Output Gate**: Requires at least 200 bytes of output since the last user input before heuristic timers can fire. This prevents false "done" signals during extended thinking windows.
+
+The SessionManager runs all these systems in parallel on the frontend, so work-done detection is responsive and accurate.
+
+## Session Persistence
+
+### Conversation IDs
+
+Agent sessions are identified by two IDs:
+
+- **Session ID**: Ephemeral PTY identifier generated fresh each time the session opens. Not persisted.
+- **Conversation ID**: Persisted UUID that uniquely identifies the logical conversation. For resumable agents (Claude Code, Gemini), this is set once on first spawn and reused across restarts. For agents without resume support, each spawn gets a fresh conversation ID (essentially a no-op).
+
+### Storage
+
+Sessions are persisted to browser localStorage under the `sessions` slice of the runtime state. Each session stores:
+- `name`: Display name in the tab bar
+- `agent`: CLI command hint (e.g., "claude", "gemini")
+- `conversationId`: The persistent UUID for resumption
+- `instanceId`: Stable canonical identity (equals conversation ID or session ID depending on session type)
+- `projectId`: Which project this session belongs to
+- `isRootSession`: Whether it runs in the project root (true) or a worktree (false)
+- `noGit`: Whether git was skipped for a root session
+- `closed`: Whether the session has been explicitly closed (soft deletion)
+
+### Worktree Sessions vs. Root Sessions
+
+**Worktree Sessions** are persisted by their filesystem path as the key. They are safe to persist because the worktree path is stable on disk.
+
+**Root Sessions** (which run in the project root) cannot use the project path as a key since multiple sessions can share it. Instead, they use a unique key format:
+```
+<project-path>::root::<session-id>
+```
+
+This allows an agent root session and a plain terminal root session to coexist without overwriting each other.
+
+## Agent Lifecycle
+
+### 1. Session Creation (First Spawn)
+
+```bash
+User clicks "Agent Session" > selects agent > types optional prompt > presses Create
+```
+
+Steps:
+1. Generate a session UUID (becomes the conversation ID if the agent is resumable)
+2. Build the full command with session ID flags
+3. Invoke `create_pty_session` on the Rust backend
+4. Spawn the PTY in the target directory
+5. Stream output to the frontend via a Tauri Channel
+6. Save the session metadata to localStorage
+7. Display the agent session in a new tab
+
+### 2. Running (User Interacts)
+
+```
+User types a message > presses Enter > SessionManager arms work-done timers > agent responds
+```
+
+Steps:
+1. User types in the terminal
+2. On `Enter`, TerminalPane calls `markUserInput()` on the SessionManager
+3. SessionManager enters "dead zone" (suppresses false positives for 300ms)
+4. All work-done detection systems (signals, title, timers) activate
+5. Agent processes and returns output
+6. When any detection system triggers, state becomes "done"
+7. A work-done badge (green dot) appears on the tab
+
+### 3. Resumption (Session Reopened)
+
+```bash
+User closes tab but session is not deleted > app restarts > Tempest restores the session tab
+```
+
+Steps:
+1. On app startup, restoration loop collects all persisted sessions
+2. For each agent session, loads the stored `conversationId`
+3. Generates a new session UUID (fresh PTY spawn)
+4. Builds the command with resume flags: `claude --resume <stored-conversation-id>`
+5. Spawns the PTY
+6. User can continue the conversation from where they left off
+
+### 4. Completion (Session Closed)
+
+```bash
+User closes the tab
+```
+
+Steps:
+1. Frontend calls `close_pty_session` on the Rust backend
+2. Rust terminates the PTY and all child processes
+3. Session is marked as `closed: true` in localStorage (soft deletion)
+4. Tab is removed from the sidebar
+
+## Broadcasting
+
+Broadcasting allows you to send the same message to multiple agent sessions simultaneously. This is useful for running a command across all open agents or pausing work across projects.
+
+### How It Works
+
+1. Press `Ctrl+Shift+M` (or use the keyboard shortcut you configured) to open the Broadcast Dialog
+2. Select which agents to target (or "All agents" for all open sessions)
+3. Type your message (e.g., "pause", "check the logs", etc.)
+4. Press `Ctrl+Enter` or click "Send" to deliver it to all selected sessions
+
+### Broadcast Behavior
+
+- All selected sessions are marked as "working"
+- The message is encoded as UTF-8 bytes and sent to each session's PTY
+- Carriage return (`\r`) is appended to simulate pressing Enter
+- Each session independently detects work completion using the standard work-done system
+- A single broadcast instantly queues the same task across multiple agents
+
+### Use Cases
+
+- **Pause agents**: Send "pause" or Ctrl+C to stop thinking
+- **Sync behavior**: Run the same test or build across multiple branches
+- **Batch instructions**: Tell all agents to review docs, check logs, or run linters
+
+## Message Queue
+
+The message queue buffers messages for an agent when it is still working on a previous task. Instead of blocking, messages are queued and automatically sent when the agent returns to its prompt.
+
+### Queue Behavior
+
+1. **Agent is working**: When you type a message and press Enter while the agent is still thinking, the message is queued instead of sent immediately.
+2. **Agent finishes**: When the agent's work-done signal fires, the queue is checked. If a message is waiting, it is automatically sent.
+3. **Queue persistence**: Messages remain in the queue until the session closes or you manually clear them.
+
+### Accessing the Queue
+
+Press `Ctrl+Shift+Q` (or your configured shortcut) to open the QueuePanel for the active agent session. Here you can:
+
+- View all queued messages in order
+- Add new messages to the queue
+- Remove individual messages
+- Clear the entire queue
+- See a badge on the tab indicating queue length
+
+### Example Workflow
+
+1. Agent is analyzing code (working)
+2. You type "Now check the tests" and press Enter
+3. Message is queued (not sent yet, since agent is busy)
+4. Agent finishes analyzing
+5. First queued message "Now check the tests" is automatically sent
+6. Agent responds with test results
+7. Agent finishes (work-done signal fires)
+8. Next queued message (if any) is sent
+
+This allows you to compose multiple instructions while the agent is thinking, ensuring they are delivered in order when the agent is ready.
+
+## Environment and Configuration
+
+### Working Directory
+
+Each session's working directory is determined at creation:
+- **Worktree sessions**: The full path to the worktree directory (e.g., `/project/.tempest/my-feature`)
+- **Root sessions**: The project root directory (e.g., `/project`)
+
+The Rust PTY backend spawns the shell with `cwd` set to this directory, so agents see the correct file context.
+
+### Shell Selection
+
+Tempest automatically detects the default shell on first use:
+- **Windows**: Detects PowerShell 5.1 / PowerShell 7 / Command Prompt
+- **macOS/Linux**: Uses `$SHELL` environment variable, falls back to `/bin/bash`
+
+The shell is cached after the first detection, so all sessions use the same shell.
+
+### MCP Configuration
+
+If Token Intelligence (Atlas) is enabled, Tempest writes MCP server configuration to agent-specific files:
+- Claude Code: `.mcp.json`
+- Cursor: `.cursor/mcp.json`
+- Gemini CLI: `.gemini/settings.json`
+- Opencode: `opencode.json` or `opencode.jsonc`
+
+This allows agents to access Token Intelligence automatically without manual configuration.
+

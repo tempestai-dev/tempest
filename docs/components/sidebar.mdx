@@ -1,0 +1,174 @@
+---
+title: "Right Sidebar"
+description: "File browser and git changes panel in the Tempest workspace."
+icon: "bars"
+---
+
+# Right Sidebar: File Browser and Git Changes
+
+The right sidebar is a contextual panel that provides two different views of your workspace: a complete file tree for navigation and a live list of git changes from the current session. It appears when a session is active and can be collapsed entirely to maximize editor space.
+
+## Overview
+
+The right sidebar occupies the right edge of the Tempest window and resizes via a drag handle on its left border. It contains:
+
+1. A header with tab buttons and action buttons
+2. A scrollable body showing either the file tree or git changes
+3. A collapsible design that slides smoothly out of view when toggled
+
+The sidebar starts with a default width of 300px and can be resized between 180px and 560px. Its width persists across sessions. When collapsed, it disappears entirely with a smooth opacity and border transition.
+
+## The Two Panels
+
+### All Files Tab
+
+The "All Files" tab shows the complete directory tree of your project root (or session working directory if no project root is set). Files and folders are displayed hierarchically with the ability to expand and collapse directories.
+
+When you click on a directory, it expands to show its contents. The first click fetches the directory contents from the Tauri backend via the `list_directory` command. Subsequent clicks toggle the expanded state. Directories that have been expanded and are empty display an "Empty" message below the folder name.
+
+When you click on a file, it opens that file in the editor (or opens a new editor tab if one is not already open) by calling the `onOpenFile` callback. Files cannot be expanded or collapsed.
+
+The file tree uses depth-based indentation to show nesting. Each level adds 14px of additional left padding (plus 8px base). This creates a clear visual hierarchy that makes it easy to navigate deeply nested folder structures.
+
+Hidden files are filtered out. Specifically, any file named `.tempest-pid` is excluded from the tree. This prevents internal Tempest metadata files from cluttering the view.
+
+### Changes Tab
+
+The "Changes" tab shows files that have been modified, added, deleted, renamed, or copied since the last git commit. A badge on the tab header shows the count of changed files at a glance.
+
+Each changed file displays a single-letter status code followed by the relative file path. The status code is color-coded:
+
+- **M** (Modified, orange) - File exists but has changed content
+- **A** (Added, green) - New file not yet in git
+- **D** (Deleted, red) - File was removed from the working directory
+- **R** (Renamed, blue) - File was moved or renamed
+- **C** (Copied, cyan) - File was copied to a new location
+- **?** (Untracked, green) - File exists but has never been added to git
+
+The path is displayed in a monospace font to clearly show file structure. Long paths are truncated with ellipsis. Hovering over a changed file shows its full path in a tooltip.
+
+The git changes list refreshes automatically when an agent finishes a turn. Tempest increments an internal `gitRevision` counter each time a session completes work, which triggers a refresh of only the Changes tab without disrupting the expanded state of the file tree.
+
+## File Tree Behavior
+
+### Expanding Folders
+
+Folders show a chevron icon that points right (chevron-right) when collapsed and down (chevron-down) when expanded. Clicking the chevron or the folder row toggles expansion.
+
+On first expansion, the folder fetches its contents. If the fetch fails, the folder displays an empty directory state. If successful, child files and folders appear indented below the parent. Nested folders can be individually expanded or collapsed.
+
+### Clicking Files
+
+Only files are clickable for opening. Clicking a file with the left mouse button calls `onOpenFile(filePath)`. This is typically wired to open the file in the editor or switch to an existing tab showing that file.
+
+### Indentation and Visual Hierarchy
+
+Files and folders use left padding for indentation. Base padding is 8px, then adds 14px per nesting level. This means:
+
+- Root level items: 8px padding
+- Nested one level: 22px padding
+- Nested two levels: 36px padding
+- And so on
+
+This consistent spacing creates a clear hierarchy without hard-to-read alignment.
+
+### Icons and Status
+
+Folders show a folder icon (yellow colored) that changes appearance when expanded (open folder icon). Files show a file icon (default color).
+
+The folder icon is yellow by default using the CSS color variable `--tempest-accent-yellow`. File icons use the default foreground color. A subtle icon next to files/folders on hover shows they are interactive.
+
+## Drag Handle and Resizing
+
+The left edge of the sidebar has a 4px-wide drag handle. Hovering over it shows a blue highlight (the accent color with 50% opacity) to indicate it is draggable.
+
+Clicking and dragging the handle resizes the sidebar. As you drag, the sidebar width updates in real time without animation (transition is disabled during drag). When you release, the final width is saved and the sidebar transitions back to normal (with animation re-enabled).
+
+The resize is constrained between MIN_WIDTH (180px) and MAX_WIDTH (560px). Attempts to drag beyond these bounds snap to the limit automatically.
+
+During a drag operation:
+
+- User select is disabled on the document body to prevent text selection while dragging
+- The cursor changes to `col-resize` to indicate resizing is active
+- The sidebar's transition property is set to none for immediate feedback
+
+When drag ends, the body styles are restored and the transition is re-enabled.
+
+## Queue Panel Integration
+
+The QueuePanel appears as an overlay when a session has pending messages. It is not part of the sidebar itself but often floats near or over it.
+
+The QueuePanel shows an ordered list of messages that will be sent to the agent one by one as it finishes each turn. Users can add new messages, remove items from the queue, or clear all pending messages at once.
+
+The panel includes a message compose area at the bottom. Messages are queued with Enter (Shift+Enter creates a newline). This allows users to prepare multiple prompts while an agent is working without blocking execution.
+
+When the queue is empty, the panel displays: "No messages queued. The next message you add will be sent automatically when the agent finishes."
+
+The QueuePanel is managed by the session state and communicates via the `messageQueue` store, which tracks queued messages per session ID.
+
+## Empty States and Error Handling
+
+If no session is active (both `cwd` and `rootPath` are null), the file tree shows: "No active session"
+
+If the session directory is empty or has no children, the file tree shows: "Empty directory"
+
+If a git status operation fails (e.g., the project is not a git repository), the Changes tab shows the error message in red text.
+
+If the user skipped git initialization when starting a session, the Changes tab shows: "Git needs to be initialized to view changes" and does not attempt to fetch git status.
+
+## Header Controls
+
+### Tab Buttons
+
+Two tab buttons sit at the top of the sidebar:
+
+1. **All Files** - Always available, shows the file tree
+2. **Changes** - Shows git changes; displays a count badge if changes exist
+
+Clicking a tab switches the view. The active tab is highlighted with a blue bottom border and different background color.
+
+### Action Buttons
+
+Two icon buttons sit on the right side of the header:
+
+1. **Eye icon (Diff button)** - Opens the diff viewer to review all changes in a unified diff format. This button is disabled (`disabled={!onOpenDiff}`) if no diff viewer is available (prevents duplicate tabs). Clicking opens a side-by-side or unified diff view.
+
+2. **Refresh icon** - Manually reloads both the file tree and git changes. The button shows a spinning animation while reloading (`rs-reload-btn--spinning` class). It is disabled when reloading is in progress or when there is no active session. A 600ms minimum delay ensures visual feedback even on fast systems.
+
+## Styling and Theming
+
+The sidebar uses Tempest's CSS variable theme system. Key variables:
+
+- `--tempest-bg-sidebar` - Background color of the sidebar
+- `--tempest-border-default` - Border color between sections
+- `--tempest-fg-default` - Default text color
+- `--tempest-fg-subtle` - Muted text for secondary info
+- `--tempest-bg-hover` - Highlight color on hover
+- `--tempest-accent-blue` - Highlight color for active state and drag handle
+- `--tempest-git-modified`, `--tempest-git-added`, `--tempest-git-deleted` - Git status colors
+
+The scrollbar is thin and uses the border-subtle color. Scrolling is smooth and only appears on Y-axis (horizontal scroll is hidden).
+
+File items have a minimum height of 22px and use a light hover background. Spacing is tight to maximize content visibility.
+
+## Integration with Sessions
+
+The sidebar receives props from the workspace session:
+
+- `cwd` - Current working directory, used for git status and fallback for file listing
+- `rootPath` - Explicit project root, preferred over cwd for file listing
+- `open` - Boolean controlling whether the sidebar is visible
+- `gitRevision` - Counter that increments each time an agent finishes; used to refresh changes only
+- `noGit` - Boolean that disables git status fetching (skipped git init)
+- `onOpenDiff` - Callback to open the diff viewer (undefined if not available)
+- `onOpenFile` - Callback when a file is clicked
+
+The sidebar maintains its own collapsed/expanded state for folders and the active tab independently. This state is not persisted, so expanding the same folders again after closing and reopening a session requires re-expanding.
+
+## Performance Considerations
+
+The file tree is virtualized when displaying very large directories. The component renders only the visible nodes, not the entire tree at once.
+
+Git status fetching is debounced when gitRevision changes, with a 600ms minimum delay to prevent rapid successive fetches.
+
+Directory listings are fetched on-demand (lazy loading). Nested folders do not fetch their contents until explicitly expanded. This makes opening deep project hierarchies responsive even on slow systems.

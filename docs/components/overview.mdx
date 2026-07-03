@@ -1,0 +1,307 @@
+---
+title: Component Architecture
+description: Index of React components and their roles in the Tempest UI
+icon: "puzzle-piece"
+---
+
+## Overview
+
+Tempest is a Tauri + React desktop application. The UI follows a split-pane layout with a sidebar for workspace navigation, a main content area for terminal sessions and code editors, and a collapsible right panel for file trees and git changes. Components use xterm.js for terminal rendering, CodeMirror for code editing, and Lucide React for icons.
+
+## Root Component Tree
+
+```
+App (main.tsx)
+  ├─ ThemeProvider (wraps entire app)
+  └─ WorkspaceView (main layout container)
+     ├─ TopBar (window title bar and controls)
+     ├─ Sub-bar (sidebar toggle, theme toggle, project badge)
+     └─ workspace-body
+        ├─ Sidebar (project/workspace navigation)
+        │  ├─ Overview and Nexus nav buttons
+        │  ├─ Project list (default mode) or Zen workspace list
+        │  └─ Session tree with nested splits
+        ├─ Main content area (split-pane or single-pane)
+        │  ├─ TerminalPane (when session kind = terminal)
+        │  ├─ DiffPane (when session kind = diff)
+        │  ├─ PreviewPane (when session kind = preview)
+        │  ├─ CodeMirrorPane (when session kind = editor)
+        │  └─ Split-pane dividers with resize handles
+        ├─ RightSidebar (file browser and git changes)
+        ├─ SettingsPanel (modal overlay)
+        ├─ NewSessionMenu (context menu for new sessions)
+        ├─ BroadcastDialog (modal for broadcast messages)
+        ├─ DeleteDialog (confirmation for workspace deletion)
+        ├─ AtlasIndexToast (status notifications)
+        ├─ NexusPage (when activeSection === "nexus")
+        └─ OverviewPage (when activeSection === "overview")
+```
+
+## Core Layout Components
+
+### WorkspaceView (`WorkspaceView.tsx` - 2646 lines)
+
+The main container component managing the entire Tempest interface. Holds centralized state for:
+
+- Session management (open terminals, diffs, editors, previews)
+- Project and worktree state (multi-project mode or zen single-project mode)
+- Split-pane layout tree (vertical and horizontal splits)
+- Active session tracking and tab bar ordering
+- Settings modal state, dialogs, and overlay state
+- Git branch tracking and file changes notifications
+
+Key features:
+
+- **Split panes**: Mutable `PaneNode` tree structure with leaf nodes (individual sessions) and branch nodes (split dividers). Supports horizontal and vertical splits with draggable resize handles.
+- **Session restoration**: On mount, scans `.tempest/` worktrees, loads persisted session metadata, and restores sessions in saved tab order.
+- **Multi-project mode (default)**: Sidebar shows project list with expandable worktrees and root sessions per project.
+- **Zen mode**: Single-project view with flat worktree list; passed props `{ zen, name, path }` from Tauri window labels.
+- **Keyboard shortcuts**: Global keydown listener (capture phase) handles app-level shortcuts like tab navigation, split panes, and sidebar toggles.
+- **Work state integration**: Subscribes to per-session work state (idle/working/done) via `useWorkState` hooks to show spinners and status dots on tabs and sidebar rows.
+
+### TopBar (`TopBar.tsx` - 32 lines)
+
+Frameless window title bar with:
+
+- Tempest mark/logo on the left
+- Zen mode button (currently disabled, "coming soon")
+- Window controls on the right: minimize, maximize/restore, close
+
+Uses `@tauri-apps/api/window` to invoke minimize/toggle/close operations.
+
+### Sub-bar
+
+Horizontal bar below the title bar with:
+
+- Sidebar toggle button
+- Theme toggle (sun/moon icons)
+- Project/worktree badge (project name / worktree name / git branch) - visible only when a session is active
+- Prompt library picker button (for active agent sessions)
+- Right panel toggle button
+
+## Content Panes
+
+### TerminalPane (`TerminalPane.tsx`)
+
+Renders xterm.js terminal instances. Key features:
+
+- **Session rendering**: Each session gets a unique TerminalPane instance; memoized to avoid re-renders on parent state changes.
+- **xterm.js setup**: Loads fit addon (auto-resize), unicode11, search, and web-links addons.
+- **Theme integration**: Reads theme colors from `--tempest-*` CSS variables on the document root; hot-swaps theme without recreating the PTY.
+- **Custom keybindings**: Handles Ctrl+F (search), Ctrl+C (smart copy-or-SIGINT), Ctrl+V/Shift+V (paste).
+- **Session Manager integration**: Registers with SessionManager to receive buffered output; replays on mount.
+- **Agent work-done detection**: For agent sessions, detects completion via terminal title changes (e.g. Claude Code's ✳ marker).
+- **ResizeObserver**: Monitors container size and calls `resize_pty` on the Rust backend to keep PTY dimensions in sync.
+
+### DiffPane (`DiffPane.tsx`)
+
+Git diff viewer with staging/unstaging and commit UI:
+
+- **Two-section view**: Staged and unstaged files with unified diff rendering.
+- **File selection**: Click a file to load its diff into the diff view.
+- **Staging actions**: Buttons to stage/unstage individual files or all at once.
+- **Commit form**: Text inputs for commit title and description.
+- **Co-author support**: Uses `useAttribution` to optionally append co-author line.
+- **PR helper**: Builds PR URLs for GitHub, GitLab, Bitbucket based on remote URL and branch name.
+- **Branch info**: Shows current branch and commit info.
+
+### PreviewPane (`PreviewPane.tsx`)
+
+Live preview browser for dev servers:
+
+- **URL picker**: Prompts for a URL or port number (http://localhost:3000, :8080, etc.).
+- **Preset sizes**: Mobile, tablet, desktop presets with editable dimensions.
+- **Navigation controls**: Back, forward, refresh buttons and external link button.
+- **Common ports**: Quick-launch buttons for Vite (5173), Next/CRA (3000), etc.
+- **Loading state**: Shows loader while preview iframe loads.
+
+### CodeMirrorPane (`CodeMirrorPane.tsx`)
+
+Code editor using CodeMirror 6. Shows syntax-highlighted file contents (read-only or editable).
+
+### OverviewPage (`OverviewPage.tsx`)
+
+Dashboard view listing all workspaces/sessions across projects:
+
+- **Workspace rows**: Shows workspace name, project, git branch, changed files, agent status, and last active timestamp.
+- **Work state badges**: Spinner (working), dot (done), or none (idle).
+- **Quick actions**: Open, View diff (for agents), Open PR (when done), More menu.
+- **Sorting**: Dynamically sorts by work state (done, working, idle).
+- **Live updates**: Subscribes to work state changes to refresh list order and badges.
+
+### NexusPage
+
+Another navigation section (accessible via "Nexus" nav button in sidebar). Implementation not fully reviewed.
+
+## Sidebar Components
+
+### Sidebar (within WorkspaceView)
+
+Left navigation panel listing projects and workspaces:
+
+- **Top buttons**: Overview and Nexus navigation buttons.
+- **Default mode**:
+  - Project list with collapsible expand/collapse.
+  - Each project shows root sessions (main branch) and worktrees.
+  - Worktrees are subdirectories under `.tempest/` that are git branches.
+  - Root sessions are marked with a "main" badge.
+  - Sub-sessions (spawned via split-pane) render nested under their parent.
+- **Zen mode**: Flat list of worktrees for a single project.
+- **Active indicators**: Current session is highlighted.
+- **Work badges**: Agent sessions show spinner (working) or dot (done).
+- **Context menus**: Right-click on projects, worktrees, or sessions for delete/rename/new session options.
+- **Scroll fades**: Top/bottom gradient fades appear when scrollable.
+- **Session renaming**: Double-click or right-click to rename a session inline.
+
+## Right Sidebar Components
+
+### RightSidebar (`RightSidebar.tsx`)
+
+Collapsible right panel with two tabs:
+
+- **Files tab**: Hierarchical file tree rooted at the project (uses `list_directory` from Rust).
+  - Expandable folders, clickable files.
+  - Hidden files filter (e.g. `.tempest-pid`).
+  - Opening a file creates or focuses an editor tab.
+- **Changes tab**: Git status display showing modified (M), added (A), deleted (D), renamed (R) files.
+  - Color-coded status badges.
+  - Click a file to open the diff pane and view changes.
+  - Shows notice if git is not initialized (`noGit` prop).
+
+Implemented as draggable-resize sidebar with min/max width constraints.
+
+## Modal and Overlay Components
+
+### SettingsPanel (`SettingsPanel.tsx`)
+
+Modal settings dialog with sections:
+
+- **Appearance**: Theme selector with preview cards; sidebar font size slider.
+- **Terminal**: Font family, size, cursor style/blink, scrollback settings.
+- **Git**: Branch prefix, co-author options.
+- **Token Intelligence**: Atlas indexing toggle and settings.
+- **Prompts**: Prompt library editor; add/delete/reorder/clone prompts.
+- **Keybindings**: Customizable keyboard shortcuts with reset buttons.
+- **Attribution**: Co-author footer toggle.
+- **About**: App version and info.
+
+Renders via `createPortal` to document.body; closes on Escape key or overlay click.
+
+### NewSessionMenu (`NewSessionMenu.tsx`)
+
+Context menu for creating new sessions:
+
+- **Terminal option**: New plain terminal session.
+- **Agent options**: Claude Code, Gemini CLI, Opencode, Copilot CLI, Cline, Cursor, Goose.
+- **Preview option**: New live preview tab.
+- **Positioning**: Anchored to a button with "right" or "below" placement.
+- **AgentIcon component**: Renders branded icons for each agent; handles monochrome SVG inversion in dark mode.
+- **AGENT_CONFIGS**: Static array of agent metadata (CLI hints, session ID args, resume args, capture patterns).
+
+### BroadcastDialog (`BroadcastDialog.tsx`)
+
+Modal for sending a message to multiple sessions at once:
+
+- **Session selection**: Checkboxes to select which sessions receive the message.
+- **Message input**: Text area for the broadcast text.
+- **Send button**: Writes message + newline to all selected sessions via PTY.
+
+### DeleteDialog (within WorkspaceView)
+
+Two-step confirmation dialog for removing a worktree:
+
+- **Step 1**: Confirm worktree deletion; optional checkbox to also delete the git branch.
+- **Step 2** (if deleting branch): Confirm branch deletion.
+- **Loading state**: Shows spinner during async operations.
+- **Error display**: Surfaces errors if the operation fails.
+
+### AtlasIndexToast (`AtlasIndexToast.tsx`)
+
+Toast notifications for Atlas (Token Intelligence) indexing status:
+
+- Shows which projects are currently being indexed.
+- Displays progress or completion messages.
+- Auto-dismisses or can be manually closed.
+
+## Context and State Management
+
+### ThemeProvider (from `ThemeContext`)
+
+Provides theme selection and CSS variable injection. Supports built-in themes (Tempest Dark, Tempest Light) and custom themes.
+
+### Hooks Used
+
+- **`useTheme()`**: Access current theme and setTheme function.
+- **`useWorkState(sessionId)`**: Get current work state (idle/working/done) for a session.
+- **`useQueue(sessionId)`**: Get queued messages for a session.
+- **`useKeybindings()`**: Get current keyboard shortcut bindings.
+- **`useSettings()`**: Get app settings (font sizes, terminal options, git prefix, etc.).
+- **`useAttribution()`**: Get co-author footer enabled state.
+- **`usePrompts()`**: Get prompt library entries.
+
+## Session Model
+
+```typescript
+interface Session {
+  id: string;              // ephemeral PTY session UUID
+  name: string;            // display name
+  cwd: string;             // working directory
+  projectId: string;       // parent project
+  kind?: "terminal" | "diff" | "preview" | "editor";
+  previewUrl?: string;     // current preview URL
+  agent?: string;          // agent CLI hint (e.g. "claude", "gemini")
+  conversationId?: string; // persistent agent session ID for resume
+  instanceId: string;      // stable ID across restarts (used in tab ordering)
+  createdAt: string;       // ISO timestamp
+  isRootSession?: boolean; // true = runs in project root (no worktree)
+  noGit?: boolean;         // true = user skipped git init
+  parentSessionId?: string; // set if spawned via split from another session
+  storeKey?: string;       // localStorage key for persistence
+  metadata: {
+    resumeCount: number;
+    hasBeenResumed: boolean;
+  };
+}
+```
+
+## Patterns and Conventions
+
+### Memoization
+
+Components that render per-session (TerminalPane, WorkStateBadge, QueueBadge, SidebarWorkBadge) are wrapped in `memo()` to prevent re-renders from parent state changes, improving performance.
+
+### Portal Rendering
+
+Modals (SettingsPanel, NewSessionMenu, BroadcastDialog) use `createPortal` to render outside the component hierarchy, ensuring they layer correctly and avoid stacking context issues.
+
+### Ref Stabilization
+
+WorkspaceView uses refs (paneLayoutRef, sessionsRef, shortcutHandlerRef) to maintain stable closures in event handlers registered once at mount, avoiding stale-closure bugs in long-lived listeners.
+
+### Lazy State Inference
+
+The sidebar and tab bar derive state (active sessions, worktree names, branch info) from live session state and localStorage. This keeps the UI in sync without duplicate state.
+
+### Git Integration
+
+Git operations (init, branch creation/deletion, status, diff) are invoked asynchronously to the Rust backend. Results populate state immediately; errors show inline messages or toasts.
+
+## Key Files by Component
+
+- `src/App.tsx` - App root, mounts WorkspaceView
+- `src/main.tsx` - React DOM setup, theme provider wrapper
+- `src/components/WorkspaceView.tsx` - Main layout and session management
+- `src/components/TopBar.tsx` - Window title bar
+- `src/components/TerminalPane.tsx` - xterm.js terminal renderer
+- `src/components/RightSidebar.tsx` - File tree and git changes panel
+- `src/components/DiffPane.tsx` - Git diff viewer
+- `src/components/PreviewPane.tsx` - Live preview browser
+- `src/components/CodeMirrorPane.tsx` - Code editor
+- `src/components/SettingsPanel.tsx` - Settings modal with subsections
+- `src/components/NewSessionMenu.tsx` - Agent/terminal session picker
+- `src/components/OverviewPage.tsx` - Dashboard view
+- `src/components/NexusPage.tsx` - Alternative navigation view
+- `src/components/QueuePanel.tsx` - Message queue display
+- `src/components/BroadcastDialog.tsx` - Broadcast message modal
+- `src/components/AtlasIndexToast.tsx` - Indexing status notifications
+- `src/themes/ThemeContext.tsx` - Theme provider

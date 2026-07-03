@@ -1,0 +1,111 @@
+---
+title: "Keyboard Shortcuts"
+description: "All keyboard shortcuts and keybindings available in Tempest."
+icon: "keyboard"
+---
+
+Tempest provides a comprehensive set of keyboard shortcuts for efficient navigation and workspace management. Most global shortcuts are fully customizable through the Settings panel.
+
+## Global App Shortcuts
+
+These shortcuts work across the entire application and control major functions like theme switching, navigation, and workspace management. All are customizable.
+
+| Action | Default Shortcut |
+|--------|-----------------|
+| Open Settings | `Ctrl+,` |
+| Open Project | `Ctrl+O` |
+| New Workspace | `Ctrl+N` |
+| Switch Theme | `Ctrl+Shift+T` |
+
+## Layout and Panel Control
+
+| Action | Default Shortcut |
+|--------|-----------------|
+| Toggle Left Sidebar | `Ctrl+B` |
+| Toggle Right Sidebar | `Ctrl+\` |
+| Split Pane Side by Side | `Ctrl+Shift+|` |
+| Split Pane Top / Bottom | `Ctrl+Shift+_` |
+
+## Tab Navigation
+
+| Action | Default Shortcut |
+|--------|-----------------|
+| Next Tab | `Ctrl+Tab` |
+| Previous Tab | `Ctrl+Shift+Tab` |
+| Close Tab | `Ctrl+W` |
+
+## Agent and Workspace Control
+
+| Action | Default Shortcut |
+|--------|-----------------|
+| Broadcast to Agents | `Ctrl+Shift+M` |
+| Open Message Queue | `Ctrl+Shift+Q` |
+
+## Terminal Shortcuts
+
+These shortcuts are fixed and not customizable.
+
+| Action | Shortcut | Notes |
+|--------|----------|-------|
+| Toggle Terminal Search | `Ctrl+F` | Opens or closes the in-terminal search bar |
+| Copy or Send SIGINT | `Ctrl+C` | Copies selected text if a selection exists; otherwise sends interrupt to the process |
+| Force Copy | `Ctrl+Shift+C` | Always copies the current selection, never sends a signal |
+| Paste | `Ctrl+V` | Pastes clipboard contents into the terminal |
+| Paste (alternate) | `Ctrl+Shift+V` | Alternative paste shortcut |
+
+On macOS, use `Cmd` in place of `Ctrl` for clipboard and search shortcuts in the terminal.
+
+### Terminal Search Bar
+
+Once the terminal search bar is open:
+
+| Action | Key |
+|--------|-----|
+| Find Next | `Enter` |
+| Find Previous | `Shift+Enter` |
+| Close Search Bar | `Escape` |
+
+## Editor Shortcuts
+
+These shortcuts are fixed and not customizable.
+
+| Action | Shortcut | Notes |
+|--------|----------|-------|
+| Save File | `Ctrl+S` | Saves the currently open file to disk. A dot indicator on the tab shows unsaved changes. |
+
+## Git and Diff Pane Shortcuts
+
+These shortcuts are fixed and not customizable.
+
+| Action | Shortcut | Notes |
+|--------|----------|-------|
+| Commit Staged Changes | `Ctrl+Enter` | Works from both the commit title and description fields. Requires at least one staged file and a non-empty message. |
+
+On macOS, use `Cmd+Enter` to commit.
+
+## Customizing Shortcuts
+
+All shortcuts in the Global App, Layout, Tab Navigation, and Agent sections are user-configurable.
+
+<Steps>
+  <Step title="Open Settings">
+    Press `Ctrl+,` (or your current settings shortcut) to open the Settings panel.
+  </Step>
+  <Step title="Go to Keybindings">
+    Navigate to the **Keybindings** section in the left sidebar of Settings.
+  </Step>
+  <Step title="Rebind an action">
+    Click the shortcut field next to any action, then press the new key combination you want to use. The binding saves automatically.
+  </Step>
+  <Step title="Reset to defaults">
+    Use the reset button in the Keybindings section to restore all shortcuts to their defaults. Individual shortcuts can be rebound again afterward.
+  </Step>
+</Steps>
+
+Custom keybindings are stored in your local settings and persist across restarts.
+
+## Notes
+
+- App-level shortcuts such as `Ctrl+Tab` pass through when the terminal is focused, so tab switching works without leaving the terminal.
+- If a shortcut conflicts with your operating system or another application, rebind it in Settings.
+- Split pane shortcuts let you run multiple sessions side by side within the same workspace tab.

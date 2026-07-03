@@ -1,0 +1,55 @@
+---
+slug: token-intelligence-eliminating-redundant-reads
+title: "Token Intelligence: Eliminating Redundant File Reads Across Agent Sessions"
+date: 2026-06-26
+type: blog
+description: "When multiple agents read the same files independently, you pay for every read. Token Intelligence builds a local code-knowledge graph so agents share what they already know, cutting context consumption by up to 64%."
+author: "Tempest Team"
+tags: [token-intelligence, performance, context, roadmap]
+---
+
+When you run five AI agents in parallel, you have five independent processes that know nothing about each other. Each one reads whatever files it needs to understand the codebase. Each one pays the full token cost for every read. If three of them need to understand the same module, that module gets sent to three different model contexts, billed three separate times.
+
+This is the token redundancy problem. It is not obvious when you are running one agent at a time, but it becomes significant quickly when you scale up. Token Intelligence is our answer to it.
+
+## How agents read code today
+
+When an AI coding agent starts a task, it reads files. A lot of them. It reads the files directly relevant to the task, but it also reads supporting files — imports, type definitions, shared utilities, configuration. It builds a picture of the codebase piece by piece through tool calls, each of which costs tokens.
+
+In a single agent session, this is the expected overhead. The agent learns what it needs to learn, and the cost is reasonable.
+
+In five parallel sessions working on the same codebase, the overhead multiplies. Each agent reads the same foundational files. The entry point. The type definitions. The core utilities. Every agent pays the full cost for every read, and there is no sharing between them. You are paying five times for the same knowledge.
+
+## What Token Intelligence does
+
+Token Intelligence is a local code-knowledge graph. It builds an index of your codebase — not a simple file index, but a semantic graph of what each file contains, what it imports, and how it relates to everything else.
+
+When an agent needs to understand a file, Token Intelligence checks whether that file is already in the graph and whether it has changed since it was indexed. If the indexed version is current, the agent gets the information it needs without a full file read. The token cost of reading a file that has already been indexed drops to near zero.
+
+Across five parallel sessions working on the same codebase, this means the foundational reading happens once. The first agent to need a file pays the indexing cost. Every subsequent agent gets the result. The savings compound with the number of sessions.
+
+## The numbers
+
+Early testing on real codebases shows context consumption reductions of up to 64% and tool call reductions of up to 58% when Token Intelligence is active across multiple parallel sessions.
+
+These are not theoretical numbers from a contrived benchmark. They come from running Tempest on actual codebases with actual agent tasks. The variance depends on how much codebase overlap exists between sessions — the more shared context, the larger the savings.
+
+The practical effect is that running five agents costs meaningfully less than five times what running one agent costs. Parallelism becomes cheaper to use, not just faster.
+
+## Why local matters
+
+Token Intelligence runs entirely on your machine. The code-knowledge graph is built locally from your files, stored locally, and never leaves your system. There is no server that ingests your codebase, no cloud index to sync, no dependency on an external service.
+
+This is not just a privacy stance, though privacy is part of it. Local indexing means the graph is always current with your actual files. There is no propagation delay, no cache invalidation lag, no stale data from a remote index that has not caught up to your last commit. The graph reflects your codebase as it is right now, not as it was when some remote service last crawled it.
+
+## Status
+
+Token Intelligence is in active development and is not yet in the current release. We are in the process of tuning the indexing strategy and the cache invalidation logic to handle large codebases and high-frequency file changes without introducing latency into agent sessions.
+
+It will ship as part of a future Tempest release. The roadmap has the details.
+
+## The broader point
+
+The efficiency of parallel agents is not just about running more things simultaneously. It is about making parallel execution cheap enough to use casually. Token Intelligence is part of that. If running five agents costs five times as much in tokens as running one, there is a real cost ceiling on how much parallelism you can afford. If Token Intelligence cuts that multiplier significantly, the ceiling moves up and parallel agents become viable for a wider range of tasks.
+
+That is the goal: make the infrastructure cheap enough that the limiting factor is what you want to build, not what you can afford to compute.

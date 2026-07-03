@@ -1,0 +1,99 @@
+---
+title: "Introduction"
+description: "Run multiple AI agents in parallel with zero merge conflicts and up to 64% fewer tokens."
+icon: "house"
+---
+
+# Tempest
+
+<Frame>
+  <img className="block dark:hidden" src="/images/landing-light.png" alt="Tempest — parallel AI agent workspace" />
+  <img className="hidden dark:block" src="/images/landing-dark.png" alt="Tempest — parallel AI agent workspace" />
+</Frame>
+
+**The token-efficient alternative to Conductor.build.**
+
+Tempest is a Tauri + React desktop application that lets you run multiple AI agents in parallel, each isolated in its own git worktree and branch. No merge conflicts. No stashing. No detective work about who changed what.
+
+Every agent runs with its own isolated environment, shared code context, and built-in tools to review and ship changes, all from a single frameless window.
+
+## Why Tempest
+
+### Parallel agents, no collisions
+
+Run Claude Code, Aider, OpenCode, Copilot CLI, Cline, Goose, and other tools simultaneously. Each agent works on its own branch within an isolated git worktree. One agent's changes never affect another's work, and a rogue run has zero blast radius on your main branch.
+
+### Up to 64% fewer tokens
+
+Token Intelligence is a local code-knowledge graph that lives on your machine and is shared across every parallel agent session. When an agent needs to understand your codebase, it queries the graph instead of scanning files from scratch. The work is done once. Every session benefits.
+
+- Up to 64% less context token consumption
+- Up to 58% fewer tool calls
+- Faster turns, lower costs, agent effectiveness maintained throughout longer sessions
+
+### Built-in workflows
+
+Review your changes, stage files, write commits, and open pull requests without leaving Tempest. Live status updates tell you the exact moment each agent finishes. Session history persists so you can close a tab and resume work exactly where it left off.
+
+<CardGroup cols={2}>
+  <Card title="Parallel Sessions" icon="zap">
+    Run multiple agents at once with full isolation. No coordination overhead, no shared state conflicts.
+  </Card>
+  <Card title="Code-Aware Context" icon="brain">
+    Token Intelligence learns your codebase structure and reuses that knowledge across every agent session.
+  </Card>
+  <Card title="Git Workflows" icon="git-branch">
+    Built-in diff view, commit interface, and PR opener. Never leave the app to ship changes.
+  </Card>
+  <Card title="Session Persistence" icon="archive">
+    Close a tab and reopen it later. Each agent session remembers exactly where it left off.
+  </Card>
+</CardGroup>
+
+## Supported Agents
+
+Tempest works with any CLI-based AI coding agent. Built-in support for:
+
+- Claude Code
+- Aider
+- OpenCode
+- Copilot CLI
+- Cline
+- Goose
+
+More agents can be added to the platform.
+
+## What's Coming
+
+**Database Branches** (in active development)
+
+Parallel agents doing real backend work need real databases. Tempest is adding isolated Postgres connections per agent session: each agent gets its own live database copy to migrate, modify, or break without touching production or other agent sessions.
+
+Planned features include macOS support, multi-agent coordination, and enterprise controls for audit logs, SSO, and team workspaces.
+
+## Getting Started
+
+Choose how you want to run Tempest:
+
+<CardGroup cols={2}>
+  <Card title="Use Pre-built Binaries" icon="download" href="/installation">
+    Download installers for Windows, macOS, and Linux.
+  </Card>
+  <Card title="Build from Source" icon="code" href="/installation">
+    Clone the repo and build locally. Requires Node.js 18+ and Rust 1.77+.
+  </Card>
+</CardGroup>
+
+## Technology
+
+- **Tauri 2** for the cross-platform desktop framework
+- **React 19** with TypeScript for the UI
+- **CodeMirror 6** for syntax-highlighted code viewing (JavaScript, Python, Rust, Go, JSON, HTML, CSS, Markdown, and more)
+- **xterm.js** for terminal emulation within agent sessions
+- **Geist** font family and custom CSS variable-based theming
+
+## About
+
+Tempest is built using Tempest. Every feature in this repository was shipped by parallel agents running inside the app itself.
+
+Licensed under Apache 2.0. Open source and available on GitHub.

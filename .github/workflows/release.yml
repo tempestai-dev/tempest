@@ -9,7 +9,20 @@ permissions:
   contents: write
 
 jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub Release
+        run: |
+          gh release create ${{ github.ref_name }} \
+            --title "${{ github.ref_name }}" \
+            --notes "See [CHANGELOG](https://github.com/gsvprharsha/tempest/blob/main/claude-docs/changelog.md) for details." \
+            --repo gsvprharsha/tempest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build:
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:

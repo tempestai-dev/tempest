@@ -1,0 +1,90 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "Tempest",
+  "description": "Documentation for Tempest — a fast, themeable desktop workspace built on Tauri and React.",
+  "theme": "palm",
+  "css": "/tempest.css",
+  "colors": {
+    "primary": "#0a0a0a",
+    "light": "#ffffff",
+    "dark": "#0a0a0a"
+  },
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "favicon": "/favicon.svg",
+  "navbar": {
+    "links": [
+      {
+        "href": "https://github.com/gsvprharsha/tempest",
+        "label": "GitHub",
+        "icon": "github"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Download",
+      "href": "https://tempestai.dev/download"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/gsvprharsha/tempest"
+    }
+  },
+  "contextual": {
+    "options": ["copy", "view", "claude"],
+    "display": "header"
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Getting Started",
+        "pages": ["index", "installation", "quickstart", "keyboard-shortcuts", "architecture"]
+      },
+      {
+        "group": "Workspaces",
+        "pages": ["workspaces/overview", "workspaces/creating"]
+      },
+      {
+        "group": "Agents",
+        "pages": ["agents/overview", "agents/supported"]
+      },
+      {
+        "group": "Git",
+        "pages": ["git/overview", "git/worktrees", "git/staging-commits", "git/push-pr"]
+      },
+      {
+        "group": "Terminal",
+        "pages": ["terminal/overview"]
+      },
+      {
+        "group": "Token Intelligence",
+        "pages": ["token-intelligence/overview", "token-intelligence/mcp"]
+      },
+      {
+        "group": "Themes",
+        "pages": ["themes/overview", "themes/variables", "themes/custom-themes"]
+      },
+      {
+        "group": "Components",
+        "pages": [
+          "components/overview",
+          "components/workspace-view",
+          "components/panes",
+          "components/sidebar",
+          "components/dialogs"
+        ]
+      },
+      {
+        "group": "Internals",
+        "pages": ["internals/state", "internals/tauri-commands"]
+      },
+      {
+        "group": "Contributing",
+        "pages": ["contributing/overview", "contributing/feature-request", "contributing/issues"]
+      }
+    ]
+  }
+}

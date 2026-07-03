@@ -1,0 +1,2062 @@
+---
+title: Tauri Backend and IPC Commands
+description: Complete reference for all Tauri commands, including signatures, parameters, return types, usage examples, and error handling
+icon: "code"
+---
+
+## Architecture Overview
+
+Tempest's desktop app is built with Tauri 2, a lightweight framework that wraps a Rust backend with a React frontend. The **invoke handler** at the end of `lib.rs` routes all IPC (Inter-Process Communication) commands from the frontend to their corresponding Rust implementations.
+
+### Key characteristics:
+
+- **Stateless Rust backend:** No persistent in-memory state; all app data flows through React
+- **Async/blocking operations:** Heavy I/O (git, PTY, file operations) runs on dedicated threads to avoid blocking the IPC worker pool
+- **Cross-platform:** Commands handle Windows/Unix differences (paths, shell, process termination)
+- **Error handling:** All commands return `Result<T, String>` with descriptive error messages
+
+## Window Configuration
+
+The main window is created frameless with these properties:
+
+```json
+{
+  "title": "Tempest",
+  "width": 1280,
+  "height": 800,
+  "center": true,
+  "decorations": false,
+  "maximized": true,
+  "dragDropEnabled": false,
+  "transparent": false
+}
+```
+
+**Configuration details:**
+
+- **Frameless:** `decorations: false` removes OS chrome, allowing custom titlebar drawn in React
+- **No drag-drop:** `dragDropEnabled: false` prevents default behavior; file drops handled by React handlers instead
+- **Asset protocol:** CSP allows `asset://` protocol with `**` scope for full resource access
+- **Updater plugin:** Configured with GitHub releases endpoint for auto-updates signed with minisign public key
+
+## Tauri Plugins
+
+Three plugins provide native OS functionality:
+
+| Plugin | Version | Purpose | Example Usage |
+|--------|---------|---------|-----------------|
+| `tauri-plugin-opener` | Latest | Open URLs and files with native handlers | `open("https://...", target)` |
+| `tauri-plugin-dialog` | Latest | Native file/folder dialogs | `open({ directory: true })` |
+| `tauri-plugin-clipboard-manager` | Latest | Read/write system clipboard | `readText()`, `writeText(text)` |
+
+## State Management
+
+### PtyState (Concurrent PTY Registry)
+
+```rust
+pub struct PtyState(pub(crate) Arc<DashMap<String, Arc<PtySession>>>);
+```
+
+Global state holding all active PTY sessions. Passed to commands that need PTY access.
+
+**DashMap:** Lock-free concurrent HashMap allowing parallel reads/writes without global locks.
+
+### ZenState (Secondary Window Config)
+
+```rust
+pub struct ZenState(pub Mutex<std::collections::HashMap<String, (String, String)>>);
+```
+
+Maps window label (e.g., `"zen-1234567890"`) to `(project_path, project_name)`.
+
+---
+
+## Runtime State and Persistence
+
+### read_runtime_state
+
+Reads the persisted runtime state from disk.
+
+```rust
+#[tauri::command]
+fn read_runtime_state(app: tauri::AppHandle) -> Result<String, String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `app` | `tauri::AppHandle` | App context (provided by Tauri, provides access to app data dir) |
+
+**Returns:** `Result<String, String>`
+
+- **Ok:** JSON string of RuntimeState (may be `{}` if file doesn't exist on first launch)
+- **Err:** Filesystem error message
+
+**Implementation:**
+
+- Reads from `<app-data-dir>/runtime-state.json`
+- Returns empty object `{}` if file missing (first launch case)
+- Parsed by frontend, falls back to localStorage migration
+
+**TypeScript usage:**
+
+```typescript
+const raw = await invoke<string>("read_runtime_state");
+const state = JSON.parse(raw) as RuntimeState;
+```
+
+**Error cases:**
+
+- Invalid JSON in file: Frontend falls back to localStorage
+- Permission denied on app data dir: Returns error string
+
+---
+
+### write_runtime_state
+
+Writes runtime state to disk atomically.
+
+```rust
+#[tauri::command]
+fn write_runtime_state(app: tauri::AppHandle, data: String) -> Result<(), String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `app` | `tauri::AppHandle` | App context for app data dir path |
+| `data` | `String` | Serialized JSON (already stringified by frontend) |
+
+**Returns:** `Result<(), String>`
+
+- **Ok:** File written successfully
+- **Err:** Filesystem error
+
+**Implementation:**
+
+1. Creates app data directory if missing
+2. Writes to temp file `runtime-state.json.tmp`
+3. Atomically renames temp to `runtime-state.json` (prevents corruption on crash)
+4. No validation of JSON content (frontend is responsible)
+
+**TypeScript usage:**
+
+```typescript
+const state = { sessions: {...}, settings: {...} };
+await invoke("write_runtime_state", {
+  data: JSON.stringify(state)
+});
+```
+
+**Error cases:**
+
+- Insufficient disk space
+- Permission denied
+- Temp file creation fails
+
+---
+
+## Workspace and File Operations
+
+### create_workspace
+
+Creates a new workspace directory.
+
+```rust
+#[tauri::command]
+fn create_workspace(location: String, name: String) -> Result<String, String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `location` | `String` | Parent directory path (e.g., `/home/user/projects`) |
+| `name` | `String` | Workspace name (becomes directory name) |
+
+**Returns:** `Result<String, String>`
+
+- **Ok:** Full path to created directory (e.g., `/home/user/projects/my-app`)
+- **Err:** Filesystem error (path invalid, permission denied, etc)
+
+**Implementation:**
+
+- Calls `fs::create_dir_all` (creates parent dirs if needed)
+- Returns path as lossy UTF-8 string
+
+**TypeScript usage:**
+
+```typescript
+const path = await invoke<string>("create_workspace", {
+  location: "/home/user/projects",
+  name: "new-app"
+});
+// path === "/home/user/projects/new-app"
+```
+
+**Error cases:**
+
+- Invalid `location` path (doesn't exist, not a directory)
+- Permission denied on parent
+- Disk full
+
+---
+
+### list_directory
+
+Lists files and directories in a folder.
+
+```rust
+#[tauri::command]
+fn list_directory(path: String) -> Result<Vec<DirEntry>, String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `path` | `String` | Directory path to list |
+
+**Return type:**
+
+```rust
+struct DirEntry {
+    name: String;      // File/folder name (not full path)
+    path: String;      // Full absolute path
+    is_dir: bool;      // true if directory
+}
+```
+
+**Returns:** `Result<Vec<DirEntry>, String>`
+
+- **Ok:** Sorted vector of directory entries
+- **Err:** Path doesn't exist, permission denied, etc
+
+**Sorting:** Directories first, then files, alphabetically within each group.
+
+**Platform details:**
+
+- **Windows:** Converts forward slashes to backslashes for consistency
+- **Unix:** Uses paths as-is
+
+**TypeScript usage:**
+
+```typescript
+const entries = await invoke<DirEntry[]>("list_directory", {
+  path: "/home/user/projects"
+});
+// entries.sort((a, b) => {
+//   if (a.is_dir !== b.is_dir) return b.is_dir ? 1 : -1;
+//   return a.name.localeCompare(b.name);
+// })
+```
+
+**Error cases:**
+
+- Path doesn't exist
+- Permission denied
+- Path is not a directory
+
+---
+
+### read_file
+
+Reads entire file contents.
+
+```rust
+#[tauri::command]
+fn read_file(path: String) -> Result<String, String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `path` | `String` | File path to read |
+
+**Returns:** `Result<String, String>`
+
+- **Ok:** File contents as UTF-8 string
+- **Err:** File doesn't exist, permission denied, invalid UTF-8, etc
+
+**Encoding:** Always UTF-8; fails if file contains invalid UTF-8 sequences.
+
+**TypeScript usage:**
+
+```typescript
+const content = await invoke<string>("read_file", {
+  path: "/path/to/file.txt"
+});
+```
+
+**Error cases:**
+
+- File doesn't exist
+- Permission denied
+- File is invalid UTF-8
+- Is a directory (not a file)
+
+---
+
+### write_file
+
+Writes string content to a file.
+
+```rust
+#[tauri::command]
+fn write_file(path: String, content: String) -> Result<(), String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `path` | `String` | File path to write (created if missing) |
+| `content` | `String` | UTF-8 content to write |
+
+**Returns:** `Result<(), String>`
+
+- **Ok:** File written successfully
+- **Err:** Permission denied, disk full, etc
+
+**Behavior:**
+
+- Creates file if it doesn't exist
+- Overwrites entire file (not append)
+- Creates parent directories: NO (must exist)
+
+**TypeScript usage:**
+
+```typescript
+await invoke("write_file", {
+  path: "/path/to/file.txt",
+  content: "Hello, world!"
+});
+```
+
+**Error cases:**
+
+- Permission denied
+- Disk full
+- Parent directory doesn't exist
+- Path is a directory
+
+---
+
+## Git Repository Setup
+
+### git_init
+
+Initializes a new git repository.
+
+```rust
+#[tauri::command]
+fn git_init(project_path: String) -> Result<(), String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `project_path` | `String` | Directory to initialize as git repo |
+
+**Returns:** `Result<(), String>`
+
+- **Ok:** Repository initialized
+- **Err:** git command failed (not in PATH, permission denied, etc)
+
+**Implementation:**
+
+1. Runs `git init`
+2. Sets default branch to `main` via `git symbolic-ref HEAD refs/heads/main`
+3. Writes `.tempest` and `.tempest-pid` to `.gitignore`
+4. Stages all files with `git add -A` (respects existing `.gitignore`)
+5. Creates initial commit with Tempest author
+
+**TypeScript usage:**
+
+```typescript
+await invoke("git_init", { projectPath: "/path/to/project" });
+```
+
+**Error cases:**
+
+- `git` not in PATH
+- Directory doesn't exist
+- Already a git repository (should be idempotent in future)
+- Permission denied
+
+---
+
+### check_git_initialized
+
+Checks if a directory is a git repository.
+
+```rust
+#[tauri::command]
+fn check_git_initialized(path: String) -> bool
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `path` | `String` | Directory to check |
+
+**Returns:** `bool`
+
+- `true` if directory is a git repository (has `.git/`)
+- `false` otherwise
+
+**Implementation:**
+
+- Runs `git rev-parse --git-dir` and checks exit code
+- If true, ensures `.gitignore` contains `.tempest` entries
+
+**TypeScript usage:**
+
+```typescript
+const isGit = await invoke<boolean>("check_git_initialized", {
+  path: "/path/to/project"
+});
+if (!isGit) {
+  // Show git initialization UI
+}
+```
+
+**Error cases:**
+
+- `git` not in PATH: Returns false
+- Path doesn't exist: Returns false
+
+---
+
+### git_add_remote
+
+Adds a new git remote.
+
+```rust
+#[tauri::command]
+fn git_add_remote(repo_path: String, remote_url: String) -> Result<(), String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `repo_path` | `String` | Path to git repository |
+| `remote_url` | `String` | URL of remote (https or SSH) |
+
+**Returns:** `Result<(), String>`
+
+- **Ok:** Remote added successfully
+- **Err:** Repository error, remote already exists, invalid URL, etc
+
+**Implementation:**
+
+- Runs `git remote add origin <url>`
+- Fails if remote named "origin" already exists
+
+**TypeScript usage:**
+
+```typescript
+await invoke("git_add_remote", {
+  repo_path: "/path/to/project",
+  remote_url: "https://github.com/user/repo.git"
+});
+```
+
+**Error cases:**
+
+- Repository is not a git repo
+- Remote "origin" already exists
+- URL is invalid
+
+---
+
+## Git Worktrees (Multi-workspace)
+
+### create_terminal_worktree
+
+Creates a new git worktree for isolated sessions.
+
+```rust
+#[tauri::command]
+async fn create_terminal_worktree(
+    project_path: String,
+    name: String
+) -> Result<String, String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `project_path` | `String` | Root project path |
+| `name` | `String` | Worktree name (branch name and directory name) |
+
+**Returns:** `Result<String, String>`
+
+- **Ok:** Full path to worktree (e.g., `/project/.tempest/my-workspace`)
+- **Err:** Git error, worktree already exists, etc
+
+**Execution:** Runs on a dedicated blocking thread to avoid starving the IPC worker pool.
+
+**Implementation steps:**
+
+1. Ensures at least one commit exists in repository (auto-commits empty repo if needed)
+2. Prunes stale worktree metadata from failed previous runs
+3. Creates worktree via `git worktree add .tempest/<name> -b <name>`
+4. Handles pre-existing path (removes orphan dir or errors if registered)
+5. Copies gitignored files (`.env`, `.env.local`, `.env.development`, `.env.production`) from project root
+6. Creates junctions (Windows) or symlinks (Unix) for large dependency dirs (`node_modules`, `.venv`)
+7. Adds `.tempest-pid` to `.git/worktrees/<name>/info/exclude` (local-only, not committed)
+8. Validates worktree is not empty
+9. Writes to `.gitignore` in project root
+
+**TypeScript usage:**
+
+```typescript
+const worktreePath = await invoke<string>("create_terminal_worktree", {
+  projectPath: "/path/to/project",
+  name: "feature-x"
+});
+// worktreePath === "/path/to/project/.tempest/feature-x"
+```
+
+**Error cases:**
+
+- Repository has no commits and auto-commit fails
+- Worktree name already exists
+- Permission denied in project directory
+- Disk full
+- Worktree created but ends up empty (all files .gitignored)
+- Link creation fails (continue without link, log warning)
+
+---
+
+### git_worktree_remove
+
+Removes a git worktree directory.
+
+```rust
+#[tauri::command]
+fn git_worktree_remove(repo_path: String, worktree_path: String) -> Result<(), String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `repo_path` | `String` | Path to root project repository |
+| `worktree_path` | `String` | Path to worktree to remove |
+
+**Returns:** `Result<(), String>`
+
+- **Ok:** Worktree removed
+- **Err:** Directory still in use (process holding handle), permission denied, etc
+
+**Implementation:**
+
+1. Removes directory junctions/symlinks (Windows) or symlinks (Unix) first to avoid following them into the real directories
+2. Attempts `git worktree remove --force <path>`
+3. If git fails, falls back to direct `fs::remove_dir_all` with retry loop (6 attempts, 500ms intervals)
+4. On Windows, last resort uses `cmd /c rmdir /s /q` if Rust's remove fails
+5. Prunes dangling `.git/worktrees/<name>` metadata
+
+**TypeScript usage:**
+
+```typescript
+await invoke("git_worktree_remove", {
+  repo_path: "/path/to/project",
+  worktree_path: "/path/to/project/.tempest/feature-x"
+});
+```
+
+**Windows-specific:** Converts forward slashes to backslashes automatically.
+
+**Error cases:**
+
+- PTY process still alive (CWD handle held on Windows): Fails after retries
+- Permission denied
+- Worktree path doesn't exist: Succeeds (idempotent)
+
+---
+
+### close_and_remove_worktree
+
+Atomically kills a PTY and removes its worktree.
+
+```rust
+#[tauri::command]
+fn close_and_remove_worktree(
+    session_id: String,
+    repo_path: String,
+    worktree_path: String,
+    state: tauri::State<PtyState>,
+) -> Result<(), String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `session_id` | `String` | PTY session ID to close |
+| `repo_path` | `String` | Root project repository path |
+| `worktree_path` | `String` | Worktree path to remove |
+| `state` | `tauri::State<PtyState>` | Global PTY registry |
+
+**Returns:** `Result<(), String>`
+
+**Implementation:**
+
+1. Removes session from PtyState DashMap (if present)
+2. Kills child process tree (via portable-pty job object on Windows, SIGTERM then SIGKILL on Unix)
+3. Waits up to 3 seconds for process to exit (polling every 50ms)
+4. Reads and force-kills any PID from `.tempest-pid` sidecar (handles app restart case)
+5. Waits 500ms for OS to release directory handle
+6. Removes directory junctions/symlinks
+7. Attempts `git worktree remove --force`
+8. Falls back to direct directory removal with retry loop (6 attempts, 500ms)
+9. On Windows, uses `cmd /c rmdir /s /q` as last resort
+10. Prunes `.git/worktrees/<name>` metadata
+
+**Critical:** Collapses two separate operations (close PTY + remove dir) into one Rust round-trip to avoid race conditions where frontend state updates drop the close callback before Rust finishes.
+
+**TypeScript usage:**
+
+```typescript
+await invoke("close_and_remove_worktree", {
+  session_id: "abc123",
+  repo_path: "/path/to/project",
+  worktree_path: "/path/to/project/.tempest/feature-x"
+});
+```
+
+**Error cases:**
+
+- PTY not found in state: Continues with directory removal
+- Directory still in use after all retries: Returns error
+- `.tempest-pid` corrupted: Ignores and continues
+
+---
+
+## Git Branches
+
+### get_git_branch
+
+Returns the current branch name.
+
+```rust
+#[tauri::command]
+fn get_git_branch(path: String) -> Result<String, String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `path` | `String` | Path to git repository or worktree |
+
+**Returns:** `Result<String, String>`
+
+- **Ok:** Branch name (e.g., "main", "feature/x")
+- **Err:** Not a git repo, detached HEAD, etc
+
+**Implementation:**
+
+- Uses `git symbolic-ref --short HEAD`
+- Works even on repos with zero commits (no HEAD yet)
+
+**TypeScript usage:**
+
+```typescript
+const branch = await invoke<string>("get_git_branch", {
+  path: "/path/to/project"
+});
+// branch === "main"
+```
+
+**Error cases:**
+
+- Not a git repository
+- HEAD doesn't exist (no commits yet)
+- Detached HEAD (error message includes current commit)
+
+---
+
+### git_list_branches
+
+Lists all branches in a repository.
+
+```rust
+#[tauri::command]
+fn git_list_branches(repo_path: String) -> Result<Vec<BranchInfo>, String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `repo_path` | `String` | Path to git repository |
+
+**Return type:**
+
+```rust
+struct BranchInfo {
+    name: String;
+    is_current: bool;
+}
+```
+
+**Returns:** `Result<Vec<BranchInfo>, String>`
+
+- **Ok:** List of all branches with current status
+- **Err:** Not a git repo, git command failed, etc
+
+**Implementation:**
+
+- Runs `git branch` and parses output
+- Current branch marked with `* ` prefix
+- Detached HEAD marker `+ ` filtered out
+
+**TypeScript usage:**
+
+```typescript
+const branches = await invoke<BranchInfo[]>("git_list_branches", {
+  repo_path: "/path/to/project"
+});
+// [
+//   { name: "main", is_current: true },
+//   { name: "feature/x", is_current: false }
+// ]
+```
+
+**Error cases:**
+
+- Not a git repository
+- No branches exist (repo with zero commits)
+
+---
+
+### git_switch_branch
+
+Switches to a branch, with auto-stash of uncommitted changes.
+
+```rust
+#[tauri::command]
+fn git_switch_branch(repo_path: String, branch: String) -> Result<(), String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `repo_path` | `String` | Path to git repository |
+| `branch` | `String` | Target branch name |
+
+**Returns:** `Result<(), String>`
+
+- **Ok:** Switched successfully
+- **Err:** Branch doesn't exist, checkout failed, etc
+
+**Implementation (smart stash):**
+
+1. Gets current branch name
+2. Checks if working tree is dirty (`git status --porcelain`)
+3. If dirty, stashes changes with label `tempest-autostash-from-<branch>`
+4. Switches branch via `git checkout <branch>`
+5. If checkout fails, restores stash so changes aren't lost
+6. If checkout succeeds, checks stash list for a stash from a previous visit to the new branch
+7. If found, auto-applies stash (restores changes from previous session on this branch)
+
+**TypeScript usage:**
+
+```typescript
+await invoke("git_switch_branch", {
+  repo_path: "/path/to/project",
+  branch: "develop"
+});
+```
+
+**Error cases:**
+
+- Branch doesn't exist
+- Stash operation fails
+- Working tree has merge conflicts
+
+---
+
+### git_delete_branch
+
+Deletes a branch locally and optionally remotely.
+
+```rust
+#[tauri::command]
+fn git_delete_branch(
+    repo_path: String,
+    branch: String,
+    force: bool,
+    delete_remote: bool
+) -> Result<(), String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `repo_path` | `String` | Path to git repository |
+| `branch` | `String` | Branch name to delete |
+| `force` | `bool` | Use `-D` (force) instead of `-d` (safe) |
+| `delete_remote` | `bool` | Also delete on remote origin |
+
+**Returns:** `Result<(), String>`
+
+**Implementation:**
+
+1. Deletes locally with `git branch -d <branch>` (or `-D` if force)
+2. If `delete_remote`, attempts `git push origin --delete <branch>` (best-effort, doesn't fail if remote branch doesn't exist)
+
+**TypeScript usage:**
+
+```typescript
+await invoke("git_delete_branch", {
+  repo_path: "/path/to/project",
+  branch: "feature/old",
+  force: false,
+  delete_remote: true
+});
+```
+
+**Error cases:**
+
+- Branch doesn't exist
+- Branch not fully merged (unless force=true)
+- Permission denied on remote
+
+---
+
+### git_branch_delete
+
+Force deletes a branch (internal use).
+
+```rust
+#[tauri::command]
+fn git_branch_delete(repo_path: String, branch_name: String) -> Result<(), String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `repo_path` | `String` | Path to git repository |
+| `branch_name` | `String` | Branch to delete |
+
+**Returns:** `Result<(), String>`
+
+**Implementation:**
+
+- Equivalent to `git branch -D <branch>` (always force)
+- Used internally for worktree branch cleanup
+
+**TypeScript usage:**
+
+```typescript
+await invoke("git_branch_delete", {
+  repo_path: "/path/to/project",
+  branch_name: "old-feature"
+});
+```
+
+---
+
+### check_branch_merged
+
+Checks if a branch has been merged into a base branch.
+
+```rust
+#[tauri::command]
+async fn check_branch_merged(repo_path: String, branch: String) -> Result<bool, String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `repo_path` | `String` | Path to git repository |
+| `branch` | `String` | Branch to check |
+
+**Returns:** `Result<bool, String>`
+
+- `true` if merged (or remote branch deleted)
+- `false` if not merged
+- `Err` if git command fails
+
+**Implementation:**
+
+1. Refreshes remote state with `git fetch --prune origin` (offline is OK, falls back to local refs)
+2. Checks if remote branch exists with `git ls-remote --heads origin <branch>`
+3. If remote doesn't exist, returns `true` (deleted after merge)
+4. Checks if branch tip is ancestor of base branches: `git merge-base --is-ancestor <branch> <base>`
+5. Tries base branches in order: `origin/main`, `origin/master`, `origin/develop`
+6. Returns `true` if ancestor of any base branch
+
+**TypeScript usage:**
+
+```typescript
+const merged = await invoke<boolean>("check_branch_merged", {
+  repo_path: "/path/to/project",
+  branch: "feature/x"
+});
+```
+
+**Error cases:**
+
+- Not a git repository
+- No origin remote configured
+- Network error during fetch (falls back to local refs)
+
+---
+
+## Git Staging and Commits
+
+### git_stage
+
+Stages a file for commit.
+
+```rust
+#[tauri::command]
+fn git_stage(repo_path: String, file_path: String) -> Result<(), String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `repo_path` | `String` | Path to git repository |
+| `file_path` | `String` | Relative path to file within repo |
+
+**Returns:** `Result<(), String>`
+
+**Implementation:**
+
+- Runs `git add -- <file_path>`
+- `--` prevents file_path from being interpreted as a flag
+
+**TypeScript usage:**
+
+```typescript
+await invoke("git_stage", {
+  repo_path: "/path/to/project",
+  file_path: "src/index.ts"
+});
+```
+
+---
+
+### git_unstage
+
+Unstages a file.
+
+```rust
+#[tauri::command]
+fn git_unstage(repo_path: String, file_path: String) -> Result<(), String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `repo_path` | `String` | Path to git repository |
+| `file_path` | `String` | Relative path to file within repo |
+
+**Returns:** `Result<(), String>`
+
+**Implementation:**
+
+- Runs `git restore --staged -- <file_path>`
+
+**TypeScript usage:**
+
+```typescript
+await invoke("git_unstage", {
+  repo_path: "/path/to/project",
+  file_path: "src/index.ts"
+});
+```
+
+---
+
+### git_discard
+
+Discards changes to a file or deletes untracked file.
+
+```rust
+#[tauri::command]
+fn git_discard(
+    repo_path: String,
+    file_path: String,
+    untracked: bool
+) -> Result<(), String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `repo_path` | `String` | Path to git repository |
+| `file_path` | `String` | Relative path to file within repo |
+| `untracked` | `bool` | If true, delete file; if false, restore from HEAD |
+
+**Returns:** `Result<(), String>`
+
+**Implementation:**
+
+- If `untracked: true`: Attempts `fs::remove_file`, falls back to `fs::remove_dir_all` for directories
+- If `untracked: false`: Runs `git restore -- <file_path>`
+
+**TypeScript usage:**
+
+```typescript
+// Restore a tracked file
+await invoke("git_discard", {
+  repo_path: "/path/to/project",
+  file_path: "src/index.ts",
+  untracked: false
+});
+
+// Delete an untracked file
+await invoke("git_discard", {
+  repo_path: "/path/to/project",
+  file_path: "src/temp.ts",
+  untracked: true
+});
+```
+
+**Error cases:**
+
+- File doesn't exist
+- Permission denied
+- File is directory (for untracked deletion)
+
+---
+
+### git_commit_staged
+
+Commits staged changes.
+
+```rust
+#[tauri::command]
+fn git_commit_staged(repo_path: String, message: String) -> Result<(), String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `repo_path` | `String` | Path to git repository |
+| `message` | `String` | Commit message |
+
+**Returns:** `Result<(), String>`
+
+**Validation:** Fails if message is empty after trimming.
+
+**Implementation:**
+
+- Runs `git commit -m <message>`
+- No author configuration (uses git config defaults)
+
+**TypeScript usage:**
+
+```typescript
+await invoke("git_commit_staged", {
+  repo_path: "/path/to/project",
+  message: "Fix: resolve edge case in parser"
+});
+```
+
+**Error cases:**
+
+- Empty message
+- Nothing staged for commit
+- Not a git repository
+- User identity not configured in git
+
+---
+
+## Git Status and Diff
+
+### git_status
+
+Returns working tree status.
+
+```rust
+#[tauri::command]
+fn git_status(path: String) -> Result<Vec<GitStatusEntry>, String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `path` | `String` | Path to git repository or worktree |
+
+**Return type:**
+
+```rust
+struct GitStatusEntry {
+    xy: String;      // Two-char status (e.g., "M ", " M", "??")
+    status: String;  // Backward compat: dominant single char
+    path: String;    // File path
+}
+```
+
+**Returns:** `Result<Vec<GitStatusEntry>, String>`
+
+**Implementation:**
+
+- Runs `git status --short`
+- Parses unified two-character status codes
+- Filters empty lines
+
+**Status codes (git format):**
+
+- First char: index status (staging area)
+- Second char: worktree status
+
+| Code | Meaning |
+|------|---------|
+| ` M` | Modified (unstaged) |
+| `M ` | Modified (staged) |
+| `A ` | Added (staged) |
+| `D ` | Deleted (unstaged) |
+| `??` | Untracked |
+| `UU` | Unmerged |
+
+**TypeScript usage:**
+
+```typescript
+const status = await invoke<GitStatusEntry[]>("git_status", {
+  path: "/path/to/project"
+});
+```
+
+---
+
+### git_diff
+
+Returns all uncommitted changes.
+
+```rust
+#[tauri::command]
+fn git_diff(path: String) -> Result<Vec<FileDiff>, String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `path` | `String` | Path to git repository or worktree |
+
+**Return type:**
+
+```rust
+struct FileDiff {
+    status: String;         // "M" | "A" | "D" | "R" (status code)
+    path: String;           // File path
+    adds: u32;              // Count of added lines
+    dels: u32;              // Count of deleted lines
+    lines: Vec<DiffLine>,   // Individual diff lines
+}
+
+struct DiffLine {
+    kind: String;           // "hunk" | "context" | "added" | "removed"
+    line_old: Option<u32>;  // Line number in original (None for added)
+    line_new: Option<u32>;  // Line number in new (None for removed)
+    content: String;        // Full line including +/- prefix
+}
+```
+
+**Returns:** `Result<Vec<FileDiff>, String>`
+
+**Implementation:**
+
+- Runs `git diff HEAD` (shows uncommitted changes vs HEAD)
+- Parses unified diff format
+- Extracts hunk headers, line numbers, and change type
+- Includes both staged and unstaged changes
+
+**TypeScript usage:**
+
+```typescript
+const diffs = await invoke<FileDiff[]>("git_diff", {
+  path: "/path/to/project"
+});
+diffs.forEach(file => {
+  console.log(`${file.status} ${file.path}: +${file.adds}/-${file.dels}`);
+});
+```
+
+---
+
+### git_diff_file
+
+Returns diff for a single file.
+
+```rust
+#[tauri::command]
+fn git_diff_file(
+    path: String,
+    file_path: String,
+    staged: bool,
+    untracked: bool
+) -> Result<Vec<DiffLine>, String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `path` | `String` | Path to git repository |
+| `file_path` | `String` | Relative path to file within repo |
+| `staged` | `bool` | If true, show staged changes; else unstaged working tree |
+| `untracked` | `bool` | If true, render entire file as added lines (no git needed) |
+
+**Returns:** `Result<Vec<DiffLine>, String>`
+
+**Implementation:**
+
+- If `untracked: true`: Reads file and renders each line as "added" without running git
+- If `staged: true`: Runs `git diff --cached -- <file>`
+- If `staged: false`: Runs `git diff -- <file>`
+- Parses unified diff output
+
+**TypeScript usage:**
+
+```typescript
+// Show changes to be committed
+const stagedDiff = await invoke<DiffLine[]>("git_diff_file", {
+  path: "/path/to/project",
+  file_path: "src/index.ts",
+  staged: true,
+  untracked: false
+});
+
+// Show new untracked file as entirely added
+const untrackedDiff = await invoke<DiffLine[]>("git_diff_file", {
+  path: "/path/to/project",
+  file_path: "src/new.ts",
+  staged: false,
+  untracked: true
+});
+```
+
+---
+
+## Git Push
+
+### git_push_branch
+
+Commits pending changes and pushes branch.
+
+```rust
+#[tauri::command]
+async fn git_push_branch(
+    repo_path: String,
+    commit_message: Option<String>
+) -> Result<String, String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `repo_path` | `String` | Path to git repository |
+| `commit_message` | `Option<String>` | Custom commit message; defaults to `"Agent work on <branch>"` |
+
+**Returns:** `Result<String, String>` (JSON string)
+
+**Response:**
+
+```json
+{
+  "remoteUrl": "https://github.com/user/repo.git",
+  "branch": "feature/x"
+}
+```
+
+**Implementation:**
+
+1. Gets current branch name
+2. Checks if working tree has changes (`git status --porcelain`)
+3. If changes exist:
+   - Checks if anything is staged (`git diff --cached --quiet`)
+   - If nothing staged, auto-stages all changes (`git add -A`)
+   - Commits with provided message or default
+4. Pushes with `git push -u origin <branch>`
+5. Queries remote URL with `git remote get-url origin`
+6. Returns JSON with remoteUrl and branch
+
+**TypeScript usage:**
+
+```typescript
+const result = await invoke<string>("git_push_branch", {
+  repo_path: "/path/to/project",
+  commit_message: "feat: add dark mode support"
+});
+const { remoteUrl, branch } = JSON.parse(result);
+console.log(`Pushed ${branch} to ${remoteUrl}`);
+```
+
+**Error cases:**
+
+- Branch doesn't exist
+- No remote configured
+- Network error during push
+- Commit fails (e.g., user identity not configured)
+
+---
+
+### git_push_current_branch
+
+Pushes current branch without committing.
+
+```rust
+#[tauri::command]
+fn git_push_current_branch(repo_path: String) -> Result<String, String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `repo_path` | `String` | Path to git repository |
+
+**Returns:** `Result<String, String>` (JSON string)
+
+**Response format:** Same as `git_push_branch`
+
+**Implementation:**
+
+- Runs `git push -u origin <current-branch>`
+- Fails if working tree is dirty (no auto-commit like `git_push_branch`)
+
+**TypeScript usage:**
+
+```typescript
+const result = await invoke<string>("git_push_current_branch", {
+  repo_path: "/path/to/project"
+});
+```
+
+---
+
+### git_create_push_branch
+
+Creates a new branch and pushes to remote.
+
+```rust
+#[tauri::command]
+fn git_create_push_branch(repo_path: String, branch_name: String) -> Result<String, String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `repo_path` | `String` | Path to git repository |
+| `branch_name` | `String` | New branch name to create and push |
+
+**Returns:** `Result<String, String>` (JSON string)
+
+**Response format:** Same as `git_push_branch`
+
+**Implementation:**
+
+1. Creates branch locally with `git checkout -b <branch>`
+2. Pushes with `git push -u origin <branch>`
+3. On push failure, switches back to original branch so repo isn't left detached
+4. Returns remote URL and branch name
+
+**TypeScript usage:**
+
+```typescript
+const result = await invoke<string>("git_create_push_branch", {
+  repo_path: "/path/to/project",
+  branch_name: "feature/new-ui"
+});
+```
+
+**Error cases:**
+
+- Branch already exists
+- Push fails (no network, auth error)
+
+---
+
+## Terminal and PTY Sessions
+
+### create_pty_session
+
+Creates an interactive pseudo-terminal session.
+
+```rust
+#[tauri::command]
+async fn create_pty_session(
+    session_id: String,
+    cwd: String,
+    rows: u16,
+    cols: u16,
+    command: Option<String>,
+    args: Option<Vec<String>>,
+    on_event: Channel<PtyOutputPayload>,
+    state: tauri::State<'_, PtyState>,
+) -> Result<(), String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `session_id` | `String` | Unique session ID (UUID from frontend) |
+| `cwd` | `String` | Working directory for PTY |
+| `rows` | `u16` | Terminal height in rows |
+| `cols` | `u16` | Terminal width in columns |
+| `command` | `Option<String>` | Agent executable (e.g., "claude") or None for bare shell |
+| `args` | `Option<Vec<String>>` | Agent arguments (pre-assembled by frontend with resume flags, etc) |
+| `on_event` | `Channel<PtyOutputPayload>` | Tauri channel for streaming output |
+| `state` | `tauri::State<'_, PtyState>` | Global PTY registry |
+
+**Returns:** `Result<(), String>`
+
+**Payload type:**
+
+```rust
+struct PtyOutputPayload {
+    session_id: String;
+    data: String;
+}
+```
+
+**Execution:** Blocking operation runs on dedicated thread.
+
+**Implementation:**
+
+1. **Shell resolution:** Probes platform for preferred shell (cached in static `SHELL`):
+   - Windows: Checks if PowerShell Core (`pwsh`) available, falls back to `powershell.exe`
+   - Unix: Honors `$SHELL` env var, falls back to `/bin/bash`
+
+2. **PTY creation:** Opens PTY pair with given terminal size
+
+3. **Command construction:**
+   - If `command` is None: Bare shell session
+   - If `command` is Some: Agent session
+     - Shell-quotes args (handles spaces, single quotes)
+     - On Windows: `<shell> -NoLogo -NoExit -Command <agent> <args>`
+     - On Unix: `<shell> -c "<agent> <args>; exec $SHELL -i"`
+
+4. **Spawn child:** Spawns shell process with full agent command
+
+5. **PID persistence:** Writes child's OS PID to `<cwd>/.tempest-pid` for recovery after app restart
+
+6. **Output streaming:** Starts background thread that reads PTY master in 4KB chunks and sends via `on_event` channel
+
+7. **Registry:** Inserts session into PtyState DashMap
+
+**TypeScript usage:**
+
+```typescript
+import { Channel } from "@tauri-apps/api/core";
+
+const channel = new Channel<{ session_id: string; data: string }>();
+channel.onmessage = (event) => {
+  const { session_id, data } = event.payload;
+  // Update terminal UI with new data
+};
+
+await invoke("create_pty_session", {
+  session_id: "sess-123",
+  cwd: "/path/to/project/.tempest/my-workspace",
+  rows: 24,
+  cols: 80,
+  command: "claude",
+  args: ["--workspace", "/path/to/project/.tempest/my-workspace"],
+  on_event: channel
+});
+```
+
+**Error cases:**
+
+- Working directory doesn't exist
+- Shell executable not found
+- PTY creation fails (system resource limit)
+- Child process spawn fails
+
+---
+
+### write_to_pty
+
+Writes data to PTY stdin.
+
+```rust
+#[tauri::command]
+fn write_to_pty(
+    session_id: String,
+    data: Vec<u8>,
+    state: tauri::State<PtyState>,
+) -> Result<(), String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `session_id` | `String` | Session ID to write to |
+| `data` | `Vec<u8>` | Bytes to write (terminal input) |
+| `state` | `tauri::State<PtyState>` | Global PTY registry |
+
+**Returns:** `Result<(), String>`
+
+**Implementation:**
+
+- Looks up session in DashMap by session_id
+- Writes bytes to PTY master's writer (stdin)
+- No buffering; write is synchronous
+
+**TypeScript usage:**
+
+```typescript
+// Send Ctrl+C (0x03)
+await invoke("write_to_pty", {
+  session_id: "sess-123",
+  data: [0x03]
+});
+
+// Send text (terminal interprets as if user typed it)
+const text = "ls -la\n";
+await invoke("write_to_pty", {
+  session_id: "sess-123",
+  data: Array.from(new TextEncoder().encode(text))
+});
+```
+
+**Error cases:**
+
+- Session not found
+- PTY closed or broken pipe
+- I/O error
+
+---
+
+### resize_pty
+
+Resizes terminal.
+
+```rust
+#[tauri::command]
+fn resize_pty(
+    session_id: String,
+    rows: u16,
+    cols: u16,
+    state: tauri::State<PtyState>,
+) -> Result<(), String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `session_id` | `String` | Session ID to resize |
+| `rows` | `u16` | New terminal height |
+| `cols` | `u16` | New terminal width |
+| `state` | `tauri::State<PtyState>` | Global PTY registry |
+
+**Returns:** `Result<(), String>`
+
+**Implementation:**
+
+- Looks up session in DashMap
+- Calls `master.resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })`
+- Sends SIGWINCH signal to shell process (shell updates internal state)
+
+**TypeScript usage:**
+
+```typescript
+// When window resizes
+await invoke("resize_pty", {
+  session_id: "sess-123",
+  rows: 30,
+  cols: 120
+});
+```
+
+**Error cases:**
+
+- Session not found
+- Resize fails (closed PTY)
+
+---
+
+### close_pty_session
+
+Closes a PTY session.
+
+```rust
+#[tauri::command]
+fn close_pty_session(
+    session_id: String,
+    state: tauri::State<PtyState>,
+) -> Result<(), String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `session_id` | `String` | Session ID to close |
+| `state` | `tauri::State<PtyState>` | Global PTY registry |
+
+**Returns:** `Result<(), String>`
+
+**Implementation:**
+
+1. Removes session from DashMap (no new data can arrive after this)
+2. Kills child process (entire job object on Windows)
+3. Waits up to 1 second for process to exit (polling every 25ms, 40 attempts)
+4. Removes `.tempest-pid` sidecar file
+5. Does nothing if session already closed
+
+**TypeScript usage:**
+
+```typescript
+await invoke("close_pty_session", {
+  session_id: "sess-123"
+});
+```
+
+**Note:** Closing a PTY does NOT remove the worktree directory. Use `close_and_remove_worktree` for that.
+
+---
+
+## Git Hooks (Co-author Attribution)
+
+### write_coauthor_hook
+
+Installs prepare-commit-msg hook for co-author attribution.
+
+```rust
+#[tauri::command]
+fn write_coauthor_hook(repo_path: String, coauthor_line: String) -> Result<(), String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `repo_path` | `String` | Path to git repository |
+| `coauthor_line` | `String` | Co-author trailer (e.g., `"Co-Authored-By: Name <email>"`) |
+
+**Returns:** `Result<(), String>`
+
+**Idempotency:** Multiple calls have no extra effect (wrapped in markers).
+
+**Implementation:**
+
+1. Creates `.git/hooks/` directory if missing
+2. Builds hook script block wrapped in `# Tempest-attribution-begin` and `# Tempest-attribution-end`
+3. If hook exists but has no Tempest block: Appends block
+4. If hook exists with block: Overwrites block (idempotent)
+5. If hook doesn't exist: Creates with shebang
+6. On Unix/macOS: Sets executable bit (0o755)
+
+**Hook behavior:**
+
+```bash
+#!/bin/sh
+# Tempest-attribution-begin
+COAUTHOR="Co-Authored-By: ..."
+if ! grep -qF "$COAUTHOR" "$1"; then
+  printf '\n\n%s\n' "$COAUTHOR" >> "$1"
+fi
+# Tempest-attribution-end
+```
+
+Appends co-author line to commit message if not already present.
+
+**TypeScript usage:**
+
+```typescript
+await invoke("write_coauthor_hook", {
+  repo_path: "/path/to/project",
+  coauthor_line: "Co-Authored-By: Tempest <tempestai.dev@gmail.com>"
+});
+```
+
+---
+
+### remove_coauthor_hook
+
+Removes Tempest co-author hook block.
+
+```rust
+#[tauri::command]
+fn remove_coauthor_hook(repo_path: String) -> Result<(), String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `repo_path` | `String` | Path to git repository |
+
+**Returns:** `Result<(), String>`
+
+**Implementation:**
+
+1. Reads `.git/hooks/prepare-commit-msg`
+2. Strips lines between Tempest markers
+3. If nothing remains (or only shebang): Deletes hook file
+4. Otherwise: Rewrites hook without Tempest block
+5. No-op if file doesn't exist or has no Tempest block
+
+**TypeScript usage:**
+
+```typescript
+await invoke("remove_coauthor_hook", {
+  repo_path: "/path/to/project"
+});
+```
+
+---
+
+## IDE Panel Integration
+
+### embed_ide_panel
+
+Creates an embedded child webview for live preview or IDE panels.
+
+```rust
+#[tauri::command]
+async fn embed_ide_panel(
+    window: tauri::Window,
+    panel_id: String,
+    url: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `window` | `tauri::Window` | Main window context |
+| `panel_id` | `String` | Unique identifier for panel (e.g., "preview-abc123") |
+| `url` | `String` | URL to load (external or app-relative) |
+| `x` | `f64` | Horizontal position in logical pixels |
+| `y` | `f64` | Vertical position in logical pixels |
+| `width` | `f64` | Panel width in logical pixels |
+| `height` | `f64` | Panel height in logical pixels |
+
+**Returns:** `Result<(), String>`
+
+**TypeScript usage:**
+
+```typescript
+await invoke("embed_ide_panel", {
+  panel_id: "preview-1",
+  url: "http://localhost:3000",
+  x: 600,
+  y: 0,
+  width: 400,
+  height: 800
+});
+```
+
+---
+
+### resize_ide_panel
+
+Resizes and repositions an IDE panel.
+
+```rust
+#[tauri::command]
+async fn resize_ide_panel(
+    window: tauri::Window,
+    panel_id: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String>
+```
+
+Same parameters as `embed_ide_panel`. No-op if panel doesn't exist.
+
+---
+
+### destroy_ide_panel
+
+Closes and removes an IDE panel.
+
+```rust
+#[tauri::command]
+async fn destroy_ide_panel(
+    window: tauri::Window,
+    panel_id: String,
+) -> Result<(), String>
+```
+
+**TypeScript usage:**
+
+```typescript
+await invoke("destroy_ide_panel", {
+  panel_id: "preview-1"
+});
+```
+
+---
+
+### get_ide_panel_url
+
+Returns the current URL of an IDE panel.
+
+```rust
+#[tauri::command]
+async fn get_ide_panel_url(
+    window: tauri::Window,
+    panel_id: String,
+) -> Result<Option<String>, String>
+```
+
+**Returns:** `Some(url)` if panel exists, `None` otherwise.
+
+---
+
+## Secondary Windows (Zen Mode)
+
+### open_zen_window
+
+Opens a secondary frameless window for distraction-free editing.
+
+```rust
+#[tauri::command]
+fn open_zen_window(
+    app: tauri::AppHandle,
+    state: tauri::State<ZenState>,
+    path: String,
+    name: String,
+) -> Result<(), String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `app` | `tauri::AppHandle` | App context |
+| `state` | `tauri::State<ZenState>` | Zen window metadata storage |
+| `path` | `String` | Project path |
+| `name` | `String` | Project name |
+
+**Returns:** `Result<(), String>`
+
+**Window properties:**
+
+- Label: `zen-<timestamp-ms>` (unique, based on Unix epoch milliseconds)
+- Title: "Tempest"
+- Decorations: false (frameless)
+- Size: 1280x800 (logical pixels)
+- Centered on screen
+- Drag-drop disabled
+
+**Implementation:**
+
+1. Generates unique label based on current timestamp
+2. Stores `(path, name)` in ZenState under label
+3. Creates new WebviewWindow with `index.html` entry point
+4. The React component reads label and calls `get_zen_config` to retrieve project info
+
+**TypeScript usage:**
+
+```typescript
+await invoke("open_zen_window", {
+  path: "/path/to/project",
+  name: "My Project"
+});
+```
+
+---
+
+### get_zen_config
+
+Retrieves path and name for a secondary window.
+
+```rust
+#[tauri::command]
+fn get_zen_config(
+    state: tauri::State<ZenState>,
+    label: String,
+) -> Option<(String, String)>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `state` | `tauri::State<ZenState>` | Zen window metadata storage |
+| `label` | `String` | Window label (from `getCurrentWindow().label`) |
+
+**Returns:** `Option<(String, String)>`
+
+- `Some((path, name))` if label exists
+- `None` if label not found
+
+**TypeScript usage (in secondary window):**
+
+```typescript
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
+
+const label = getCurrentWindow().label;
+const config = await invoke<[string, string] | null>("get_zen_config", {
+  label
+});
+if (config) {
+  const [path, name] = config;
+  // Initialize workspace view
+}
+```
+
+---
+
+## Code Indexing (Atlas)
+
+### start_atlas_index
+
+Spawns Node.js process to index project codebase.
+
+```rust
+#[tauri::command]
+fn start_atlas_index(app: tauri::AppHandle, project_path: String) -> Result<(), String>
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `app` | `tauri::AppHandle` | App context (for resource paths) |
+| `project_path` | `String` | Path to project to index |
+
+**Returns:** `Result<(), String>`
+
+**Execution:** Fire-and-forget. Returns immediately; indexing happens in background.
+
+**Implementation:**
+
+1. Resolves Atlas entry point path:
+   - Dev builds: `<cargo-manifest-dir>/resources/atlas/dist/mcp/server-entry.js`
+   - Release builds: `<exe-dir>/resources/atlas/dist/mcp/server-entry.js`
+
+2. Validates entry point exists
+
+3. Spawns `node --liftoff-only <entry> --init --path <project>` with:
+   - Stdin: null
+   - Stdout: piped to separate reader thread
+   - Stderr: piped to separate reader thread
+
+4. Each thread emits `atlas:log` events to frontend with log lines as they arrive
+
+5. Waits for child process to exit
+
+6. Writes Atlas MCP server config to:
+   - `.mcp.json` (Claude Code, Cline, Zed, Windsurf)
+   - `.cursor/mcp.json` (Cursor)
+   - `.gemini/settings.json` (Gemini CLI)
+   - `.kiro/settings/mcp.json` (Kiro/AWS)
+   - `opencode.jsonc` (OpenCode)
+
+7. Updates `.gitignore` with config file paths (local-only, not committed)
+
+**TypeScript usage:**
+
+```typescript
+// Start indexing in background
+await invoke("start_atlas_index", {
+  project_path: "/path/to/project"
+});
+
+// Listen for logs
+import { listen } from "@tauri-apps/api/event";
+await listen("atlas:log", (event) => {
+  const { path, line } = event.payload as { path: string; line: string };
+  console.log(`[${path}] ${line}`);
+});
+```
+
+**Error cases:**
+
+- Atlas entry point not bundled
+- Node.js not in PATH
+- Permission denied on project directory
+
+---
+
+### check_atlas_db
+
+Checks if Atlas has indexed a project.
+
+```rust
+#[tauri::command]
+fn check_atlas_db(project_path: String) -> bool
+```
+
+**Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `project_path` | `String` | Path to project |
+
+**Returns:** `bool`
+
+- `true` if `.tempest/atlas/atlas.db` exists
+- `false` otherwise
+
+**TypeScript usage:**
+
+```typescript
+const indexed = await invoke<boolean>("check_atlas_db", {
+  project_path: "/path/to/project"
+});
+if (!indexed) {
+  // Trigger indexing
+}
+```
+
+---
+
+## Dependencies and Technologies
+
+### Core Tauri
+
+- **tauri 2** with unstable features and asset protocol support
+- **url** for URL parsing and validation
+
+### Terminal Emulation
+
+- **portable-pty 0.8** for cross-platform PTY support
+- **libc 0.2** (Unix) for SIGKILL in process tree cleanup
+- **junction 1** (Windows) for directory junction creation
+
+### State Management
+
+- **dashmap 6** for lock-free concurrent HashMap storage
+
+### Serialization
+
+- **serde 1** with derive macros
+- **serde_json 1** for JSON serialization
+

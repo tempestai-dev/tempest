@@ -1,0 +1,702 @@
+---
+title: Creating Custom Themes
+description: Build custom themes for Tempest with the JSON theme format
+icon: "paintbrush"
+---
+
+# Creating Custom Themes for Tempest
+
+Tempest's theming system is built on JSON-based theme files that define colors for every UI element. This guide walks you through creating a custom theme from scratch, loading it into Tempest, and distributing it.
+
+## Theme Anatomy
+
+A Tempest theme is a JSON file with three top-level fields:
+
+```json
+{
+  "name": "Your Theme Name",
+  "type": "dark",
+  "colors": {
+    "bg.base": "#...",
+    ...
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | Yes | Display name of the theme (shown in theme switcher) |
+| `type` | "dark" or "light" | Yes | Theme classification, affects user expectations and accent contrast |
+| `colors` | object | Yes | Object mapping token names to hex color values |
+
+## Color Tokens
+
+A theme defines colors using dot-notation token names. These are automatically converted to CSS variables with the pattern `--tempest-TOKEN-CONVERTED`.
+
+For example:
+- `bg.base` becomes `--tempest-bg-base`
+- `accent.blue` becomes `--tempest-accent-blue`
+- `syntax.keyword` becomes `--tempest-syntax-keyword`
+
+### Required Token Groups
+
+Every theme must define colors for these token groups. Omitting a group will cause theme loading to fail.
+
+**Background tokens** (bg.* - 10 required):
+- `bg.base` - Root background, main container
+- `bg.editor` - Code editor/main work area
+- `bg.sidebar` - Navigation sidebar
+- `bg.panel` - Panels and dropdowns
+- `bg.titlebar` - Window titlebar
+- `bg.hover` - Hover state backgrounds
+- `bg.active` - Selected/active state backgrounds
+- `bg.input` - Input field backgrounds
+- `bg.selection` - Text selection background
+- `bg.selection-focused` - Focused text selection
+
+**Foreground tokens** (fg.* - 3 required):
+- `fg.default` - Primary text
+- `fg.muted` - Secondary/disabled text
+- `fg.subtle` - Tertiary text, placeholders
+
+**Border tokens** (border.* - 2 required):
+- `border.default` - Standard borders
+- `border.subtle` - Secondary borders, dividers
+
+**Accent tokens** (accent.* - 7 required):
+- `accent.blue` - Primary accent/links
+- `accent.pink` - Secondary accent
+- `accent.green` - Success states
+- `accent.yellow` - Warnings
+- `accent.purple` - Tertiary accent
+- `accent.cyan` - Additional accent
+- `accent.red` - Errors, destructive actions
+
+**Syntax tokens** (syntax.* - 8 required):
+- `syntax.comment` - Code comments
+- `syntax.keyword` - Language keywords
+- `syntax.string` - String literals
+- `syntax.function` - Function names
+- `syntax.variable` - Variables/identifiers
+- `syntax.constant` - Constants/numbers
+- `syntax.type` - Type annotations
+- `syntax.operator` - Operators
+- `syntax.attribute` - Attributes/decorators
+
+**Git tokens** (git.* - 6 required):
+- `git.added` - New/added files
+- `git.modified` - Modified files
+- `git.deleted` - Deleted files
+- `git.conflict` - Merge conflicts
+- `git.ignored` - Ignored files
+- `git.untracked` - Untracked files
+
+**Island tokens** (island.* - 4 required):
+- `island.bg-closed` - Collapsed panel background
+- `island.border-closed` - Collapsed panel border
+- `island.bg-open` - Expanded panel background
+- `island.border-open` - Expanded panel border
+
+**Tooltip tokens** (tooltip.* - 2 required):
+- `tooltip.bg` - Tooltip background
+- `tooltip.fg` - Tooltip text
+
+**Semantic tokens** (semantic.* - 4 required):
+- `semantic.error` - Error messages
+- `semantic.warning` - Warnings
+- `semantic.info` - Information
+- `semantic.success` - Success states
+
+**Terminal tokens** (terminal.* - 18 required):
+- `terminal.fg` - Terminal foreground text
+- `terminal.selection` - Terminal selection background
+- `terminal.black` - ANSI color 0
+- `terminal.red` - ANSI color 1
+- `terminal.green` - ANSI color 2
+- `terminal.yellow` - ANSI color 3
+- `terminal.blue` - ANSI color 4
+- `terminal.purple` - ANSI color 5 (magenta)
+- `terminal.cyan` - ANSI color 6
+- `terminal.white` - ANSI color 7
+- `terminal.brightBlack` - ANSI color 8
+- `terminal.brightRed` - ANSI color 9
+- `terminal.brightGreen` - ANSI color 10
+- `terminal.brightYellow` - ANSI color 11
+- `terminal.brightBlue` - ANSI color 12
+- `terminal.brightPurple` - ANSI color 13
+- `terminal.brightCyan` - ANSI color 14
+- `terminal.brightWhite` - ANSI color 15
+
+Total required: 65 color tokens minimum.
+
+## Step-by-Step Theme Creation
+
+### Step 1: Start with a Base
+
+Copy an existing theme as your starting point. This ensures you have all required tokens:
+
+```bash
+# Copy the light theme
+cp src/themes/origin-light/theme.json my-custom-theme.json
+
+# Edit the file
+nano my-custom-theme.json
+```
+
+Or start fresh with this template:
+
+```json
+{
+  "name": "My Custom Theme",
+  "type": "dark",
+  "colors": {
+    "bg.base": "#1a1a1a",
+    "bg.editor": "#1f1f1f",
+    "bg.sidebar": "#1a1a1a",
+    "bg.panel": "#1a1a1a",
+    "bg.titlebar": "#1a1a1a",
+    "bg.hover": "#ffffff15",
+    "bg.active": "#ffffff15",
+    "bg.input": "#1a1a1a",
+    "bg.selection": "#ffffff10",
+    "bg.selection-focused": "#ffffff22",
+    "fg.default": "#e8e8e8",
+    "fg.muted": "#9e9e9e",
+    "fg.subtle": "#7d7d7d",
+    "border.default": "#2d2d2d",
+    "border.subtle": "#3d3d3d",
+    "accent.blue": "#5b9eff",
+    "accent.pink": "#f05b8d",
+    "accent.green": "#5ec055",
+    "accent.yellow": "#f5a623",
+    "accent.purple": "#b67bf1",
+    "accent.cyan": "#14cbb7",
+    "accent.red": "#f05555",
+    "syntax.comment": "#9e9e9e",
+    "syntax.keyword": "#f05b8d",
+    "syntax.string": "#5ec055",
+    "syntax.function": "#b67bf1",
+    "syntax.variable": "#e8e8e8",
+    "syntax.constant": "#5b9eff",
+    "syntax.type": "#5b9eff",
+    "syntax.operator": "#f05b8d",
+    "syntax.attribute": "#b67bf1",
+    "git.added": "#5ec055",
+    "git.modified": "#f5a623",
+    "git.deleted": "#f05555",
+    "git.conflict": "#f5a623",
+    "git.ignored": "#737373",
+    "git.untracked": "#5ec055",
+    "island.bg-closed": "#ffffff12",
+    "island.border-closed": "#ffffff2e",
+    "island.bg-open": "#262626",
+    "island.border-open": "#3d3d3d",
+    "tooltip.bg": "#e8e8e8",
+    "tooltip.fg": "#1a1a1a",
+    "semantic.error": "#f05555",
+    "semantic.warning": "#f5a623",
+    "semantic.info": "#5b9eff",
+    "semantic.success": "#5ec055",
+    "terminal.fg": "#e8e8e8",
+    "terminal.selection": "#3d3d3d",
+    "terminal.black": "#1a1a1a",
+    "terminal.red": "#f05555",
+    "terminal.green": "#5ec055",
+    "terminal.yellow": "#f5a623",
+    "terminal.blue": "#5b9eff",
+    "terminal.purple": "#b67bf1",
+    "terminal.cyan": "#14cbb7",
+    "terminal.white": "#9e9e9e",
+    "terminal.brightBlack": "#626262",
+    "terminal.brightRed": "#f05555",
+    "terminal.brightGreen": "#5ec055",
+    "terminal.brightYellow": "#f5a623",
+    "terminal.brightBlue": "#5b9eff",
+    "terminal.brightPurple": "#b67bf1",
+    "terminal.brightCyan": "#14cbb7",
+    "terminal.brightWhite": "#e8e8e8"
+  }
+}
+```
+
+### Step 2: Customize Colors
+
+Replace the hex color values with your chosen colors. Keep these considerations in mind:
+
+**Contrast ratios**: Ensure sufficient contrast between text and backgrounds for accessibility.
+- Use an online contrast checker tool
+- Aim for at least WCAG AA compliance (4.5:1 for normal text)
+
+**Consistency**: Keep a visual hierarchy:
+- `fg.default` should be your primary/brightest text
+- `fg.muted` should be noticeably dimmer
+- `fg.subtle` should be even more subdued
+
+**Opacity**: Use alpha transparency for hover/selection states:
+- `#ffffff1a` = white at 10.2% opacity
+- `#ffffff22` = white at 13.3% opacity
+- `#0000001a` = black at 10.2% opacity
+
+Use an online hex to decimal converter to calculate opacity values if needed.
+
+### Step 3: Validate Your Theme
+
+Check that:
+1. All 65 required tokens are present
+2. All values are valid hex colors (6 hex digits with optional alpha channel)
+3. No typos in token names
+4. Contrasts are sufficient for readability
+
+Use a JSON validator online to catch syntax errors before loading.
+
+### Step 4: Load the Theme into Tempest
+
+There are two ways to load your custom theme:
+
+#### Option A: Programmatic Loading via `loadThemeFromJson()`
+
+The Tempest theme system exposes a `loadThemeFromJson()` function that accepts a JSON string:
+
+```typescript
+// In React components
+import { useTheme } from "@/themes/ThemeContext";
+
+function MyThemeSwitcher() {
+  const { loadThemeFromJson } = useTheme();
+
+  function handleLoadCustomTheme() {
+    const themeJson = `{
+      "name": "My Custom Theme",
+      "type": "dark",
+      "colors": { ... }
+    }`;
+    
+    loadThemeFromJson(themeJson);
+  }
+
+  return (
+    <button onClick={handleLoadCustomTheme}>
+      Load Custom Theme
+    </button>
+  );
+}
+```
+
+**Error handling**: If the JSON is invalid or missing required fields, `loadThemeFromJson()` logs an error to the console and does not apply the theme.
+
+#### Option B: Bundle as a Built-in Theme
+
+To include a theme in the Tempest application directly:
+
+1. Create a directory under `src/themes/`:
+   ```
+   src/themes/
+     origin-dark/
+       theme.json
+     origin-light/
+       theme.json
+     my-theme/           <-- new
+       theme.json        <-- your theme file
+   ```
+
+2. Place your `theme.json` file in that directory
+
+3. Rebuild Tempest:
+   ```bash
+   npm run build
+   ```
+
+4. Your theme will automatically appear in the theme switcher, and the app will remember the user's selection via localStorage
+
+## Theme Distribution and Sharing
+
+### As a JSON File
+
+Share your theme as a standalone JSON file. Users can:
+
+1. Copy the JSON into a text file or editor
+2. Load it via the theme loading mechanism in Tempest
+3. The app persists their choice in localStorage
+
+Example distribution workflow:
+
+```bash
+# Create a simple theme repository
+mkdir my-themes
+cd my-themes
+
+# Create theme files
+echo '{"name":"Theme1","type":"dark","colors":{...}}' > theme-1.json
+echo '{"name":"Theme2","type":"dark","colors":{...}}' > theme-2.json
+
+# Share via GitHub, personal website, or documentation
+```
+
+### As Part of a Theme Package
+
+You can create a more formal theme package:
+
+```json
+{
+  "name": "my-tempest-themes",
+  "version": "1.0.0",
+  "description": "A collection of Tempest themes",
+  "themes": [
+    {
+      "filename": "themes/nord.json",
+      "name": "Nord",
+      "type": "dark"
+    },
+    {
+      "filename": "themes/solarized-light.json",
+      "name": "Solarized Light",
+      "type": "light"
+    }
+  ]
+}
+```
+
+## Best Practices for Theme Design
+
+### Color Consistency
+
+Reuse accent colors across related UI elements. For example, all git status indicators should use the git.* tokens consistently.
+
+```json
+{
+  "git.added": "#58c760",     // green
+  "semantic.success": "#58c760",  // same green for success
+  "accent.green": "#58c760"    // consistent
+}
+```
+
+### Dark Theme Guidelines
+
+For dark themes:
+- Use very dark backgrounds (near black) for editor areas: `#0a0a0a` to `#1a1a1a`
+- Lighter backgrounds for UI chrome: slightly lighter than editor
+- Text should be bright and high-contrast: `#e0e0e0` to `#ffffff`
+- Use subtle alpha-based overlays for hover states: `#ffffff1a` to `#ffffff22`
+
+Example dark theme palette:
+```json
+{
+  "bg.base": "#000000",
+  "bg.editor": "#0a0a0a",
+  "bg.sidebar": "#000000",
+  "fg.default": "#ededed",
+  "fg.muted": "#a1a1a1",
+  "fg.subtle": "#878787",
+  "border.default": "#242424",
+  "border.subtle": "#333333"
+}
+```
+
+### Light Theme Guidelines
+
+For light themes:
+- Use very light backgrounds (near white) for editor areas: `#ffffff` to `#fafafa`
+- Slightly darker backgrounds for UI chrome: `#fafafa` or `#f5f5f5`
+- Text should be dark and readable: `#1a1a1a` to `#333333`
+- Use subtle alpha-based overlays for hover states: `#0000001a` to `#00000022`
+
+Example light theme palette:
+```json
+{
+  "bg.base": "#fafafa",
+  "bg.editor": "#ffffff",
+  "bg.sidebar": "#fafafa",
+  "fg.default": "#171717",
+  "fg.muted": "#666666",
+  "fg.subtle": "#a8a8a8",
+  "border.default": "#ebebeb",
+  "border.subtle": "#cccccc"
+}
+```
+
+### Accent Color Selection
+
+Choose accent colors that:
+- Stand out clearly against your theme's backgrounds
+- Have semantic meaning (blue for primary/links, green for success, red for errors)
+- Work well in both 100% opacity and semi-transparent contexts
+
+Validation checklist for each accent:
+
+```
+For dark themes:
+- accent.blue should be bright and clear: #5b9eff or brighter
+- accent.green should be vibrant: #58c760 or brighter
+- accent.red should stand out: #f56464 or brighter
+- All accents should be visibly distinct from foreground text
+
+For light themes:
+- accent.blue should be saturated: #005ee9 or darker
+- accent.green should be forest-like: #397c3b or darker
+- accent.red should be bold: #c62128 or darker
+```
+
+### Terminal Color Palette
+
+Terminal colors should follow standard ANSI conventions:
+- Black/white are for standard terminal foreground/background
+- Colors 1-7 are the normal ANSI colors
+- Colors 8-15 are the bright variants (typically brighter versions of 1-7)
+
+Keep these distinct from each other for terminal output readability.
+
+### Syntax Highlighting Coherence
+
+Syntax token colors should reflect code semantics:
+- Keywords (control flow) often match accent.pink or accent.red
+- Strings typically use a green or yellow tone
+- Functions/classes often use purple or blue
+- Comments should be distinctly muted compared to code
+
+Look at popular color schemes (VS Code themes, iTerm themes) for inspiration.
+
+## Testing Your Theme
+
+### In the Browser
+
+1. Create a simple test HTML file that loads Tempest with your theme:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Theme Preview</title>
+  <style>
+    body {
+      background: var(--tempest-bg-base);
+      color: var(--tempest-fg-default);
+      font-family: Geist, sans-serif;
+      padding: 20px;
+    }
+    .test-box {
+      background: var(--tempest-bg-panel);
+      border: 1px solid var(--tempest-border-default);
+      padding: 10px;
+      margin: 10px 0;
+    }
+    .accent { color: var(--tempest-accent-blue); }
+    .success { color: var(--tempest-semantic-success); }
+    .error { color: var(--tempest-semantic-error); }
+  </style>
+</head>
+<body>
+  <h1>Theme Preview</h1>
+  <div class="test-box">
+    <p>Normal text in a panel</p>
+    <p><span class="accent">Accent blue text</span></p>
+    <p><span class="success">Success text</span></p>
+    <p><span class="error">Error text</span></p>
+  </div>
+
+  <script>
+    // Load your theme
+    const themeJson = `{ "name": "...", "type": "dark", "colors": { ... } }`;
+    const theme = JSON.parse(themeJson);
+    
+    for (const [token, value] of Object.entries(theme.colors)) {
+      const cssVar = "--tempest-" + token.replace(/\./g, "-");
+      document.documentElement.style.setProperty(cssVar, value);
+    }
+    document.documentElement.setAttribute("data-theme", theme.type);
+  </script>
+</body>
+</html>
+```
+
+2. Open the file in a browser and verify colors look good
+
+### In Tempest Itself
+
+1. Use the `loadThemeFromJson()` function in Tempest
+2. Navigate through different views (sidebar, editor, terminal, dialogs)
+3. Test interactive states (hover, focus, active)
+4. Verify syntax highlighting in code
+5. Check git status colors in file lists
+6. Test terminal output with colored text
+
+### Accessibility Checks
+
+Use an online contrast checker tool to verify:
+- Text on backgrounds meets WCAG AA (4.5:1 minimum)
+- Interactive elements are clearly distinguishable
+- Colorblind users can still understand status indicators (don't rely on color alone)
+
+## Common Theme Patterns
+
+### Monochromatic Theme
+
+Use variations of a single hue for backgrounds and text:
+
+```json
+{
+  "bg.base": "#1a1a1a",
+  "bg.editor": "#222222",
+  "fg.default": "#e8e8e8",
+  "fg.muted": "#a8a8a8",
+  "fg.subtle": "#808080"
+}
+```
+
+### Vibrant/Neon Theme
+
+Use bright, saturated colors:
+
+```json
+{
+  "accent.blue": "#00ffff",
+  "accent.pink": "#ff00ff",
+  "accent.green": "#00ff00",
+  "syntax.keyword": "#00ffff"
+}
+```
+
+### High Contrast Theme
+
+Maximize contrast for accessibility:
+
+```json
+{
+  "bg.base": "#000000",
+  "fg.default": "#ffffff",
+  "fg.muted": "#cccccc",
+  "border.default": "#ffffff"
+}
+```
+
+### Warm Tones Theme
+
+Use browns, oranges, and warm accent colors:
+
+```json
+{
+  "accent.yellow": "#d4a574",
+  "accent.red": "#d46a6a",
+  "syntax.string": "#8aaf5f"
+}
+```
+
+## Troubleshooting
+
+### Theme won't load
+
+- Check JSON syntax with an online JSON validator
+- Verify all 65 required tokens are present
+- Check that all color values are valid hex strings
+- Look for console errors in browser DevTools
+
+### Colors look washed out
+
+- Increase contrast between foreground and background colors
+- Make accent colors more saturated
+- Reduce opacity on overlay colors (`#ffffff1a` -> `#ffffff2e`)
+
+### Text is hard to read
+
+- Increase the lightness/brightness difference between `fg.default` and `bg.base`
+- Use contrast checker tools
+- Test with multiple font sizes and distances
+
+### Theme persists between theme switches
+
+This is expected behavior. Tempest stores the selected theme in localStorage. To reset, use your browser's developer tools to clear the `tempest-theme` key from localStorage.
+
+## Sharing Your Theme
+
+Once you are happy with your theme:
+
+1. Save as `MyThemeName.json`
+2. Share via:
+   - GitHub Gist or repository
+   - Personal website or blog
+   - Theme showcase/directory
+3. Include a screenshot or preview
+4. Document any special features or design decisions
+
+Example README:
+
+```markdown
+# My Tempest Theme
+
+A [description] theme for [Tempest](link).
+
+## Features
+
+- Based on [inspiration]
+- Optimized for [use case]
+- High contrast/accessibility
+
+## Installation
+
+1. Download `theme.json`
+2. In Tempest, [loading instructions]
+
+## Screenshot
+
+[Your theme preview image]
+```
+
+## API Reference
+
+### loadThemeFromJson(json: string): void
+
+Loads a theme from a JSON string. The function:
+- Parses the JSON
+- Validates that `name` and `colors` fields exist
+- Applies all color tokens as CSS variables
+- Persists the theme selection to localStorage
+- Sets the `data-theme` attribute on the document root
+
+Throws no exceptions; errors are logged to console.
+
+**Usage:**
+```typescript
+const { loadThemeFromJson } = useTheme();
+const themeJson = JSON.stringify(myTheme);
+loadThemeFromJson(themeJson);
+```
+
+### applyTheme(theme: Theme): void
+
+Lower-level function that applies a theme object immediately.
+
+**Usage:**
+```typescript
+import { applyTheme } from "@/themes/applyTheme";
+
+applyTheme({
+  name: "Custom",
+  type: "dark",
+  colors: { ... }
+});
+```
+
+### useTheme() Hook
+
+Returns an object with:
+- `theme: Theme` - Currently active theme
+- `themes: Theme[]` - All built-in themes
+- `setTheme(theme: Theme): void` - Switch to a theme
+- `loadThemeFromJson(json: string): void` - Load custom theme
+
+**Usage:**
+```typescript
+import { useTheme } from "@/themes/ThemeContext";
+
+function MyComponent() {
+  const { theme, themes, setTheme, loadThemeFromJson } = useTheme();
+
+  return (
+    <div>
+      Current: {theme.name}
+      <button onClick={() => setTheme(themes[0])}>
+        Switch Theme
+      </button>
+    </div>
+  );
+}
+```

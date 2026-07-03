@@ -1,0 +1,440 @@
+---
+title: "Supported Agents"
+description: "Configuration and launch details for each AI agent supported by Tempest."
+icon: "list-check"
+---
+
+# Supported Agents
+
+Tempest supports multiple AI coding agents out of the box. This guide covers the exact CLI commands, configuration options, and integration details for each agent.
+
+## Agent Configuration System
+
+Each agent in Tempest is defined by an `AgentConfig` object with the following properties:
+
+| Property | Description |
+|----------|-------------|
+| `name` | Display name shown in the UI (e.g., "Claude Code") |
+| `hint` | CLI command to invoke the agent (e.g., "claude") |
+| `sessionIdArgs` | Flags passed on first spawn to establish a session (e.g., `["--session-id", "{UUID}"]`) |
+| `resumeArgs` | Flags passed when reopening to resume a conversation (e.g., `["--resume", "{UUID}"]`) |
+| `capturePattern` | Optional regex to extract session ID from PTY output (for agents that mint their own ID) |
+| `captureResumeArgs` | Optional flags for resuming with a captured ID (e.g., `["-s", "{UUID}"]`) |
+
+The `{UUID}` placeholder is replaced by Tempest with the actual session or conversation UUID.
+
+## Claude Code
+
+**Display Name**: Claude Code  
+**CLI Command**: `claude`  
+**Resumable**: Yes (by conversation ID)
+
+### Launch Command
+
+**First spawn:**
+```bash
+claude --session-id <conversation-uuid>
+```
+
+**Resuming a saved session:**
+```bash
+claude --resume <conversation-uuid>
+```
+
+### Configuration
+
+Claude Code reads configuration from:
+- `~/.claude` directory (user home)
+- Environment variables (e.g., `ANTHROPIC_API_KEY`)
+- MCP configuration from `.mcp.json` in the project root (if Token Intelligence is enabled)
+
+#### API Key Setup
+
+Set your Claude API key via the Claude CLI:
+```bash
+claude configure
+```
+
+This stores credentials in `~/.claude/config.json` so Tempest can access them.
+
+#### Model Selection
+
+Claude Code uses the model configured in your Claude CLI settings. To change the model:
+```bash
+claude config --model claude-3-5-sonnet-20241022
+```
+
+### Tempest Integration
+
+- **Session ID**: Persisted as `conversationId` in localStorage
+- **Work-Done Detection**: 
+  - Primary: OSC 9 notification signal at turn completion
+  - Secondary: Title-based detection (title starts with `✳` for idle, Unicode spinners for busy)
+  - Fallback: Quiet timer (5 seconds no output)
+- **MCP Support**: Enabled by default if Token Intelligence is configured
+- **Tab Badge**: Shows "✳ Claude Code" title when idle
+
+### Troubleshooting
+
+If Claude Code doesn't launch:
+1. Ensure `claude` is installed: `which claude` (macOS/Linux) or `gcm claude` (Windows)
+2. Run `claude configure` to set up your API key
+3. Test in a terminal: `claude --help` should print the help menu
+4. Check that the API key is valid by running `claude` in the terminal
+
+---
+
+## Gemini CLI
+
+**Display Name**: Gemini CLI  
+**CLI Command**: `gemini`  
+**Resumable**: Yes (by conversation ID)
+
+### Launch Command
+
+**First spawn:**
+```bash
+gemini --session-id <conversation-uuid>
+```
+
+**Resuming a saved session:**
+```bash
+gemini --resume <conversation-uuid>
+```
+
+### Configuration
+
+Gemini CLI reads configuration from:
+- `~/.gemini` directory (user home)
+- Environment variables (e.g., `GOOGLE_API_KEY`, `GOOGLE_PALM_KEY`)
+- MCP configuration from `.gemini/settings.json` in the project root (if Token Intelligence is enabled)
+
+#### API Key Setup
+
+Set your Google API key via the Gemini CLI:
+```bash
+gemini configure
+```
+
+Or set the environment variable:
+```bash
+export GOOGLE_API_KEY="your-api-key"
+```
+
+#### Model Selection
+
+Gemini CLI uses the model configured in your settings. To change the model:
+```bash
+gemini config --model gemini-pro
+```
+
+### Tempest Integration
+
+- **Session ID**: Persisted as `conversationId` in localStorage
+- **Work-Done Detection**:
+  - Primary: OSC 9 notification signal at turn completion
+  - Secondary: Title-based detection (title starts with `◇` for idle, `✦` or `✋` for busy)
+  - Fallback: Quiet timer (5 seconds no output)
+- **MCP Support**: Enabled if Token Intelligence is configured (writes to `.gemini/settings.json`)
+- **Tab Badge**: Shows title with busy/idle indicators
+
+### Troubleshooting
+
+If Gemini CLI doesn't launch:
+1. Ensure `gemini` is installed: `which gemini` (macOS/Linux) or `gcm gemini` (Windows)
+2. Run `gemini configure` to set up your API key
+3. Test in a terminal: `gemini --help` should print the help menu
+4. Check that the API key is valid by running `gemini` in the terminal
+
+---
+
+## Opencode
+
+**Display Name**: Opencode  
+**CLI Command**: `opencode`  
+**Resumable**: Yes (session ID captured from output)
+
+### Launch Command
+
+**First spawn:**
+```bash
+opencode
+```
+
+**Resuming a saved session:**
+```bash
+opencode -s <captured-session-id>
+```
+
+### Session ID Capture
+
+Unlike Claude Code or Gemini CLI, Opencode does not accept a `--session-id` flag on first spawn. Instead, it prints a session ID to stdout when it starts. Tempest captures this ID using a regex pattern:
+
+```regex
+\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b
+```
+
+When a UUID is matched in the PTY output, it is extracted and stored for resumption.
+
+### Configuration
+
+Opencode reads configuration from:
+- `opencode.json` or `opencode.jsonc` in the project root
+- Environment variables
+- MCP configuration under `mcp.atlas` in the config file (if Token Intelligence is enabled)
+
+#### MCP Configuration (Atlas)
+
+If Token Intelligence is enabled, Tempest writes:
+```json
+{
+  "mcp": {
+    "atlas": {
+      "type": "local",
+      "command": ["node", "--liftoff-only", "<entry-path>", "--path", "<project-path>"],
+      "enabled": true
+    }
+  }
+}
+```
+
+### Tempest Integration
+
+- **Session ID**: Captured from output on first spawn, then persisted as `conversationId`
+- **Work-Done Detection**: Uses standard heuristics (quiet timer, signal-based detection)
+- **MCP Support**: Writes to `opencode.jsonc` or `opencode.json`
+- **Resume Behavior**: Uses `-s <captured-id>` flag on reopening
+
+### Troubleshooting
+
+If the session ID is not captured:
+1. Check that Opencode prints a UUID to stdout on startup
+2. Run Opencode in a terminal and look for UUID output: `opencode`
+3. If Opencode prints a different ID format, the regex pattern in `NewSessionMenu.tsx` may need tuning
+4. Check the Tempest logs (DevTools console) for capture errors
+
+---
+
+## Copilot CLI
+
+**Display Name**: Copilot CLI  
+**CLI Command**: `gh copilot`  
+**Resumable**: No (stateless)
+
+### Launch Command
+
+```bash
+gh copilot
+```
+
+### Configuration
+
+Copilot CLI reads configuration from:
+- GitHub CLI config (`~/.config/gh/config.yml` on macOS/Linux)
+- GitHub authentication token (use `gh auth login` to set up)
+
+#### Authentication
+
+Authenticate with GitHub:
+```bash
+gh auth login
+```
+
+Follow the prompts to log in. Tempest will use your authenticated GitHub session.
+
+### Tempest Integration
+
+- **Session ID**: Not persisted (stateless sessions)
+- **Resumption**: Not supported; each spawn creates a fresh session
+- **Work-Done Detection**: Uses heuristics and signal detection
+- **Limitations**: Copilot CLI is designed for one-off suggestions, not persistent conversations
+
+### Use Cases
+
+- Quick code suggestions
+- Testing command generation
+- One-off questions without conversation context
+
+---
+
+## Cline
+
+**Display Name**: Cline  
+**CLI Command**: `cline`  
+**Resumable**: No (stateless)
+
+### Launch Command
+
+```bash
+cline
+```
+
+### Configuration
+
+Cline reads configuration from:
+- `~/.cline` directory (user home)
+- Environment variables (model selection, API keys)
+- Project-level configuration files
+
+#### API Key Setup
+
+Set your Anthropic API key:
+```bash
+export ANTHROPIC_API_KEY="your-api-key"
+```
+
+### Tempest Integration
+
+- **Session ID**: Not persisted
+- **Resumption**: Not supported; each spawn creates a fresh session
+- **Work-Done Detection**: Uses signal detection and heuristics
+- **Model Support**: Typically runs Claude models; configuration via environment
+
+### Troubleshooting
+
+If Cline doesn't launch:
+1. Ensure `cline` is installed: `which cline` (macOS/Linux) or `gcm cline` (Windows)
+2. Set your API key: `export ANTHROPIC_API_KEY="your-key"`
+3. Test in a terminal: `cline --help` or `cline` to start a session
+
+---
+
+## Cursor Agent
+
+**Display Name**: Cursor Agent  
+**CLI Command**: `cursor`  
+**Resumable**: No (stateless)
+
+### Launch Command
+
+```bash
+cursor
+```
+
+### Configuration
+
+Cursor Agent reads configuration from:
+- Cursor IDE settings (if the user also has Cursor installed)
+- Environment variables
+- `.cursor/mcp.json` for MCP configuration (if Token Intelligence is enabled)
+
+#### MCP Configuration
+
+If Token Intelligence is enabled, Tempest writes:
+```json
+{
+  "mcpServers": {
+    "atlas": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["--liftoff-only", "<entry-path>", "--path", "<project-path>"]
+    }
+  }
+}
+```
+
+### Tempest Integration
+
+- **Session ID**: Not persisted
+- **Resumption**: Not supported; each spawn creates a fresh session
+- **Work-Done Detection**: Uses signal detection
+- **MCP Support**: Writes to `.cursor/mcp.json` if Token Intelligence is configured
+
+### Troubleshooting
+
+If Cursor doesn't launch:
+1. Ensure the Cursor CLI is installed: `which cursor` or `gcm cursor`
+2. Cursor may require the Cursor IDE to be installed or configured
+3. Check Cursor's documentation for CLI setup
+
+---
+
+## Goose
+
+**Display Name**: Goose  
+**CLI Command**: `goose`  
+**Resumable**: No (stateless)
+
+### Launch Command
+
+```bash
+goose
+```
+
+### Configuration
+
+Goose reads configuration from:
+- `~/.goose` directory (user home)
+- Environment variables
+- Project-level configuration files
+
+#### API Key Setup
+
+Set your API key (if required):
+```bash
+export GOOSE_API_KEY="your-api-key"
+```
+
+### Tempest Integration
+
+- **Session ID**: Not persisted
+- **Resumption**: Not supported; each spawn creates a fresh session
+- **Work-Done Detection**: Uses signal detection and heuristics
+- **Limitations**: Designed for autonomous task execution without persistent conversation
+
+### Use Cases
+
+- Autonomous task execution
+- One-shot agents that solve specific problems
+- Testing and automation workflows
+
+### Troubleshooting
+
+If Goose doesn't launch:
+1. Ensure `goose` is installed: `which goose` (macOS/Linux) or `gcm goose` (Windows)
+2. Check that any required environment variables are set
+3. Test in a terminal: `goose --help` or `goose` to start
+
+---
+
+## Comparison Table
+
+| Agent | Resume | Session ID | Config Location | API Key Required |
+|-------|--------|------------|-----------------|-----------------|
+| Claude Code | Yes | `--session-id` / `--resume` | `~/.claude` | Yes (Anthropic) |
+| Gemini CLI | Yes | `--session-id` / `--resume` | `~/.gemini` | Yes (Google) |
+| Opencode | Yes | Captured from output | `opencode.json` | Varies |
+| Copilot CLI | No | N/A | `~/.config/gh` | GitHub token |
+| Cline | No | N/A | `~/.cline` | Yes (Anthropic) |
+| Cursor Agent | No | N/A | Cursor IDE config | Varies |
+| Goose | No | N/A | `~/.goose` | Varies |
+
+## Adding a New Agent
+
+To add support for a new agent to Tempest:
+
+1. **Define the agent config** in `src/components/NewSessionMenu.tsx`:
+   ```typescript
+   {
+     name: "My Agent",
+     hint: "myagent",           // CLI command
+     iconSrc: myAgentIconSrc,   // Icon SVG
+     sessionIdArgs: ["--session-id", "{UUID}"],    // or null
+     resumeArgs: ["--resume", "{UUID}"],           // or null
+     capturePattern: /pattern/,  // optional
+     captureResumeArgs: ["-s", "{UUID}"],  // optional
+   }
+   ```
+
+2. **Provide an icon** as an SVG file in `src/assets/agent-icons/`
+
+3. **Implement work-done detection** (if needed):
+   - Add title-based classification to `sessionManager.ts` `classifyTitle()` method if your agent sets a title
+   - Test that the agent's terminal output triggers the work-done state correctly
+
+4. **Test the agent** in Tempest:
+   - Launch a new session with your agent
+   - Verify the command is constructed correctly
+   - Confirm work-done detection fires at the right time
+   - Test resumption if your agent supports it
+

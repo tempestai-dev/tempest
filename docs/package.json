@@ -1,0 +1,13 @@
+{
+  "name": "tempest-docs",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "mintlify dev",
+    "build": "mintlify build",
+    "check": "mintlify broken-links"
+  },
+  "devDependencies": {
+    "mintlify": "^4.2.666"
+  }
+}

@@ -1,0 +1,258 @@
+---
+title: Theme System
+description: How Tempest uses JSON-based themes with CSS custom properties
+icon: "palette"
+---
+
+Tempest uses a JSON-based theme system that drives the application's appearance through CSS custom properties (variables). Themes define color tokens that are converted to CSS variables and applied at runtime.
+
+## How It Works
+
+Themes in Tempest follow a token-to-CSS-variable naming pattern. A theme file defines semantic color tokens like `bg.editor` or `fg.default`, which are automatically converted to CSS variables like `--tempest-bg-editor` and `--tempest-fg-default`.
+
+### Token to CSS Variable Conversion
+
+The system converts dot-notation tokens to kebab-case CSS variables:
+
+```
+bg.editor       → --tempest-bg-editor
+fg.default      → --tempest-fg-default
+accent.blue     → --tempest-accent-blue
+syntax.keyword  → --tempest-syntax-keyword
+```
+
+The conversion function is:
+
+```typescript
+function tokenToCssVar(token: string): string {
+  return "--tempest-" + token.replace(/\./g, "-");
+}
+```
+
+## Theme Structure
+
+Each theme is a JSON file with the following structure:
+
+```json
+{
+  "name": "Tempest Dark",
+  "type": "dark",
+  "colors": {
+    "bg.base": "#000000",
+    "fg.default": "#ededed",
+    "accent.blue": "#62a6ff"
+  }
+}
+```
+
+### Required Fields
+
+- **name**: A human-readable theme name (e.g., "Tempest Dark", "Tempest Light")
+- **type**: Either "dark" or "light", used for semantics and theming context
+- **colors**: An object where keys are color tokens and values are hex color values
+
+## Built-in Themes
+
+Tempest includes two built-in themes:
+
+### Tempest Dark
+
+Located at `src/themes/origin-dark/theme.json`
+
+Dark theme optimized for low-light environments with high contrast and vibrant accent colors.
+
+### Tempest Light
+
+Located at `src/themes/origin-light/theme.json`
+
+Light theme designed for bright environments with muted accents and light backgrounds.
+
+## Color Token Categories
+
+Themes organize colors into semantic categories:
+
+### Background Colors (`bg.*`)
+
+- `bg.base`: Primary background color
+- `bg.editor`: Editor/content area background
+- `bg.sidebar`: Sidebar background
+- `bg.panel`: Panel background
+- `bg.titlebar`: Title bar background
+- `bg.hover`: Hover state background
+- `bg.active`: Active/selected state background
+- `bg.input`: Input field background
+- `bg.selection`: Text selection background
+- `bg.selection-focused`: Focused text selection background
+
+### Foreground Colors (`fg.*`)
+
+- `fg.default`: Default text color
+- `fg.muted`: Muted or secondary text
+- `fg.subtle`: Very subtle/disabled text
+
+### Border Colors (`border.*`)
+
+- `border.default`: Default border color
+- `border.subtle`: Subtle/secondary border color
+
+### Accent Colors (`accent.*`)
+
+Seven accent colors for UI elements and highlights:
+
+- `accent.blue`
+- `accent.pink`
+- `accent.green`
+- `accent.yellow`
+- `accent.purple`
+- `accent.cyan`
+- `accent.red`
+
+### Syntax Highlighting (`syntax.*`)
+
+Colors for code syntax highlighting:
+
+- `syntax.comment`: Comments
+- `syntax.keyword`: Keywords
+- `syntax.string`: Strings
+- `syntax.function`: Function names
+- `syntax.variable`: Variables
+- `syntax.constant`: Constants
+- `syntax.type`: Type annotations
+- `syntax.operator`: Operators
+- `syntax.attribute`: Attributes
+
+### Git Status (`git.*`)
+
+Colors for git status indicators:
+
+- `git.added`: Added files
+- `git.modified`: Modified files
+- `git.deleted`: Deleted files
+- `git.conflict`: Merge conflicts
+- `git.ignored`: Ignored files
+- `git.untracked`: Untracked files
+
+### Island UI (`island.*`)
+
+Colors for collapsible/expandable UI elements:
+
+- `island.bg-closed`: Background when closed
+- `island.border-closed`: Border when closed
+- `island.bg-open`: Background when open
+- `island.border-open`: Border when open
+
+### Tooltip Colors (`tooltip.*`)
+
+- `tooltip.bg`: Tooltip background
+- `tooltip.fg`: Tooltip text color
+
+### Semantic Colors (`semantic.*`)
+
+Standard status/message colors:
+
+- `semantic.error`: Error state
+- `semantic.warning`: Warning state
+- `semantic.info`: Info state
+- `semantic.success`: Success state
+
+### Terminal Colors (`terminal.*`)
+
+16-color terminal palette:
+
+- `terminal.fg`: Default foreground
+- `terminal.selection`: Selection background
+- `terminal.black`, `terminal.red`, `terminal.green`, `terminal.yellow`, `terminal.blue`, `terminal.purple`, `terminal.cyan`, `terminal.white`: Standard colors
+- `terminal.brightBlack`, `terminal.brightRed`, `terminal.brightGreen`, `terminal.brightYellow`, `terminal.brightBlue`, `terminal.brightPurple`, `terminal.brightCyan`, `terminal.brightWhite`: Bright variants
+
+## Using Themes in Components
+
+Components use CSS variables directly in stylesheets:
+
+```css
+.button {
+  background: var(--tempest-bg-editor);
+  color: var(--tempest-fg-default);
+  border: 1px solid var(--tempest-border-default);
+}
+
+.button:hover {
+  background: var(--tempest-bg-hover);
+}
+
+.accent {
+  color: var(--tempest-accent-blue);
+}
+```
+
+## Theme Management
+
+### React Context API
+
+The theme system uses React Context (`ThemeProvider`) to manage theme state and provide theme switching capabilities throughout the app.
+
+```typescript
+import { useTheme } from "./themes/ThemeContext";
+
+function MyComponent() {
+  const { theme, themes, setTheme } = useTheme();
+  
+  return (
+    <button onClick={() => setTheme(themes[0])}>
+      Switch Theme
+    </button>
+  );
+}
+```
+
+### Available Context Functions
+
+- **theme**: The currently active theme object
+- **themes**: Array of all built-in themes
+- **setTheme(theme)**: Switch to a different theme
+- **loadThemeFromJson(json)**: Load a custom theme from a JSON string
+
+### Persistence
+
+The currently selected theme is persisted to localStorage under the key `tempest-theme`. On app startup, the system:
+
+1. Checks if a theme is saved in localStorage
+2. Validates the saved theme name (handles legacy "Origin" theme name migration)
+3. Falls back to system preference (dark or light mode)
+4. Falls back to the first available built-in theme if no match is found
+
+### Legacy Theme Names
+
+For backwards compatibility, the system automatically migrates old theme names:
+
+- "Origin Dark" → "Tempest Dark"
+- "Origin Light" → "Tempest Light"
+
+## Application Flow
+
+1. **Initialization**: `main.tsx` wraps the app with `ThemeProvider`
+2. **Theme Resolution**: On startup, `resolveDefaultTheme()` determines which theme to use
+3. **CSS Application**: `applyTheme()` sets all CSS variables on the document root and adds a `data-theme` attribute
+4. **Component Rendering**: React components access variables via `var(--tempest-*)`
+5. **Theme Switching**: Users can change themes via `setTheme()`, which updates state, applies CSS, and persists to localStorage
+
+## Creating Custom Themes
+
+Custom themes can be loaded programmatically using `loadThemeFromJson()`:
+
+```typescript
+const { loadThemeFromJson } = useTheme();
+
+const customTheme = JSON.stringify({
+  name: "My Custom Theme",
+  type: "dark",
+  colors: {
+    "bg.base": "#1a1a1a",
+    "fg.default": "#ffffff",
+    // ... other color tokens
+  }
+});
+
+loadThemeFromJson(customTheme);
+```
+
+The theme object must include `name` and `colors` properties to be valid.

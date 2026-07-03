@@ -1,0 +1,284 @@
+---
+title: Push and Pull Requests
+description: How Tempest handles git push operations and pull request creation
+icon: "arrow-up-from-bracket"
+---
+
+# Push and Pull Requests
+
+Tempest provides multiple workflows for pushing changes and opening pull requests, designed to handle both automatic and manual operations. This guide covers the complete push and PR flow from commit to GitHub.
+
+## Push Workflows
+
+Tempest implements three distinct push operations, each suited to different scenarios:
+
+### 1. Push with Auto-Commit (git_push_branch)
+
+The most common workflow, `git_push_branch` automatically stages and commits any pending changes before pushing. If nothing is staged, it stages all unstaged changes (quick-push behavior). If files are already staged via the staging area, it commits only those staged files.
+
+**Commit Message Generation**: If no explicit message is provided, Tempest generates a default message in the form:
+```
+Agent work on [branch-name]
+
+Co-authored-by: Tempest <tempest@local>
+```
+
+The co-author trailer is appended automatically if the user has enabled attribution. This operation is useful for agents that complete work and need to push immediately without manual commit message composition.
+
+**Flow**:
+1. Determine current branch via `git symbolic-ref`
+2. Check for staged vs unstaged changes
+3. Auto-stage everything if nothing is staged; otherwise commit only staged files
+4. Create commit with message (or default message)
+5. Push to origin with `-u` flag (creates upstream tracking)
+6. Return remote URL and branch name to frontend
+
+**Error Scenarios**:
+- No remote configured: "Failed to run git" or "No remote named 'origin'"
+- Authentication failure: SSH key missing, or HTTPS credentials invalid
+- No commits in repo: Push will fail if HEAD doesn't exist
+- Merge conflicts: Not applicable here (local operation)
+
+### 2. Push Current Branch (git_push_current_branch)
+
+A lightweight push that assumes all commits are already staged and committed. It does not auto-commit; it only pushes the current branch to the remote. This is useful when a user wants explicit control over what gets committed before pushing.
+
+**Flow**:
+1. Determine current branch
+2. Run `git push -u origin [branch]`
+3. Return remote URL and branch name
+
+**Error Scenarios**:
+- Working tree has uncommitted changes: Push succeeds but user changes remain local
+- Branch is behind remote: Typically fails with "rejected" error (non-fast-forward)
+- No commits in repo: HEAD doesn't exist, push fails
+
+### 3. Create Branch and Push (git_create_push_branch)
+
+Creates a new local branch, switches to it, and pushes it to the remote in a single operation. This workflow allows users to branch off the current commit and immediately make it available remotely.
+
+**Flow**:
+1. Validate branch name (cannot be empty)
+2. Run `git checkout -b [branch-name]` to create and switch
+3. Run `git push -u origin [branch-name]`
+4. If push fails, switch back to previous branch to avoid leaving repo detached
+5. Return remote URL and new branch name
+
+**Error Scenarios**:
+- Branch name already exists locally: Fails at checkout
+- Remote branch exists: Fails at push with "already exists" message
+- Push fails: Repository reverts to previous branch, no orphaned state
+
+After successful branch creation and push, Tempest automatically constructs a PR URL for the target platform (GitHub, GitLab, Bitbucket) and may open it in the browser.
+
+## The PrDialog Component
+
+The PR dialog is a modal UI for creating pull requests directly from Tempest. It works exclusively with GitHub (GitLab and Bitbucket links are opened in the browser without dialog support).
+
+### Initialization and Remote Parsing
+
+When the PR dialog opens, it parses the remote URL to extract the GitHub repository owner and name. Two URL formats are supported:
+
+**SSH format**: `git@github.com:owner/repo.git` or `git@github.com:owner/repo`
+
+**HTTPS format**: `https://github.com/owner/repo.git` or `https://github.com/owner/repo`
+
+If the remote is not a GitHub URL (e.g., GitLab, self-hosted), the dialog shows a button to open the remote URL in the browser, bypassing the PR creation flow.
+
+### GitHub Authentication
+
+Tempest uses personal access tokens (PATs) for GitHub API access. The token is stored in browser localStorage under the key `tempest-github-token`.
+
+**On First Use**:
+1. Dialog displays a password input for the GitHub token
+2. User enters token starting with `ghp_`
+3. Clicking "Save" or pressing Enter stores the token locally
+4. Token is never sent to Tempest's servers; all API calls go directly to GitHub
+
+**Token Requirements**:
+- Scope: `repo` (full access to public and private repositories)
+- Token must have push access to the target repository
+- Token is retained across app restarts
+
+**Security Considerations**:
+- Token is stored as plain text in localStorage (same as browser developer tools access)
+- Token is only sent to GitHub API endpoints via HTTPS
+- Users should revoke tokens from github.com/settings/tokens if compromised
+- No token is ever logged or transmitted to Tempest services
+
+### PR Creation Fields
+
+Once authenticated, the dialog presents:
+
+**Title**: Auto-populated from the current branch name using branch-to-title conversion. Rules:
+- Strips prefixes like `feature/`, `fix/`, `feat/`, `bugfix/`, `hotfix/` (case-insensitive)
+- Replaces hyphens and underscores with spaces
+- Capitalizes the first letter of each word
+
+Example: `feature/add-dark-mode` becomes `Add Dark Mode`
+
+**Description** (optional): A text area for PR body. Supports markdown.
+
+**Base Branch**: The target branch for the PR. Defaults to `main`. Can be changed to any branch (e.g., `develop`, `staging`).
+
+All fields except title are optional. The PR creation button is disabled until a title is provided.
+
+### PR Creation API Call
+
+On submit, Tempest makes a single HTTP POST to the GitHub REST API:
+
+```
+POST https://api.github.com/repos/{owner}/{repo}/pulls
+Authorization: Bearer {token}
+Accept: application/vnd.github+json
+Content-Type: application/json
+
+{
+  "title": "[user-entered title]",
+  "body": "[optional description]",
+  "head": "[current branch]",
+  "base": "[base branch]"
+}
+```
+
+If successful, GitHub returns the PR URL (e.g., `https://github.com/owner/repo/pull/123`). The dialog displays this URL and offers an "Open in browser" button to navigate directly.
+
+### Error Handling
+
+Errors from the GitHub API are displayed in the dialog. Common scenarios:
+
+- **Invalid token**: API returns 401 Unauthorized; message is displayed, user can re-enter token
+- **Repository not found**: 404 error; usually means the URL was parsed incorrectly
+- **Base branch doesn't exist**: API error mentioning the branch
+- **Head branch doesn't exist remotely**: API error; branch must be pushed first
+- **Insufficient permissions**: 403 Forbidden; token scope or repo access issue
+
+The dialog remains open after an error so the user can correct fields and retry without re-entering the token.
+
+## Auto-Commit Behavior on Push
+
+When `git_push_branch` is called and changes are pending, Tempest performs the following:
+
+### Commit Message Construction
+
+If a commit message is provided, it is used as-is. If not, Tempest generates:
+
+```
+Agent work on [branch-name]
+```
+
+The message is immediately appended with:
+
+```
+Co-authored-by: Tempest <tempest@local>
+```
+
+This co-author trailer appears unconditionally in the commit author metadata, ensuring all agent-pushed changes are attributed to Tempest.
+
+### Staging Logic
+
+1. **Check if anything is staged**: Run `git diff --cached --quiet`
+2. **If staged**: Commit only the staged changes
+3. **If nothing staged**: Auto-stage all changes with `git add -A`, then commit
+
+This dual-mode design supports both workflows:
+- Agents that want atomic commits of specific file sets can use the staging area
+- Agents that want all changes pushed together can rely on auto-staging
+
+### File Exclusion
+
+Gitignored files (specified in `.gitignore`) are never committed, even with `git add -A`. This ensures dependencies, build artifacts, and sensitive files stay out of version control.
+
+The Tempest-specific entries (`.tempest/`, `.tempest-pid`) are automatically added to `.gitignore` at initialization and are never committed.
+
+## Co-Author Attribution Hook
+
+When a user enables attribution or when Tempest initializes a workspace, it installs a git hook to add co-author metadata to commit messages.
+
+### Hook Installation
+
+The `write_coauthor_hook` command writes a `prepare-commit-msg` hook at `.git/hooks/prepare-commit-msg`. This hook:
+
+1. Reads the commit message file (passed as `$1` by git)
+2. Checks if the co-author line (`Co-authored-by: [email]`) already exists
+3. If not present, appends it to the message
+4. Is idempotent: running twice has no additional effect
+
+**Hook Script Structure**:
+```bash
+#!/bin/sh
+# Tempest-attribution-begin
+COAUTHOR="Co-authored-by: Tempest <tempest@local>"
+if ! grep -qF "$COAUTHOR" "$1"; then
+  printf '\n\n%s\n' "$COAUTHOR" >> "$1"
+fi
+# Tempest-attribution-end
+```
+
+The hook is wrapped in `# Tempest-attribution-begin` and `# Tempest-attribution-end` markers so it can be safely removed or replaced without affecting other hooks in the same file.
+
+### Removing Attribution
+
+The `remove_coauthor_hook` command strips the Tempest co-author block from the hook. If nothing remains in the hook file after removal, the file is deleted entirely.
+
+### How It Works
+
+Every commit made in the repository (whether via `git commit` directly or via Tempest's push operations) will have the co-author trailer appended. This makes it easy to identify and query commits made by agents versus humans:
+
+```bash
+git log --grep="Co-authored-by: Tempest"
+```
+
+The hook does not affect commits made before the hook was installed, but all future commits in that repository include the trailer.
+
+## Error Handling and Recovery
+
+### Push Failures
+
+**No Remote Configured**: Tempest returns "No remote named 'origin'" if `git_add_remote` was never called. The user must add the remote via the project setup flow.
+
+**Authentication Issues**:
+- SSH key missing or not loaded: `ssh: Permission denied` error
+- HTTPS credentials invalid: `fatal: Authentication failed`
+- Resolution: Ensure git is configured correctly at OS level; Tempest does not manage credentials
+
+**Network Errors**: If the network is unavailable, git commands hang briefly then timeout. Tempest surfaces the timeout error to the user.
+
+**Merge Conflicts**: Only occur if the remote branch has advanced and local commits are not fast-forward compatible. For agents working on isolated branches, this is rare.
+
+### PR Dialog Failures
+
+**GitHub Token Issues**:
+- Token expired or revoked: API returns 401 Unauthorized
+- Token lacks `repo` scope: API returns 403 Forbidden
+- Resolution: Generate a new token at github.com/settings/tokens and re-enter it
+
+**Repository Not Found**: Parsing the remote URL failed, or the repository was deleted. Check that the remote URL is correct via `git remote -v`.
+
+**Head Branch Not Pushed**: The current branch exists locally but hasn't been pushed to remote yet. Push the branch first via the push UI, then retry PR creation.
+
+## Workflow Examples
+
+### Agent Completing Work
+
+1. Agent finishes coding and calls the push Tauri command
+2. Tempest stages all changes and creates a commit with auto-generated message
+3. Tempest pushes to a new remote branch (or current branch)
+4. PR dialog is optionally opened for manual PR creation
+5. User fills title/description and clicks "Create PR"
+6. PR is created on GitHub and link is displayed
+
+### User Manual Workflow
+
+1. User stages specific files in the Diff pane
+2. User enters commit title and description
+3. User clicks "Commit" to create the commit
+4. User clicks "Push" (without auto-commit) to push the branch
+5. User optionally opens the PR dialog to create a pull request on GitHub
+
+### Fixing a Bad Push
+
+If a push succeeds but the commit message is wrong, git history cannot be rewritten on a shared remote. The user should:
+1. Create a new commit with the correct message
+2. Push again
+3. Squash or rebase locally before pushing, if history preservation is critical (consult git documentation)

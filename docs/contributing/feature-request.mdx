@@ -1,0 +1,51 @@
+---
+title: "Feature Requests"
+description: "How to propose new features and improvements for Tempest."
+icon: "lightbulb"
+---
+
+Feature requests are tracked as GitHub issues. Before opening one, search the existing issues to check if someone has already proposed the same idea.
+
+## Before you submit
+
+<Steps>
+  <Step title="Search existing issues">
+    Check the [GitHub Issues](https://github.com/gsvprharsha/tempest/issues) page for open and closed requests. Your idea may already be tracked, in progress, or have been discussed and declined.
+  </Step>
+  <Step title="Check the roadmap">
+    Review the [ROADMAP.md](https://github.com/gsvprharsha/tempest/blob/main/ROADMAP.md) in the repository. Features already on the roadmap do not need a new issue.
+  </Step>
+  <Step title="Open an issue">
+    If the feature does not exist, open a new GitHub issue using the **Feature Request** template.
+  </Step>
+</Steps>
+
+## What to include
+
+A good feature request answers three questions:
+
+<CardGroup cols={1}>
+  <Card title="What is the problem?" icon="circle-question">
+    Describe the specific workflow or limitation you are running into. Feature requests grounded in a real problem are easier to evaluate and prioritize.
+  </Card>
+  <Card title="What is your proposed solution?" icon="wand-magic-sparkles">
+    Describe the behavior you want. Be specific: which part of the UI, which command, which configuration option.
+  </Card>
+  <Card title="What are the alternatives?" icon="shuffle">
+    List any workarounds you have tried and why they are not sufficient. This helps the maintainers understand the urgency.
+  </Card>
+</CardGroup>
+
+## Scope guidance
+
+| Type | Where to propose |
+|---|---|
+| New agent support | GitHub Issue, include the agent's CLI name and install instructions |
+| New theme | Pull request with a `theme.json` file in `src/themes/` |
+| New Tauri command | GitHub Issue with the proposed Rust signature and use case |
+| UI layout change | GitHub Issue with a description or sketch |
+| Documentation improvement | Pull request directly against `tempest-docs` |
+
+## After submission
+
+Feature requests are reviewed on a rolling basis. A maintainer will label the issue (`enhancement`, `needs-discussion`, `accepted`, or `wont-fix`) and respond with questions or a decision. Accepted features are added to the roadmap before implementation begins.

@@ -1,0 +1,308 @@
+---
+title: Git Integration Overview
+description: How Tempest integrates git as core infrastructure for workspace management
+icon: "code-branch"
+---
+
+# Git Integration Overview
+
+Tempest treats git as core infrastructure, not an afterthought. Every workspace is backed by a git repository, and all file operations are visible as changes. This document maps the complete git ecosystem within Tempest, from initialization through pull request creation.
+
+## Philosophy: Git as Infrastructure
+
+Tempest's design rests on three principles:
+
+**1. Every workspace is a git repository** (or worktree of one). This ensures version control is always available, even for ad-hoc exploration. When a user opens a project, git is initialized if needed.
+
+**2. Changes are the source of truth** for work state. The diff view, file staging, and commit UI are built directly on top of git's own status and diff machinery. There is no separate "Tempest changelog"—it's all git.
+
+**3. Agent work is reproducible**. All agent-generated changes are committed with co-author attribution, making it trivial to review, cherry-pick, or revert work. The git history is a persistent audit log.
+
+This architecture means:
+- Users can switch between Tempest and their native terminal/IDE without synchronization issues (they're all reading from the same git repository)
+- All Tempest operations can be inspected via `git log` and `git diff`
+- No proprietary state or delta formats; changes are stored in the industry standard git format
+
+## Map of Git Operations
+
+Tempest exposes the following git operations via Tauri commands. They are organized by lifecycle stage:
+
+### Initialization and Setup
+
+**git_init(project_path: string) -> Result<(), String>**
+- Initializes a new git repository with `git init` and `git symbolic-ref HEAD refs/heads/main` (forces `main` as initial branch)
+- Stages all existing files (respecting .gitignore) and creates an initial commit
+- Writes Tempest entries (`.tempest/`, `.tempest-pid`) to `.gitignore`
+- Required before any other git operations can proceed
+
+**check_git_initialized(path: string) -> bool**
+- Checks whether a directory is already a git repository via `git rev-parse --git-dir`
+- Returns true even if no commits exist (initial state after `git init`)
+
+**git_add_remote(repo_path: string, remote_url: string) -> Result<(), String>**
+- Adds an origin remote via `git remote add origin [url]`
+- URL can be SSH (git@github.com:owner/repo) or HTTPS (https://github.com/owner/repo)
+- Fails if a remote named "origin" already exists
+
+### Worktree Management
+
+Worktrees are isolated checkouts of a git repository, allowing multiple branches to be worked on simultaneously within the same project.
+
+**create_terminal_worktree(project_path: string, name: string) -> Result<String, String>**
+- Creates a new git worktree via `git worktree add .tempest/[name] -b [name]`
+- Copies gitignored files (.env, .env.local, etc.) so the agent sees them without committing
+- Links large dependency directories (node_modules, .venv) as junctions (Windows) or symlinks (Unix) to avoid copying 100s of MB
+- Returns the worktree path
+- Fails if a worktree with that name already exists, or if the repository has no commits
+
+**git_worktree_remove(repo_path: string, worktree_path: string) -> Result<(), String>**
+- Removes a worktree and its associated branch via `git worktree remove --force`
+- First removes directory junctions/symlinks to prevent following them into the real node_modules
+- Falls back to `fs::remove_dir_all` if git's removal fails (common on Windows due to process handle delays)
+- Prunes stale metadata via `git worktree prune`
+
+### Branch Operations
+
+**get_git_branch(path: string) -> Result<String, String>**
+- Returns the current branch name via `git symbolic-ref --short HEAD`
+- Returns an error if the repository is in a detached HEAD state
+- Works even on repos with no commits yet (before initial commit)
+
+**git_list_branches(repo_path: string) -> Result<Vec<BranchInfo>, String>**
+- Lists all local branches via `git branch`
+- Returns an array of {name, is_current} objects
+- Filters out the "+" entries that git adds for worktree branches
+
+**git_switch_branch(repo_path: string, branch: string) -> Result<(), String>**
+- Switches to a different branch via `git checkout [branch]`
+- Auto-stashes any uncommitted changes before switching (with a label like `tempest-autostash-from-[branch]`)
+- Auto-restores the stash if returning to a branch that previously had stashed changes
+- Ensures the user never loses work when switching branches
+
+**git_delete_branch(repo_path: string, branch: string, force: bool, delete_remote: bool) -> Result<(), String>**
+- Deletes a local branch via `git branch -d` (or `-D` if force=true)
+- Optionally deletes the remote branch via `git push origin --delete [branch]` (best-effort, doesn't fail if remote branch is gone)
+- Fails if trying to delete the currently checked-out branch
+
+**check_branch_merged(repo_path: String, branch: String) -> Result<bool, String>**
+- Checks whether a branch has been merged into a base branch
+- Fetches fresh remote state via `git fetch --prune origin`
+- Returns true if the remote branch is gone (deleted after merge)
+- Checks if the branch tip is an ancestor of `origin/main`, `origin/master`, or `origin/develop`
+- Used to determine if a branch can be safely deleted
+
+### Status and Diffing
+
+**git_status(path: string) -> Result<Vec<GitStatusEntry>, String>**
+- Returns a list of changed files via `git status --short`
+- Each entry contains xy (two-char status code), status (dominant char), and path
+- Status codes follow git conventions: M (modified), A (added), D (deleted), R (renamed), ? (untracked)
+- The two chars represent index and worktree status separately (useful for staged vs unstaged)
+
+**git_diff(path: string) -> Result<Vec<FileDiff>, String>**
+- Parses the unified diff output of `git diff HEAD` (uncommitted changes only)
+- Each FileDiff contains status (M/A/D/R), path, add/delete counts, and line-level hunks
+- Used to populate the Diff pane UI
+- Shows only the delta between the current working tree and HEAD (not between commits)
+
+**git_diff_file(path: string, file_path: string, staged: bool, untracked: bool) -> Result<Vec<DiffLine>, String>**
+- Returns line-level diff for a single file
+- If staged=true, shows `git diff --cached` (what will be committed)
+- If staged=false, shows `git diff` (what's modified but not staged)
+- If untracked=true, reads the file content and renders all lines as "added" (no git diff needed)
+- Used when a user clicks a specific file in the diff UI
+
+### Staging and Committing
+
+**git_stage(repo_path: string, file_path: string) -> Result<(), String>**
+- Stages a file or entire directory for commit via `git add --`
+- If file_path is ".", stages all changes in the directory
+
+**git_unstage(repo_path: string, file_path: string) -> Result<(), String>**
+- Unstages a file via `git restore --staged --`
+- Does not discard the actual changes (they remain in the working tree)
+
+**git_discard(repo_path: string, file_path: string, untracked: bool) -> Result<(), String>**
+- Discards changes to a file
+- If untracked=true, deletes the file (it has no committed version)
+- If untracked=false, restores the file to HEAD via `git restore --`
+- Irreversible operation (the changes are lost)
+
+**git_commit_staged(repo_path: string, message: string) -> Result<(), String>**
+- Creates a commit with only staged changes via `git commit -m [message]`
+- Fails if the message is empty or if nothing is staged
+- Does not auto-stage unstaged changes (use git_stage first)
+
+### Pushing and PR Creation
+
+**git_push_branch(repo_path: string, commit_message: Option<String>) -> Result<String, String>**
+- Stages and commits any pending changes, then pushes the current branch
+- Auto-stages everything if nothing is staged; commits only staged files if something is staged
+- Appends `Co-authored-by: Tempest <tempest@local>` to the commit message
+- Uses `-u` flag to set upstream tracking (future pushes don't need to specify branch name)
+- Returns a JSON object {remoteUrl, branch}
+
+**git_push_current_branch(repo_path: string) -> Result<String, String>**
+- Pushes the current branch without any auto-commit
+- Assumes the user has already committed everything they want
+- Useful for explicit control over what gets committed
+
+**git_create_push_branch(repo_path: string, branch_name: string) -> Result<String, String>**
+- Creates a new branch via `git checkout -b [branch_name]`
+- Immediately pushes it via `git push -u origin [branch_name]`
+- If push fails, reverts to the previous branch to avoid leaving the repo detached
+- Returns {remoteUrl, branch_name}
+
+### Co-Author Attribution
+
+**write_coauthor_hook(repo_path: string, coauthor_line: string) -> Result<(), String>**
+- Installs a `prepare-commit-msg` git hook at `.git/hooks/prepare-commit-msg`
+- The hook automatically appends the coauthor line to every commit message
+- Is idempotent (can be called multiple times safely)
+- Wrapped in `# Tempest-attribution-begin/end` markers for safe removal
+
+**remove_coauthor_hook(repo_path: string) -> Result<(), String>**
+- Removes the Tempest co-author block from the `prepare-commit-msg` hook
+- Deletes the hook file entirely if nothing else remains
+
+## Git State Machine
+
+Tempest models the git lifecycle as a state machine with these transitions:
+
+```
+[uninitialized] --git_init--> [initialized, no remote]
+                                   |
+                     git_add_remote |
+                                   v
+                         [initialized, remote added]
+                                   |
+                   create_terminal_worktree |
+                                   v
+                            [worktree created]
+                                   |
+                    git status / diff / stage / unstage |
+                                   v
+                            [changes staged]
+                                   |
+                          git_commit_staged |
+                                   v
+                           [commits created]
+                                   |
+                        git_push_branch / git_push_current_branch |
+                                   v
+                          [commits pushed to remote]
+                                   |
+                          (PR dialog, Tauri side) |
+                                   v
+                      [pull request created on GitHub]
+```
+
+At each stage:
+- Users can inspect changes with diff/status (read-only)
+- Users can switch branches or create new branches
+- Only HEAD can move forward via commits or branch switches
+- Remote branches are read via fetch/ls-remote
+
+The state is always persistent in the git repository on disk. Tempest is stateless with respect to git; it reads the current state from the repository on every operation.
+
+## Automated vs Manual Operations
+
+### Fully Automated (triggered by agents)
+
+- **git_init**: Repository initialization for new projects
+- **create_terminal_worktree**: Branch creation and checkout for agent isolation
+- **git_add_remote**: One-time setup for projects without a remote yet
+- **git_push_branch**: Entire push workflow including auto-commit
+- **write_coauthor_hook**: Attribution setup during initialization
+
+These operations are called without user interaction, usually during project setup or when an agent finishes work.
+
+### Manual (user-triggered, visible in UI)
+
+- **git_stage / git_unstage**: File-by-file staging in the Diff pane
+- **git_commit_staged**: User-written commit messages in the Diff pane
+- **git_push_current_branch**: Button in the Diff pane to push without auto-commit
+- **git_create_push_branch**: Dialog to create and push a new branch
+- **git_switch_branch / git_delete_branch**: Branch menu in the Diff pane
+- **git_discard**: Right-click menu to discard file changes
+
+These operations require explicit user action and show success/error feedback in the UI.
+
+### Hybrid (can be either)
+
+- **git_status / git_diff**: Called both by the UI (on demand) and by agents (to verify changes)
+- **git_push_current_branch**: Can be called by agents programmatically or by users via the UI
+
+## Git Limitations and Constraints
+
+### Known Limitations
+
+**1. Worktree Isolation is Per-Repository, Not Per-Project**
+Each project can have at most one active git repository root. Multiple worktrees branch off this single root. A project cannot simultaneously work on two independent git repositories (common for monorepos or submodules).
+
+**2. No Submodule Support**
+Tempest does not manage git submodules. If a project uses submodules, `git_init` will commit their metadata, but Tempest will not recursively initialize or manage them.
+
+**3. No Rebase or Cherry-Pick UI**
+Tempest does not expose interactive rebase, cherry-pick, or merge conflict resolution. Users must use the terminal or an external git client for these advanced workflows.
+
+**4. No Partial Staging at Line Level**
+The staging UI operates on entire files only. Users cannot stage individual hunks or lines without using the terminal (`git add -p`).
+
+**5. No Commit Amend**
+Tempest commits only create new commits. Existing commits cannot be amused, squashed, or reordered without terminal access.
+
+**6. No Signed Commits**
+Commits are created without GPG signing. Tempest does not prompt for or manage GPG keys.
+
+**7. No Stash Management UI**
+Auto-stashing is transparent when switching branches, but users cannot manually stash, list, or pop stashes via Tempest. Use the terminal for manual stash operations.
+
+### Constraints and Trade-Offs
+
+**Dependency Linking vs Copying**
+Large directories (node_modules, .venv) are linked as junctions or symlinks rather than copied into worktrees. This is fast but means:
+- All worktrees share the same dependency tree (changes in one worktree affect others)
+- If dependencies are large or frequently reinstalled, worktree creation is nearly instant
+- If a worktree is deleted, dependencies remain for other worktrees (saves time)
+
+**Automatic Autostash**
+When switching branches, Tempest automatically stashes uncommitted changes. This is convenient but can hide work:
+- A stash is created with the label `tempest-autostash-from-[branch]`
+- If the user expects to return to that branch later, the stash is automatically restored
+- If the user switches to many branches rapidly, multiple stashes may accumulate (use `git stash list` to inspect)
+
+**Co-Author Trailer Appended, Not Overwritten**
+The co-author hook appends the trailer to the commit message rather than replacing it. This means:
+- User-written messages are preserved in full
+- The co-author line always appears, even if the user wrote one (but the hook checks for duplicates to avoid appending twice)
+- Commit messages from Tempest-pushed changes always include co-author metadata
+
+**One Remote Only (origin)**
+Tempest hardcodes "origin" as the remote name. Projects with multiple remotes must use the terminal to push to alternative remotes.
+
+**No Shallow Clones**
+Worktrees always clone the full repository history. For projects with very large histories (100k+ commits), initial worktree creation may be slow.
+
+## Edge Cases and Behaviors
+
+### Empty Repositories
+A repository with no commits cannot be branched or pushed. Tempest detects this during worktree creation and surfaces an error. The user must create an initial commit in the project root first.
+
+### Detached HEAD
+If a repository is in detached HEAD state (e.g., after a `git checkout [commit-sha]`), many operations fail. The user should switch to a branch via the terminal.
+
+### Tracking Branch Mismatch
+If a local branch exists but has no upstream tracking, `git_push_current_branch` still succeeds with the `-u` flag, setting upstream for the first time.
+
+### Orphaned Worktrees
+If a worktree process is forcefully killed (crash or system shutdown), the worktree directory may still exist on disk but not be registered in git metadata. The next worktree creation attempt detects this and removes the orphan directory before proceeding.
+
+### Network Timeouts
+All push operations assume network connectivity. If the network is unavailable, git commands hang for several seconds before timing out. Tempest surfaces this as a timeout error; retrying after network recovery may succeed.
+
+### Large Files
+Tempest does not prevent committing large files. Projects should use `.gitignore` or git-lfs to manage large binaries.
+
+### Unicode and Special Characters
+File paths with unicode or special characters are supported. Git status, diff, and staging all handle UTF-8 correctly.

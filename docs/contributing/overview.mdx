@@ -1,0 +1,548 @@
+---
+title: "Contributing"
+description: "Project structure, development workflow, and how to extend Tempest with new agents, themes, and commands."
+icon: "handshake"
+---
+
+# Contributing to Tempest
+
+This guide covers the Tempest project structure, development workflow, and how to extend the application with new features like agents, themes, and Tauri commands.
+
+## Project Structure
+
+Tempest is organized into frontend (React/TypeScript) and backend (Rust/Tauri) components:
+
+```
+tempest/
+  src/                          # React/TypeScript frontend
+    components/                 # React UI components
+      RightSidebar.tsx         # File browser and git changes
+      SettingsPanel.tsx        # Settings dialog with multiple sections
+      NewSessionMenu.tsx       # Agent and terminal session picker
+      BroadcastDialog.tsx      # Message broadcast to multiple agents
+      PrDialog.tsx             # GitHub pull request creation
+      ProjectSwitcherModal.tsx # Project switcher
+      QueuePanel.tsx           # Message queue for pending prompts
+      TopBar.tsx               # Title bar and workspace controls
+      WorkspaceView.tsx        # Main workspace layout
+      TerminalPane.tsx         # Embedded xterm.js terminal
+      CodeMirrorPane.tsx       # Code editor with syntax highlighting
+      DiffPane.tsx             # Unified diff viewer
+      PreviewPane.tsx          # Live preview pane
+      OverviewPage.tsx         # Workspace overview/welcome
+      NexusPage.tsx            # Hub for project management
+      NewProjectModal.tsx      # Create or open a project
+    
+    themes/                     # Theme system
+      types.ts                 # Theme interface definitions
+      applyTheme.ts            # CSS variable injection
+      ThemeContext.tsx         # React context for theme state
+      origin-dark/             # Built-in dark theme
+        theme.json             # Color definitions
+      origin-light/            # Built-in light theme
+        theme.json             # Color definitions
+    
+    store/                      # State management (Zustand or similar)
+      keybindings.ts           # Keyboard shortcut state
+      appSettings.ts           # User preferences
+      sessions.ts              # Session metadata
+      sessionManager.ts        # Session lifecycle management
+      messageQueue.ts          # Pending prompts per session
+      prompts.ts               # Saved prompt library
+      attribution.ts           # Co-author attribution flag
+      recents.ts               # Recent projects cache
+      workState.ts             # Workspace state
+      openProjects.ts          # Currently open projects
+    
+    lib/                        # Utilities
+      worktree.ts              # Git worktree operations
+      webglPool.ts             # WebGL context pooling for xterm
+      runtimeState.ts          # Runtime state helpers
+    
+    assets/                     # Static assets
+      agent-icons/             # SVG icons for each agent
+        claude-color.svg
+        geminicli-color.svg
+        githubcopilot.svg
+        opencode.svg
+        cline.svg
+        cursor.svg
+        goose.svg
+      Mark.tsx                 # Tempest logo component
+    
+    App.tsx                    # Root React component
+    main.tsx                   # React DOM render entry point
+    vite-env.d.ts              # Vite environment types
+
+  src-tauri/                    # Rust backend
+    src/
+      lib.rs                   # Tauri command definitions
+      main.rs                  # App entry point
+    
+    resources/
+      atlas/                   # Token Intelligence MCP server (bundled)
+    
+    tauri.conf.json            # Tauri configuration
+    Cargo.toml                 # Rust dependencies
+
+  packages/
+    atlas/                     # Token Intelligence workspace (npm package)
+      src/                     # Atlas indexer source
+      dist/                    # Built atlas MCP server
+  
+  scripts/
+    bundle-atlas.mjs           # Build script to bundle atlas into Tauri
+    collect-artifacts.mjs      # Collect build artifacts
+
+  package.json                 # NPM dependencies and scripts
+  tsconfig.json                # TypeScript configuration
+  vite.config.ts               # Vite configuration
+```
+
+## Running the Dev Build
+
+Prerequisites: Node.js 18+, Rust 1.77+, WebView2 Runtime (Windows only)
+
+```bash
+# Clone and install
+git clone https://github.com/gsvprharsha/tempest
+cd tempest
+npm install
+
+# Start dev build with hot reload
+npm run dev
+```
+
+The dev command:
+1. Runs `npm run build:atlas` to build the Token Intelligence server
+2. Launches Tauri in dev mode, which starts:
+   - Vite dev server on http://localhost:5173
+   - Tauri webview pointing to the dev server
+   - File watcher that hot-reloads on changes
+
+The app opens in a frameless window with custom styling via Tauri's window configuration.
+
+For frontend-only work without rebuilding Rust:
+
+```bash
+npm run dev:frontend
+```
+
+This starts the Vite dev server only. Changes to React/TypeScript hot-reload instantly.
+
+## Production Build
+
+```bash
+npm run build:frontend  # Compile TypeScript and bundle with Vite
+npm run build           # Build Rust binary and create installers
+```
+
+The build output goes to `dist-installers/` with platform-specific installers (Windows .msi, macOS .app.tar.gz, Linux .AppImage).
+
+## Adding a New Agent to NewSessionMenu
+
+Agents are defined in `src/components/NewSessionMenu.tsx` in the `AGENT_CONFIGS` array.
+
+### Step 1: Prepare the agent icon
+
+Add a new SVG icon to `src/assets/agent-icons/`:
+
+```
+agent-icons/
+  my-agent-color.svg    # SVG icon for the agent
+```
+
+If the icon is monochrome, it will be inverted in dark mode automatically.
+
+### Step 2: Add the agent config
+
+In `NewSessionMenu.tsx`, add a new entry to `AGENT_CONFIGS`:
+
+```typescript
+{
+  name: "My Agent",
+  hint: "my-agent",
+  iconSrc: myAgentSrc,
+  mono: false,  // true if monochrome
+  sessionIdArgs: ["--session-id", "{UUID}"],  // or null if no session support
+  resumeArgs: ["--resume", "{UUID}"],         // or null if no resume support
+  // Optional: if agent prints session ID to stdout
+  capturePattern: /session[\s=]+([a-f0-9-]+)/i,
+  captureResumeArgs: ["--session", "{UUID}"],
+}
+```
+
+### Step 3: Import the icon
+
+At the top of `NewSessionMenu.tsx`, add an import:
+
+```typescript
+import myAgentSrc from "../assets/agent-icons/my-agent-color.svg";
+```
+
+### Step 4: Test
+
+Restart the dev server. The new agent should appear in the "Agent Session" submenu.
+
+## Adding a New Theme
+
+Themes are JSON files stored in `src/themes/{theme-name}/theme.json`.
+
+### Step 1: Create the theme file
+
+In `src/themes/my-theme/theme.json`:
+
+```json
+{
+  "name": "My Theme",
+  "type": "dark",
+  "colors": {
+    "bg.base": "#000000",
+    "bg.editor": "#0a0a0a",
+    "bg.sidebar": "#000000",
+    "bg.panel": "#000000",
+    "bg.titlebar": "#000000",
+    "bg.hover": "#ffffff1a",
+    "bg.active": "#ffffff1a",
+    "bg.input": "#000000",
+    "bg.selection": "#ffffff10",
+    "bg.selection-focused": "#ffffff22",
+    
+    "fg.default": "#ededed",
+    "fg.muted": "#a1a1a1",
+    "fg.subtle": "#878787",
+    
+    "border.default": "#242424",
+    "border.subtle": "#333333",
+    
+    "accent.blue": "#62a6ff",
+    "accent.pink": "#f05b8d",
+    "accent.green": "#58c760",
+    "accent.yellow": "#f99902",
+    "accent.purple": "#b675f1",
+    "accent.cyan": "#14cbb7",
+    "accent.red": "#f56464",
+    
+    "syntax.comment": "#a1a1a1",
+    "syntax.keyword": "#f05b8d",
+    "syntax.string": "#58c760",
+    "syntax.function": "#b675f1",
+    "syntax.variable": "#ededed",
+    "syntax.constant": "#62a6ff",
+    "syntax.type": "#62a6ff",
+    "syntax.operator": "#f05b8d",
+    "syntax.attribute": "#b675f1",
+    
+    "git.added": "#58c760",
+    "git.modified": "#f99902",
+    "git.deleted": "#f56464",
+    "git.conflict": "#f99902",
+    "git.ignored": "#777777",
+    "git.untracked": "#58c760",
+    
+    "terminal.fg": "#ededed",
+    "terminal.selection": "#333333",
+    "terminal.black": "#000000",
+    "terminal.red": "#f56464",
+    "terminal.green": "#58c760",
+    "terminal.yellow": "#f99902",
+    "terminal.blue": "#62a6ff",
+    "terminal.purple": "#b675f1",
+    "terminal.cyan": "#14cbb7",
+    "terminal.white": "#a1a1a1",
+    "terminal.brightBlack": "#676767",
+    "terminal.brightRed": "#f56464",
+    "terminal.brightGreen": "#58c760",
+    "terminal.brightYellow": "#f99902",
+    "terminal.brightBlue": "#62a6ff",
+    "terminal.brightPurple": "#b675f1",
+    "terminal.brightCyan": "#14cbb7",
+    "terminal.brightWhite": "#ededed"
+  }
+}
+```
+
+All color tokens are required. See `src/themes/origin-dark/theme.json` for the complete reference.
+
+### Step 2: Register the theme
+
+In `src/themes/ThemeContext.tsx`, import and add the new theme:
+
+```typescript
+import myTheme from "./my-theme/theme.json";
+
+// In the theme list:
+export const THEMES = [
+  myTheme,
+  // other themes...
+];
+```
+
+### Step 3: Test
+
+Restart the dev server and open Settings > Appearance. Your theme should appear in the theme grid.
+
+## Adding a New Tauri Command
+
+Tauri commands bridge the React frontend and Rust backend. They are called from TypeScript via `invoke()` and handled by `#[tauri::command]` functions in Rust.
+
+### Example: Read a File
+
+**Step 1: Add the Rust function** in `src-tauri/src/lib.rs`:
+
+```rust
+#[tauri::command]
+fn read_file(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+```
+
+Tauri automatically serializes the return type to JSON and deserializes errors.
+
+**Step 2: Register the command** in the builder in `lib.rs`:
+
+```rust
+pub fn run() {
+    tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            create_workspace,
+            list_directory,
+            read_file,        // Add this
+            write_file,
+            // ... other commands
+        ])
+        // ... rest of builder
+}
+```
+
+**Step 3: Call from React** in `src/components/MyComponent.tsx`:
+
+```typescript
+import { invoke } from "@tauri-apps/api/core";
+
+async function handleClick() {
+  try {
+    const content = await invoke<string>("read_file", { path: "/path/to/file" });
+    console.log(content);
+  } catch (e) {
+    console.error("Error:", e);
+  }
+}
+```
+
+### Tauri Command Patterns
+
+**Returning data:**
+
+```rust
+#[tauri::command]
+fn get_user_data() -> Result<UserData, String> {
+    Ok(UserData { name: "Alice" })
+}
+```
+
+Returns JSON-serializable types. Use `serde::Serialize` on structs.
+
+**Taking parameters:**
+
+```rust
+#[tauri::command]
+fn calculate(a: i32, b: i32) -> i32 {
+    a + b
+}
+```
+
+Function arguments are automatically deserialized from the invoke call's payload.
+
+**Long-running commands with streaming:**
+
+For long operations (like indexing files), use Tauri channels:
+
+```rust
+#[tauri::command]
+async fn start_index(app: tauri::AppHandle, project_path: String) -> Result<(), String> {
+    // Spawn background work
+    tokio::spawn(async move {
+        // Emit events back to frontend
+        app.emit("index:progress", serde_json::json!({
+            "path": project_path,
+            "status": "done"
+        }))?;
+    });
+    Ok(())
+}
+```
+
+On the frontend, listen for events:
+
+```typescript
+import { listen } from "@tauri-apps/api/event";
+
+const unlisten = await listen("index:progress", (event) => {
+    console.log(event.payload);
+});
+```
+
+## Code Patterns and Style
+
+### React Components
+
+Components use functional components with hooks:
+
+```typescript
+import { useState, useCallback } from "react";
+
+export function MyComponent({ prop1, prop2 }: Props) {
+  const [state, setState] = useState(false);
+
+  const handleClick = useCallback(() => {
+    setState(true);
+  }, []);
+
+  return (
+    <div className="my-component">
+      <button onClick={handleClick}>Click me</button>
+      {state && <p>State is true</p>}
+    </div>
+  );
+}
+```
+
+### CSS Variables for Theming
+
+Always use CSS variables for colors and UI tokens. Never hardcode color values.
+
+```css
+.my-element {
+  background: var(--tempest-bg-editor);
+  color: var(--tempest-fg-default);
+  border: 1px solid var(--tempest-border-default);
+}
+
+.my-element:hover {
+  background: var(--tempest-bg-hover);
+}
+```
+
+CSS variables follow the naming pattern: `--tempest-{token.with.dots}` becomes `--tempest-{token-with-dashes}`.
+
+### Error Handling
+
+Use Result types and bubble errors:
+
+```typescript
+async function loadProject(path: string) {
+  try {
+    const files = await invoke("list_directory", { path });
+    return files;
+  } catch (e) {
+    console.error("Failed to load project:", e);
+    throw e; // Re-throw if the caller should handle it
+  }
+}
+```
+
+### State Management
+
+Use Zustand stores for global state. Example from `src/store/appSettings.ts`:
+
+```typescript
+import { create } from "zustand";
+
+interface AppSettings {
+  sidebarFontSize: number;
+  terminalFontSize: number;
+  // ... more settings
+}
+
+export const useSettings = create<AppSettings>((set) => ({
+  sidebarFontSize: 12,
+  terminalFontSize: 14,
+}));
+
+export function updateSetting<K extends keyof AppSettings>(
+  key: K,
+  value: AppSettings[K]
+) {
+  useSettings.setState({ [key]: value });
+}
+```
+
+### TypeScript Types
+
+Always define prop types and return types explicitly:
+
+```typescript
+interface MyComponentProps {
+  title: string;
+  count: number;
+  onAction?: (id: string) => void;
+}
+
+export function MyComponent({ title, count, onAction }: MyComponentProps) {
+  // ...
+}
+```
+
+## Testing
+
+Currently, the codebase does not have automated tests. Manual testing via the dev build is the standard approach.
+
+To test a feature:
+
+1. Run `npm run dev`
+2. Interact with the feature in the app
+3. Check the browser console (F12) for errors
+4. Verify the expected behavior
+
+For debugging:
+
+- Use React DevTools browser extension to inspect component state
+- Use the Tauri DevTools (right-click > Inspect) to see window/console output
+- Add `console.log()` statements liberally
+
+## Building for Release
+
+```bash
+npm run build:atlas  # Build Token Intelligence first
+npm run build        # Build everything and create installers
+```
+
+Installers are saved to `dist-installers/`:
+
+- Windows: `.msi` file
+- macOS: `.app.tar.gz` (requires signing, see Tauri docs)
+- Linux: `.AppImage`
+
+## Performance Considerations
+
+### Large File Trees
+
+The file tree in the right sidebar is lazy-loaded. Nested folders do not fetch contents until expanded. This keeps the sidebar responsive even in large monorepos.
+
+### Git Status
+
+Git status operations are debounced and only refresh the Changes tab, not the file tree. This prevents layout shifts while browsing.
+
+### Terminal Rendering
+
+The embedded xterm.js terminal uses WebGL acceleration when available (via `@xterm/addon-webgl`). The WebGL context is pooled to avoid creating too many contexts simultaneously.
+
+### Code Editor
+
+Syntax highlighting uses CodeMirror with language-specific tokenizers. Avoid rendering very large files (10k+ lines) in the editor at once.
+
+## Debugging Tips
+
+1. **Frontend logs** - Open DevTools (F12) and check the Console tab
+2. **Tauri logs** - Right-click the Tempest window and select "Inspect" to see the native console
+3. **React state** - Install React DevTools browser extension and inspect component props/state
+4. **Network requests** - Check the Network tab for API calls (e.g., GitHub PR creation)
+5. **Git operations** - Git commands are invoked via Tauri; check stderr for git error messages
+
+## Next Steps
+
+- Explore `src/components/` to understand UI patterns
+- Read through `src-tauri/src/lib.rs` to see available Tauri commands
+- Check `ROADMAP.md` for upcoming features and architecture decisions
+- Join the community on X/Twitter (@usetempest) for questions and discussions

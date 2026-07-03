@@ -1,0 +1,113 @@
+---
+title: Quickstart
+description: Get Tempest running locally in minutes
+icon: "play"
+---
+
+Get Tempest up and running on your machine. The build process orchestrates Rust and TypeScript compilation, the React frontend, and Tauri bundling into installers.
+
+## Prerequisites
+
+<Steps>
+  <Step title="Node.js 18 or later">
+    Download from [nodejs.org](https://nodejs.org). Tempest uses Node for the React frontend build and npm scripts.
+  </Step>
+  <Step title="Rust 1.77 or later">
+    Install from [rustup.rs](https://rustup.rs). Tauri compiles the native backend with Rust.
+  </Step>
+  <Step title="Windows: WebView2 Runtime">
+    Windows only. Download from [Microsoft Edge WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/). This is the rendering engine for the Tauri window.
+  </Step>
+</Steps>
+
+## Installation and setup
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/gsvprharsha/tempest
+    cd tempest
+    ```
+  </Step>
+  <Step title="Install dependencies">
+    ```bash
+    npm install
+    ```
+  </Step>
+  <Step title="Build workspace assets">
+    ```bash
+    npm run setup
+    ```
+
+    This builds the Atlas workspace and bundles its resources. Required before development or production builds.
+  </Step>
+</Steps>
+
+## Run in development mode
+
+Start the dev server with live reload:
+
+```bash
+npm run dev
+```
+
+This command:
+
+1. Builds the Atlas workspace and starts the Vite dev server on `http://localhost:1420`
+2. Launches the Tauri app window with hot module replacement (HMR) on port 1421
+3. Reloads React components, TypeScript, and styles instantly in the window
+
+The app runs against the frontend dev server, not bundled assets. Tauri watches `http://localhost:1420` and rebuilds the Rust backend only when `src-tauri/` changes.
+
+## Build for production
+
+Create installers and bundles:
+
+```bash
+npm run build
+```
+
+This command:
+
+1. Builds Atlas and transpiles TypeScript, then Vite bundles the React frontend to `dist/`
+2. Compiles the Rust backend
+3. Bundles everything into a Windows NSIS installer and updater artifacts
+4. Outputs installers to `dist-installers/` along with updater metadata
+
+The production build optimizes the Rust binary for size with link-time optimization (LTO), code-generation unit optimization, and symbol stripping.
+
+## Build only the frontend
+
+To bundle the React app without running Tauri:
+
+```bash
+npm run build:frontend
+```
+
+Output goes to `dist/`. This is useful for debugging frontend issues or testing the production bundle separately.
+
+## Development tips
+
+- **Frontend-only development**: Run `npm run dev:frontend` to start just the Vite dev server on port 1420 without launching the Tauri window
+- **Preview production build**: Run `npm run preview` to test the bundled frontend in a browser
+- **Tauri CLI**: Access Tauri commands directly with `npm run tauri <command>`. For example, `npm run tauri info` shows your development environment info
+
+## Project structure
+
+- `src/` : React TypeScript frontend code
+- `src-tauri/` : Rust backend code
+- `packages/atlas/` : Workspace containing code intelligence and token-graph features
+- `dist/` : Frontend build output (created by `vite build`)
+- `dist-installers/` : Platform-specific installers (created by `tauri build`)
+- `resources/` : Assets bundled into the app at runtime
+
+## What's next
+
+<CardGroup cols={2}>
+  <Card title="Theme System" icon="palette" href="/themes/overview">
+    Customize colors, typography, and radius using the `--tempest-*` CSS variable system.
+  </Card>
+  <Card title="Workspaces" icon="layout-grid" href="/workspaces/overview">
+    Learn how workspaces are created, stored, and switched at runtime.
+  </Card>
+</CardGroup>

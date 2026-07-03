@@ -1,0 +1,55 @@
+---
+slug: the-case-against-context-switching
+title: "The Case Against Context Switching Between AI Agents"
+date: 2026-06-27
+type: blog
+description: "Every time you manually switch context between AI coding sessions, you pay a hidden tax. Here is why session continuity and parallel isolation are not convenience features — they are the whole point."
+author: "Tempest Team"
+tags: [workflow, context-switching, productivity, agents]
+---
+
+There is a cost every developer pays when working with AI coding agents that nobody talks about directly. It is not the token cost. It is not even the waiting. It is the cost of context switching between sessions — the mental overhead of tracking what each agent was doing, what state the code is in, and where you left off.
+
+It shows up in small ways. You stash changes before switching to another task. You re-read a conversation thread to remember what the agent was working on. You try to remember which branch has which feature. You discover a conflict and spend twenty minutes untangling it. None of these are individually catastrophic. Together, they eat the productivity gains the agents were supposed to provide.
+
+## The hidden tax of manual session management
+
+When developers first try running multiple AI agents, the instinct is to open more terminal windows. This works until it does not. Three windows is manageable. Five is a cognitive load. Seven is chaos.
+
+The problem is not the number of agents. It is that every agent shares the same working state. The same branch, the same uncommitted files, the same stash. Managing that by hand requires tracking a mental model of each session's state, and that mental model gets stale constantly. Agents are running, modifying files, creating state. The moment you look away, your model of what is happening is out of date.
+
+The natural response is to run agents one at a time. But sequential execution defeats the point. You have turned a parallelism tool into a sequential pipeline with extra steps.
+
+## What session continuity actually means
+
+Session continuity is not just about saving a conversation. It is about eliminating the cost of coming back to a session after you have been away.
+
+When you close a tab in Tempest and reopen it, the agent picks up exactly where it left off. The conversation history is intact. The branch is unchanged. The worktree is exactly as the agent left it. There is no re-orientation, no re-reading, no catching up. You are back where you were because the session state was never lost.
+
+This matters most when you are running several sessions in parallel. You delegate to five agents, then you come back to review them one by one. If each one requires five minutes of re-orientation before you can evaluate its output, you have added twenty-five minutes of overhead to what should have been a quick review pass. Session continuity eliminates that overhead entirely.
+
+## The connection to isolation
+
+Session continuity and isolation are two sides of the same problem. Isolation prevents sessions from interfering with each other while they run. Continuity prevents sessions from losing state when you are not looking at them.
+
+Together, they mean you can treat each agent session as a stable, independent unit of work. You delegate to it, leave it alone, come back to it, and it is exactly where you expected it to be. The mental model you maintain is simple: each tab is one task, on one branch, in one state. The tool handles everything else.
+
+Without isolation, sessions bleed into each other and your mental model breaks down. Without continuity, sessions lose state between visits and you pay re-orientation costs constantly. You need both.
+
+## What this enables in practice
+
+Once the overhead of context switching drops close to zero, the way you work changes.
+
+You start running more experiments. When spinning up a new agent session is cheap and the result persists until you decide to close it, you try things you would not have tried before. Explore an approach, evaluate it, keep it or discard it. The cost of being wrong is just closing a tab.
+
+You start reviewing in batches. When sessions are stable and persistent, you can let five agents run while you do something else, then come back and review all five in sequence. The agents' work happens in parallel even if your review happens linearly.
+
+You stop babysitting. When you know each session is isolated and its state is preserved, you do not need to check in on it constantly. You check the status indicator, see it is still running, and go back to what you were doing.
+
+## The tool should disappear
+
+The best version of a productivity tool is one you stop noticing. Every second you spend managing sessions, tracking state, untangling conflicts, or re-orienting after a context switch is a second the tool failed to save you.
+
+Tempest is built to make that overhead disappear. Worktrees handle isolation automatically. Session state persists without you thinking about it. Live status tells you what is running without you having to check. The tool does the state management so you can focus on the work.
+
+That is the case against context switching: not that it is occasionally annoying, but that it is a recoverable cost that should not exist. The infrastructure to eliminate it is straightforward. Most tools just have not bothered to build it.

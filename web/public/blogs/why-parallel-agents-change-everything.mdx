@@ -1,0 +1,57 @@
+---
+slug: why-parallel-agents-change-everything
+title: "Why Parallel Agents Change Everything"
+date: 2026-06-28
+type: blog
+description: "Running one AI agent is useful. Running five in parallel, each on its own branch, is a different category of tool entirely. Here is why isolation is the missing piece."
+author: "Tempest Team"
+tags: [parallel-agents, git, workflow, isolation]
+---
+
+Running one AI coding agent is a productivity multiplier. Running five at once, each isolated from the others, is something else entirely. It is not the same thing done faster. It is a qualitatively different way to work.
+
+Most developers who try parallel agents do it wrong first. They open more terminals. They stash changes. They try to mentally track which agent touched which file. It turns into chaos, they blame the agents, and they go back to running one at a time. The problem was never the agents. It was the missing infrastructure.
+
+## The collision problem
+
+When two agents share a working directory, they will eventually step on each other. Agent A edits a file while agent B is reading it. Agent A commits something that conflicts with agent B's in-progress changes. You end up in a merge conflict in the middle of an automated run, and now you have to stop both agents and clean up the mess manually.
+
+The natural response is to run agents sequentially. Finish one, start the next. But then you have given up the whole point. Sequential agents do not multiply your throughput. They just automate one task at a time with extra steps.
+
+## The git worktree solution
+
+Git worktrees exist to solve exactly this problem, and most developers have never used them. A worktree is a separate checked-out working directory linked to the same repository. Each worktree has its own branch and its own files. Changes in one do not affect any other until you explicitly merge.
+
+This is the correct isolation primitive for parallel agents. Each agent lives in its own worktree, works on its own branch, and never touches anything outside its directory. The blast radius of a bad agent run is zero: it cannot corrupt main, it cannot collide with another agent, and it cannot leave your working state in a broken condition.
+
+The catch is that managing worktrees manually is tedious. Creating them, naming them, cleaning them up, knowing which session corresponds to which worktree — it is enough friction that most developers skip it entirely.
+
+Tempest removes all of that friction. Open a new session tab and the worktree is created. Close it and the worktree persists. The state management is done for you.
+
+## What isolation actually enables
+
+Once isolation is handled, the calculus changes.
+
+You can run five features in parallel. You can test three different approaches to the same problem simultaneously and pick the best result. You can have one agent on a bug fix while another is roughing out a new feature. None of them know the others exist, and none of them can interfere.
+
+This is not hypothetical. Tempest itself was built this way. The features in this release were shipped by parallel agents running inside the app.
+
+The feedback loop also tightens considerably. You are not waiting for one agent to finish before you can start the next one. You delegate five tasks, come back when they are done, review the diffs, and ship. The time cost of each task overlaps with every other task.
+
+## Why most tools do not do this
+
+The tools that exist for running AI agents were built around a single agent, single working directory model. Adding parallelism on top of that architecture is not a small change. It requires rethinking session management, file isolation, diff review, and state persistence from the ground up.
+
+Tempest was designed for parallel agents from the start. The session model, the worktree management, the per-session diff viewer, the live status tracking — all of it is built around the assumption that you are running more than one agent at once.
+
+## The practical effect
+
+Here is what changes in practice.
+
+You stop treating agent time as a scarce resource you have to ration. When each session is isolated and session state is persistent, launching an agent costs almost nothing. You try more things. You explore more approaches. You delegate more aggressively.
+
+You stop babysitting. Live status across all sessions means you know when each agent finishes without watching. You delegate, do something else, and come back to review.
+
+You stop losing context. Session continuity means closing and reopening a tab picks up exactly where you left off. The agent remembers the conversation. The worktree is still there. Nothing was lost because nothing needed to be lost.
+
+Parallel agents are not a power user feature. They are the natural way to work with AI coding tools once the isolation problem is actually solved. That is what Tempest is built to do.

@@ -1,0 +1,65 @@
+---
+title: "Reporting Issues"
+description: "How to report bugs and unexpected behavior in Tempest."
+icon: "bug"
+---
+
+Bug reports are tracked as GitHub issues. A clear, reproducible report gets a fix faster than a vague one.
+
+## Before you report
+
+<Steps>
+  <Step title="Update Tempest">
+    Make sure you are on the latest version. The bug may already be fixed.
+  </Step>
+  <Step title="Search existing issues">
+    Search [GitHub Issues](https://github.com/gsvprharsha/tempest/issues) for your error message or a description of the behavior. Add a comment to an existing issue rather than opening a duplicate.
+  </Step>
+  <Step title="Reproduce it">
+    Try to reproduce the bug in a clean workspace. If you cannot reproduce it consistently, include that in your report.
+  </Step>
+</Steps>
+
+## What to include
+
+<CardGroup cols={2}>
+  <Card title="Environment" icon="computer">
+    OS version, Tempest version, Node.js version, and Rust version. Run `npm run tauri info` in the repo for a complete summary.
+  </Card>
+  <Card title="Steps to reproduce" icon="list-ol">
+    The exact sequence of actions that triggers the bug. Number each step. Start from a fresh app launch.
+  </Card>
+  <Card title="Expected behavior" icon="circle-check">
+    What you expected to happen.
+  </Card>
+  <Card title="Actual behavior" icon="circle-xmark">
+    What actually happened. Include error messages, stack traces, or screenshots.
+  </Card>
+</CardGroup>
+
+## Logs
+
+Tempest logs are written to the Tauri log directory for your platform:
+
+| Platform | Log path |
+|---|---|
+| Windows | `%APPDATA%\tempest\logs\` |
+| macOS | `~/Library/Logs/tempest/` |
+| Linux | `~/.local/share/tempest/logs/` |
+
+Attach the latest log file to your issue when reporting crashes or silent failures.
+
+## Severity labels
+
+Maintainers apply one of the following labels after triage:
+
+| Label | Meaning |
+|---|---|
+| `bug` | Confirmed unexpected behavior |
+| `critical` | Data loss, crash on launch, or security issue |
+| `needs-info` | Cannot reproduce without more details from the reporter |
+| `wont-fix` | Known limitation or out of scope |
+
+## Security vulnerabilities
+
+Do not open a public GitHub issue for security vulnerabilities. Email [tempestai.dev@gmail.com](mailto:tempestai.dev@gmail.com) directly with a description of the issue, steps to reproduce, and any relevant logs or proof-of-concept code.

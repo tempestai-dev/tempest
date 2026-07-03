@@ -1,0 +1,87 @@
+---
+slug: tempest-v012-release
+title: "Tempest v0.1.2: Token Intelligence"
+date: 2026-07-03
+type: release-notes
+description: "Agents now get a pre-built semantic code graph injected automatically. No setup. Plus a fully rewritten work-done detector and a smarter recent projects list."
+author: "Tempest Team"
+tags: [release, token-intelligence, atlas, parallel-agents]
+---
+
+v0.1.2 is the Token Intelligence release. Here is everything that shipped.
+
+## Token Intelligence
+
+Run five agents in parallel and each one reads your entire codebase from scratch — the same files, the same context, five times over. You pay for every token, every time.
+
+Token Intelligence ends that.
+
+Tempest now ships a built-in code knowledge graph powered by **Atlas**, a local, offline semantic index of your project. When Token Intelligence is enabled, Tempest indexes your codebase and injects a live MCP server into every agent session. Agents query the graph to find callers, callees, symbol definitions, and cross-file relationships — without reading entire files from scratch on every turn.
+
+The work is done once. Every session benefits.
+
+Early results: **up to 64% less context token consumption. Up to 58% fewer tool calls.** No other parallel-agent tool does this.
+
+### How to enable it
+
+Turn on Token Intelligence in **Settings → Token Intelligence**. On first open of each project, Tempest asks whether to index it. Indexing runs entirely in the background — a toast in the bottom-right corner tracks progress and disappears when the index is ready.
+
+Once indexed, every agent session in that project gets the Atlas MCP server injected automatically. No configuration needed.
+
+### MCP config files are written automatically
+
+Tempest writes the MCP config for every tool it supports:
+
+- Claude Code, Cline, Roo, Zed, Windsurf (`.mcp.json`)
+- Cursor (`.cursor/mcp.json`)
+- Gemini CLI (`.gemini/settings.json`)
+- Kiro / AWS Q (`.kiro/settings/mcp.json`)
+- opencode (`opencode.jsonc`)
+
+All generated files are gitignored automatically. Re-index any project at any time via right-click on the project header in the sidebar.
+
+**Auto-index mode:** turn on "Auto-index new projects" to skip the prompt entirely. Every new project is indexed silently on first open.
+
+**Atlas indicators** appear in the sidebar next to indexed projects and their agent sessions so you can see at a glance which sessions have Token Intelligence active.
+
+The index lives at `<project>/.tempest/atlas/`, excluded from git automatically.
+
+## Work-Done Detection: Full Rewrite
+
+The agent work-done detector has been rebuilt from scratch.
+
+The old implementation had a latent false-positive bug: `\x1b]9;4;3` — ConEmu indeterminate-progress, meaning *busy* — matched the OSC 9 prefix and incorrectly called `done` mid-run. Any agent or subprocess emitting a progress update could cause Tempest to signal completion prematurely. A second false-positive: the 5s byte-quiet timer armed immediately on Enter, so Claude Code's silent pre-output thinking window (which can exceed 5s on complex prompts) would fire a spurious done signal before any output appeared.
+
+The new detector is a **9-layer state machine** based on publicly documented terminal standards, with a title-based authoritative signal layer for agents that emit terminal titles. Cross-chunk sequence reassembly is also new: OSC and CSI sequences that split across PTY chunk boundaries are now correctly matched via a per-session tail buffer.
+
+| Layer | Signal | Effect |
+|-------|--------|--------|
+| OSC 0/2 title | Claude Code spinner → `✳` transition | Authoritative done |
+| OSC 0/2 title | Gemini `✦`/`✋` → `◇` transition | Authoritative done |
+| OSC 9 | Shell notification (Claude Code turn end) | Immediate done |
+| OSC 9;4;0 | ConEmu progress cleared | Done |
+| OSC 9;4;1-4 | ConEmu progress busy/error/indeterminate/paused | Busy |
+| OSC 133;B/D | FinalTerm prompt ready / command finished | Done |
+| OSC 133;C | FinalTerm command executing | Busy |
+| OSC 777;notify | urxvt/VTE notification dialect | Done |
+| `?2004h` | Bracketed paste enabled | Done |
+| `?2004l` | Bracketed paste disabled | Busy |
+| `?1049l` | Alt-screen leave | Done |
+| Byte-quiet | 5s of no PTY output (≥200 bytes received) | Done |
+| Hard ceiling | 12s maximum working state | Done (safety net) |
+
+In practice: agents that previously triggered false completions mid-run no longer do. Claude Code's thinking window is handled correctly.
+
+## Overview: Pagination and Remove
+
+The recent projects list in the Overview splash screen has two new controls.
+
+**Pagination:** navigate across all recent projects with `←` / `→` controls, 5 per page. If you work across many repositories, you no longer need to scroll through a flat list to find an older project.
+
+**Remove:** an `×` button on each row removes that project from the recents list without opening it. Clean up stale or moved projects without ceremony.
+
+## Get it
+
+Tempest v0.1.2 is free and open source under Apache 2.0.
+
+[Download on GitHub.](https://github.com/gsvprharsha/tempest)

@@ -12,6 +12,7 @@ import { getWorktreeSession, saveWorktreeSession, removeWorktreeSession, markWor
 import { getRuntimeState, setRuntimeState, type PersistedTab } from "../lib/runtimeState";
 import {
   LayoutGrid,
+  Network,
   FolderPlus,
   FolderOpen,
   Bug,
@@ -64,6 +65,7 @@ import { getPrompts, type PromptEntry } from "../store/prompts";
 import { useTheme, builtinThemes } from "../themes/ThemeContext";
 import { Mark } from "../assets/Mark";
 import { AtlasIndexToast } from "./AtlasIndexToast";
+import { NexusPage } from "./NexusPage";
 import "./AtlasIndexToast.css";
 import "./WorkspaceView.css";
 
@@ -107,7 +109,7 @@ interface Project {
   worktrees: Worktree[];
 }
 
-type NavSection = "overview";
+type NavSection = "overview" | "nexus";
 
 // Directories under .tempest/ that are internal to Tempest and must never be
 // treated as git worktrees in the sidebar.
@@ -1514,6 +1516,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
             <LayoutGrid size={16} />
             <span>Overview</span>
           </button>
+          <button className={navBtn("nexus")} onClick={() => goTo("nexus")}>
+            <Network size={16} />
+            <span>Nexus</span>
+          </button>
 
           {/* Scrollable middle */}
           <div className="sidebar-scroll-wrap">
@@ -2076,7 +2082,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
                 />
               );
             })}
-            {!activeSessionId && (
+            {!activeSessionId && activeSection === "nexus" && (
+              <NexusPage />
+            )}
+            {!activeSessionId && activeSection === "overview" && (
               <div className="overview-page">
                 <div className="overview-container">
 

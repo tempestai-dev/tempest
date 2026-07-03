@@ -1,0 +1,94 @@
+---
+slug: tempest-v011-release
+title: "Tempest v0.1.1: Prompt Library, Message Queue, and Branch Management"
+date: 2026-07-01
+type: dev-log
+description: "A major quality-of-life release. Reusable prompts, queued agent tasks, better Git workflows, workspace persistence, and native releases for Windows, macOS, and Linux."
+author: "Tempest Team"
+tags: [release, prompts, git, workflow, cross-platform]
+---
+
+v0.1.1 is a daily-driver release. No single headline feature — a lot of things that were friction are now not.
+
+Here is everything that shipped.
+
+## Native releases for Windows, macOS, and Linux
+
+Tempest now ships pre-built binaries for every platform through GitHub Actions.
+
+- **Windows**: Portable `.exe`, NSIS installer, and MSI installer
+- **macOS**: `.dmg` installer
+- **Linux**: `.AppImage` and `.deb` packages
+
+Automatic update manifests ship alongside every release. No source build required.
+
+## Prompt Library
+
+Prompts are now first-class citizens inside Tempest.
+
+Build a reusable library of prompts, organize them however you want, and use them across every workspace. Tempest ships with built-ins for Review, Tests, Security Review, Explain Changes, and Commit Messages — and your customizations survive upgrades.
+
+- Create, edit, clone, delete and reset prompts
+- Drag-and-drop reordering
+- Enable or disable prompts individually
+- Prompt picker directly in the workspace toolbar
+- Deep-link directly into Prompt settings
+
+## Message Queue
+
+An agent finishes while you're focused on something else. Instead of making you stop and respond, Tempest queues your next instruction and sends it automatically the moment that agent is done.
+
+- Per-agent message queues
+- Queue panel (`Ctrl+Shift+Q`)
+- Queue badges on session tabs
+- Automatic dequeue after work completes
+- Remove individual items or clear the queue entirely
+
+Useful for chaining long-running workflows without babysitting every response.
+
+## Branch Management
+
+You no longer need to open a terminal to manage branches.
+
+The Diff pane now has a branch picker built in. Switch branches, delete local and remote branches, force-delete unmerged branches — all from inside Tempest. Worktree branches are automatically hidden from the picker so the list stays clean.
+
+Switching branches is also safer: if your working tree has changes, Tempest stashes them before switching and restores them after. Nothing is lost.
+
+## Safer Push Workflow
+
+Push and commit are now separate operations.
+
+Previously, clicking **Push** could silently create a commit before pushing. That is gone. Push only pushes the current branch. If you want to create a new branch and push it, you can do that directly from the Diff pane — Tempest automatically opens a Pull Request after the branch is created, and rolls back cleanly if branch creation fails.
+
+## File Editor
+
+The built-in editor is now fully writable.
+
+- Save with `Ctrl+S` / `Cmd+S`
+- Dirty indicator for unsaved changes
+- Reliable save pipeline
+- Fixed opening Git diffs from editor tabs
+
+## Workspace Persistence
+
+Tempest now remembers your workspace across restarts.
+
+Session order, the active session, open editor tabs, open diff tabs, live preview URL, and workspace layout all restore exactly as you left them. All application state has moved from browser storage into a dedicated runtime JSON file, so nothing is lost on a browser cache clear or WebView reset.
+
+## Split Panes
+
+Split panes got a significant round of improvements: better nested sub-session rendering, unlimited recursive splits, correct sidebar hierarchy, cleaner borders, improved resize behavior, better session identity across restores, and fixed duplicate sessions after restart.
+
+## Git Improvements
+
+Better staging, more reliable commits, improved diff loading, cleaner branch switching, and a number of edge cases fixed around hidden panes and background tabs.
+
+## Stability
+
+This release fixes dozens of issues found after v0.1.0, including editor save reliability, diff pane loading, branch switching edge cases, push safety, prompt picker usability, and various session persistence bugs.
+
+## Get it
+
+Tempest v0.1.1 is free and open source under Apache 2.0.
+
+[Download on GitHub.](https://github.com/gsvprharsha/tempest)

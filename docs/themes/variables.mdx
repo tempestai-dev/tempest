@@ -1,0 +1,378 @@
+---
+title: CSS Variables Reference
+description: Complete reference of Tempest's CSS variable system with dark/light theme values
+icon: "sliders"
+---
+
+# Tempest CSS Variables Reference
+
+Tempest's theme system is built on CSS custom properties (variables) that change based on the active theme. Every token in a theme's `theme.json` file is automatically converted to a `--tempest-*` CSS variable.
+
+## Token to CSS Variable Conversion
+
+The conversion rule is simple: replace dots with dashes and prepend `--tempest-`.
+
+| Theme Token | CSS Variable | Purpose |
+|---|---|---|
+| `bg.base` | `--tempest-bg-base` | Page/container background |
+| `fg.default` | `--tempest-fg-default` | Primary foreground/text |
+| `border.default` | `--tempest-border-default` | Standard borders |
+
+## Background Variables
+
+Background colors are used for surfaces at different layers of the application.
+
+| Variable | Dark Theme | Light Theme | Used For |
+|---|---|---|---|
+| `--tempest-bg-base` | `#000000` | `#fafafa` | Root page and container backgrounds |
+| `--tempest-bg-editor` | `#0a0a0a` | `#ffffff` | Main editor/content areas |
+| `--tempest-bg-sidebar` | `#000000` | `#fafafa` | Sidebar backgrounds |
+| `--tempest-bg-panel` | `#000000` | `#fafafa` | Panel and dropdown backgrounds |
+| `--tempest-bg-titlebar` | `#000000` | `#fafafa` | Window titlebar |
+| `--tempest-bg-hover` | `#ffffff1a` | `#0000001a` | Interactive element hover states |
+| `--tempest-bg-active` | `#ffffff1a` | `#0000001a` | Interactive element active/selected states |
+| `--tempest-bg-input` | `#000000` | `#fafafa` | Input field backgrounds |
+| `--tempest-bg-selection` | `#ffffff10` | `#00000012` | Text selection background |
+| `--tempest-bg-selection-focused` | `#ffffff22` | `#00000022` | Focused text selection background |
+| `--tempest-bg-elevated` | Derived from panel | Derived from editor | Elevated/floating elements (search bars, elevated popovers) |
+
+## Foreground (Text) Variables
+
+Foreground colors are used for text and icons at different emphasis levels.
+
+| Variable | Dark Theme | Light Theme | Used For |
+|---|---|---|---|
+| `--tempest-fg-default` | `#ededed` | `#171717` | Primary text content |
+| `--tempest-fg-muted` | `#a1a1a1` | `#666666` | Secondary text (buttons, labels, help text) |
+| `--tempest-fg-subtle` | `#878787` | `#a8a8a8` | Tertiary text (placeholders, dividers, disabled states) |
+
+## Border Variables
+
+Border colors provide visual separation at different prominence levels.
+
+| Variable | Dark Theme | Light Theme | Used For |
+|---|---|---|---|
+| `--tempest-border-default` | `#242424` | `#ebebeb` | Standard borders, dividers, outlines |
+| `--tempest-border-subtle` | `#333333` | `#cccccc` | Secondary borders, scrollbar tracks, faint dividers |
+
+## Accent Colors
+
+Accent colors are used for highlights, active states, and semantic meaning. Available in seven hues.
+
+| Variable | Dark Theme | Light Theme | Purpose |
+|---|---|---|---|
+| `--tempest-accent-blue` | `#62a6ff` | `#005ee9` | Primary accent, links, interactive elements |
+| `--tempest-accent-pink` | `#f05b8d` | `#b32c62` | Secondary accent, important highlights |
+| `--tempest-accent-green` | `#58c760` | `#397c3b` | Success, addition, positive states |
+| `--tempest-accent-yellow` | `#f99902` | `#9e5200` | Warning, attention-required states |
+| `--tempest-accent-purple` | `#b675f1` | `#7200c4` | Tertiary accent, decorative elements |
+| `--tempest-accent-cyan` | `#14cbb7` | `#027d70` | Quaternary accent, additional highlights |
+| `--tempest-accent-red` | `#f56464` | `#c62128` | Error, deletion, destructive actions |
+
+## Syntax Highlighting Variables
+
+Used in code editors and code display areas for syntax-aware coloring.
+
+| Variable | Dark Theme | Light Theme | Highlights |
+|---|---|---|---|
+| `--tempest-syntax-comment` | `#a1a1a1` | `#666666` | Comments |
+| `--tempest-syntax-keyword` | `#f05b8d` | `#b32c62` | Language keywords (if, for, return, etc.) |
+| `--tempest-syntax-string` | `#58c760` | `#397c3b` | String literals |
+| `--tempest-syntax-function` | `#b675f1` | `#7200c4` | Function names and calls |
+| `--tempest-syntax-variable` | `#ededed` | `#171717` | Variables and identifiers |
+| `--tempest-syntax-constant` | `#62a6ff` | `#005ee9` | Constants and numbers |
+| `--tempest-syntax-type` | `#62a6ff` | `#005ee9` | Type annotations and type names |
+| `--tempest-syntax-operator` | `#f05b8d` | `#b32c62` | Operators (+, -, *, =, etc.) |
+| `--tempest-syntax-attribute` | `#b675f1` | `#7200c4` | HTML/XML attributes, decorators |
+
+## Git Status Colors
+
+Used to indicate the status of files in version control contexts.
+
+| Variable | Dark Theme | Light Theme | Indicates |
+|---|---|---|---|
+| `--tempest-git-added` | `#58c760` | `#397c3b` | New files or added lines |
+| `--tempest-git-modified` | `#f99902` | `#9e5200` | Modified files or changed lines |
+| `--tempest-git-deleted` | `#f56464` | `#c62128` | Deleted files or removed lines |
+| `--tempest-git-conflict` | `#f99902` | `#9e5200` | Merge conflicts |
+| `--tempest-git-ignored` | `#777777` | `#bbbbbb` | Ignored files |
+| `--tempest-git-untracked` | `#58c760` | `#397c3b` | Untracked files |
+
+## Island Component Variables
+
+Island components are collapsed/expandable UI containers used for collapsible panels.
+
+| Variable | Dark Theme | Light Theme | Used For |
+|---|---|---|---|
+| `--tempest-island-bg-closed` | `#ffffff12` | `#00000012` | Collapsed island background |
+| `--tempest-island-border-closed` | `#ffffff2e` | `#0000002e` | Collapsed island border |
+| `--tempest-island-bg-open` | `#1a1a1a` | `#ffffff` | Expanded island background |
+| `--tempest-island-border-open` | `#333333` | `#cccccc` | Expanded island border |
+
+## Tooltip Variables
+
+Used for tooltip overlays and popover elements.
+
+| Variable | Dark Theme | Light Theme | Used For |
+|---|---|---|---|
+| `--tempest-tooltip-bg` | `#ededed` | `#000000` | Tooltip background |
+| `--tempest-tooltip-fg` | `#000000` | `#ffffff` | Tooltip text |
+
+## Semantic Intent Colors
+
+Semantic colors convey intent or message type across the UI.
+
+| Variable | Dark Theme | Light Theme | Conveys |
+|---|---|---|---|
+| `--tempest-semantic-error` | `#f56464` | `#c62128` | Error states and messages |
+| `--tempest-semantic-warning` | `#f99902` | `#9e5200` | Warning messages and cautions |
+| `--tempest-semantic-info` | `#62a6ff` | `#005ee9` | Informational messages |
+| `--tempest-semantic-success` | `#58c760` | `#397c3b` | Success and completion states |
+
+## Terminal and ANSI Colors
+
+Terminal emulators use these variables for the 16 standard ANSI colors plus foreground/selection.
+
+| Variable | Dark Theme | Light Theme | ANSI Color |
+|---|---|---|---|
+| `--tempest-terminal-fg` | `#ededed` | `#171717` | Foreground text |
+| `--tempest-terminal-selection` | `#333333` | `#cccccc` | Selection background |
+| `--tempest-terminal-black` | `#000000` | `#171717` | Color 0 (black) |
+| `--tempest-terminal-red` | `#f56464` | `#c62128` | Color 1 (red) |
+| `--tempest-terminal-green` | `#58c760` | `#397c3b` | Color 2 (green) |
+| `--tempest-terminal-yellow` | `#f99902` | `#9e5200` | Color 3 (yellow) |
+| `--tempest-terminal-blue` | `#62a6ff` | `#005ee9` | Color 4 (blue) |
+| `--tempest-terminal-purple` | `#b675f1` | `#7200c4` | Color 5 (magenta/purple) |
+| `--tempest-terminal-cyan` | `#14cbb7` | `#027d70` | Color 6 (cyan) |
+| `--tempest-terminal-white` | `#a1a1a1` | `#cccccc` | Color 7 (white) |
+| `--tempest-terminal-brightBlack` | `#676767` | `#666666` | Color 8 (bright black/gray) |
+| `--tempest-terminal-brightRed` | `#f56464` | `#c62128` | Color 9 (bright red) |
+| `--tempest-terminal-brightGreen` | `#58c760` | `#397c3b` | Color 10 (bright green) |
+| `--tempest-terminal-brightYellow` | `#f99902` | `#9e5200` | Color 11 (bright yellow) |
+| `--tempest-terminal-brightBlue` | `#62a6ff` | `#005ee9` | Color 12 (bright blue) |
+| `--tempest-terminal-brightPurple` | `#b675f1` | `#7200c4` | Color 13 (bright magenta) |
+| `--tempest-terminal-brightCyan` | `#14cbb7` | `#027d70` | Color 14 (bright cyan) |
+| `--tempest-terminal-brightWhite` | `#ededed` | `#fafafa` | Color 15 (bright white) |
+
+## Component Usage Guide
+
+This section lists which CSS variables are used by specific components throughout Tempest.
+
+### Core Layout Components
+
+**WorkspaceView** (sidebar, tabs, panes):
+- Background variables: `--tempest-bg-base`, `--tempest-bg-sidebar`, `--tempest-bg-panel`, `--tempest-bg-editor`
+- Text variables: `--tempest-fg-default`, `--tempest-fg-muted`, `--tempest-fg-subtle`
+- Border variables: `--tempest-border-default`, `--tempest-border-subtle`
+- Accent variables: `--tempest-accent-blue`, `--tempest-accent-green`, `--tempest-accent-yellow`, `--tempest-accent-red`
+- Git status: `--tempest-git-added`, `--tempest-git-modified`, `--tempest-git-deleted`
+
+**TerminalPane** (terminal emulator):
+- Background: `--tempest-bg-elevated`, `--tempest-bg-input`
+- Text: `--tempest-text-primary`, `--tempest-text-muted` (note: these may be aliases for fg variables)
+- Border: `--tempest-border-subtle`
+- Terminal colors: All `--tempest-terminal-*` variables
+- Accent: `--tempest-accent-blue`
+
+**TopBar** (application titlebar):
+- Background: `--tempest-bg-titlebar`
+- Text: `--tempest-fg-default`, `--tempest-fg-muted`
+
+**Dialog/Modal Components** (NamingModal, DeleteDialog, etc.):
+- Background: `--tempest-bg-sidebar`, `--tempest-bg-editor`
+- Text: `--tempest-fg-default`, `--tempest-fg-subtle`, `--tempest-fg-muted`
+- Border: `--tempest-border-default`
+- Accent: `--tempest-accent-blue`, `--tempest-accent-red`
+
+**Code Editor Areas** (CodeMirrorPane):
+- Background: `--tempest-bg-editor`
+- Syntax: All `--tempest-syntax-*` variables
+- Accent: `--tempest-accent-*` variables (for highlights, selections, errors)
+
+### Interactive Elements
+
+**Buttons and Links**:
+- Default: `--tempest-fg-default`, `--tempest-border-default`, `--tempest-bg-hover`
+- Hover: `--tempest-bg-active`
+- Accents: `--tempest-accent-*` colors based on button type
+
+**Checkboxes and Form Controls**:
+- Accent color: `--tempest-accent-blue`
+- Border: `--tempest-border-default`
+
+**Scrollbars**:
+- Thumb (the draggable part): `--tempest-border-subtle`
+- Track (background): Transparent
+- Hover: `--tempest-accent-blue`
+
+## Complete Theme JSON Structure
+
+Here is the complete structure of a Tempest theme file (theme.json):
+
+```json
+{
+  "name": "Custom Theme Name",
+  "type": "dark",
+  "colors": {
+    "bg.base": "#0a0a0a",
+    "bg.editor": "#0f0f0f",
+    "bg.sidebar": "#0a0a0a",
+    "bg.panel": "#0a0a0a",
+    "bg.titlebar": "#0a0a0a",
+    "bg.hover": "#ffffff1a",
+    "bg.active": "#ffffff1a",
+    "bg.input": "#0a0a0a",
+    "bg.selection": "#ffffff10",
+    "bg.selection-focused": "#ffffff22",
+
+    "fg.default": "#ededed",
+    "fg.muted": "#a1a1a1",
+    "fg.subtle": "#878787",
+
+    "border.default": "#242424",
+    "border.subtle": "#333333",
+
+    "accent.blue": "#62a6ff",
+    "accent.pink": "#f05b8d",
+    "accent.green": "#58c760",
+    "accent.yellow": "#f99902",
+    "accent.purple": "#b675f1",
+    "accent.cyan": "#14cbb7",
+    "accent.red": "#f56464",
+
+    "syntax.comment": "#a1a1a1",
+    "syntax.keyword": "#f05b8d",
+    "syntax.string": "#58c760",
+    "syntax.function": "#b675f1",
+    "syntax.variable": "#ededed",
+    "syntax.constant": "#62a6ff",
+    "syntax.type": "#62a6ff",
+    "syntax.operator": "#f05b8d",
+    "syntax.attribute": "#b675f1",
+
+    "git.added": "#58c760",
+    "git.modified": "#f99902",
+    "git.deleted": "#f56464",
+    "git.conflict": "#f99902",
+    "git.ignored": "#777777",
+    "git.untracked": "#58c760",
+
+    "island.bg-closed": "#ffffff12",
+    "island.border-closed": "#ffffff2e",
+    "island.bg-open": "#1a1a1a",
+    "island.border-open": "#333333",
+
+    "tooltip.bg": "#ededed",
+    "tooltip.fg": "#000000",
+
+    "semantic.error": "#f56464",
+    "semantic.warning": "#f99902",
+    "semantic.info": "#62a6ff",
+    "semantic.success": "#58c760",
+
+    "terminal.fg": "#ededed",
+    "terminal.selection": "#333333",
+    "terminal.black": "#000000",
+    "terminal.red": "#f56464",
+    "terminal.green": "#58c760",
+    "terminal.yellow": "#f99902",
+    "terminal.blue": "#62a6ff",
+    "terminal.purple": "#b675f1",
+    "terminal.cyan": "#14cbb7",
+    "terminal.white": "#a1a1a1",
+    "terminal.brightBlack": "#676767",
+    "terminal.brightRed": "#f56464",
+    "terminal.brightGreen": "#58c760",
+    "terminal.brightYellow": "#f99902",
+    "terminal.brightBlue": "#62a6ff",
+    "terminal.brightPurple": "#b675f1",
+    "terminal.brightCyan": "#14cbb7",
+    "terminal.brightWhite": "#ededed"
+  }
+}
+```
+
+## Using CSS Variables in Custom Styles
+
+To use Tempest's CSS variables in your own stylesheets, simply reference them with `var()`:
+
+```css
+.my-component {
+  background: var(--tempest-bg-panel);
+  color: var(--tempest-fg-default);
+  border: 1px solid var(--tempest-border-default);
+}
+
+.my-component:hover {
+  background: var(--tempest-bg-hover);
+}
+
+.my-button.primary {
+  background: var(--tempest-accent-blue);
+  color: #fff;
+}
+
+.my-code {
+  color: var(--tempest-syntax-keyword);
+  background: var(--tempest-bg-editor);
+}
+```
+
+## Data Theme Attribute
+
+The `data-theme` attribute on the document root element indicates the current theme type:
+
+```html
+<html data-theme="dark">
+  <!-- Contents -->
+</html>
+```
+
+Possible values are `"dark"` or `"light"`. You can use this in CSS selectors if needed for theme-specific overrides:
+
+```css
+[data-theme="dark"] .my-component {
+  /* Dark theme specific styles */
+}
+
+[data-theme="light"] .my-component {
+  /* Light theme specific styles */
+}
+```
+
+## Fallback Values
+
+CSS variables support fallback values, which is useful for components that might reference a variable that doesn't exist in all theme versions:
+
+```css
+.element {
+  background: var(--tempest-bg-elevated, var(--tempest-bg-panel));
+  color: var(--tempest-terminal-green, var(--tempest-accent-green));
+}
+```
+
+In the above example, if `--tempest-bg-elevated` is not defined, it falls back to `--tempest-bg-panel`. This pattern is used throughout Tempest to ensure graceful degradation across theme versions.
+
+## Transparency and Alpha Channels
+
+Many theme variables use alpha transparency for hover and selection states. For example:
+
+- `#ffffff1a` represents white with 10% opacity (hex `1a` = 26/255 = 10%)
+- `#ffffff22` represents white with 13% opacity (hex `22` = 34/255 = 13%)
+- `#0000001a` represents black with 10% opacity
+
+You can extract and manipulate these values in CSS using color functions:
+
+```css
+.element {
+  background: var(--tempest-bg-hover);
+  /* or with opacity modification: */
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+```
+
+## Performance Considerations
+
+CSS variables are efficiently updated when themes change. The `applyTheme()` function in Tempest sets all theme variables at once on the document root, making theme switching instant across the entire application.
+
+All variables are inherited, so child elements automatically receive the updated values without requiring DOM re-renders or explicit updates.

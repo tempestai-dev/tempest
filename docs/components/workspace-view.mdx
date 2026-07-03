@@ -1,0 +1,433 @@
+---
+title: WorkspaceView Component
+description: The main container and orchestrator for Tempest's UI, managing sessions, split panes, and the complete agent workspace lifecycle.
+icon: "window"
+---
+
+# WorkspaceView Component
+
+The **WorkspaceView** component is the heart of Tempest's desktop application. At 2,646 lines, it serves as the primary container managing a single agent session workspace, coordinating tabs, panes, sessions, and user interactions. It orchestrates everything from terminal spawning to diff rendering to live preview hosting.
+
+## Overview
+
+WorkspaceView is the root component rendered by the application. It manages:
+- Project and worktree state (sidebar navigation)
+- Session lifecycle (create, resume, close)
+- Tab bar and split-pane layout
+- Work-done detection for agent sessions
+- Keyboard shortcuts and global events
+- Theme switching
+- Settings and configuration
+
+```typescript
+interface Props {
+  zen?: true;           // Zen mode: single project, flat worktree list
+  name?: string;        // Project name for zen mode
+  path?: string;        // Root path for zen mode
+}
+```
+
+## Data Model
+
+### Session Interface
+
+```typescript
+interface Session {
+  id: string;                          // Ephemeral PTY session UUID
+  name: string;                        // Display name (worktree branch or custom)
+  cwd: string;                         // Working directory path
+  projectId: string;                   // Parent project UUID
+  kind?: "terminal" | "diff" | "preview" | "editor"; // Tab type (defaults to "terminal")
+  previewUrl?: string;                 // Current URL for preview tabs
+  agent?: string;                      // CLI command (e.g. "claude")
+  conversationId?: string;             // Claude conversation UUID for resuming
+  instanceId: string;                  // Stable identity across restarts (never changes)
+  createdAt: string;                   // ISO timestamp
+  isRootSession?: boolean;             // true when running in project root (no worktree)
+  noGit?: boolean;                     // true when user skipped git init for root session
+  parentSessionId?: string;            // Set when spawned via split
+  storeKey?: string;                   // localStorage key for persistence
+  metadata: {
+    resumeCount: number;               // How many times this session has resumed
+    hasBeenResumed: boolean;
+  };
+}
+```
+
+### Project and Worktree
+
+```typescript
+interface Worktree {
+  name: string;  // Branch name (e.g. "feature-auth")
+  path: string;  // Full filesystem path
+}
+
+interface Project {
+  id: string;                  // UUID
+  name: string;                // Project folder name
+  path: string;                // Root directory
+  expanded: boolean;           // Sidebar expand/collapse state
+  worktrees: Worktree[];       // Cached worktree list
+}
+```
+
+## Tab System
+
+WorkspaceView supports multiple tab types, each rendered by a dedicated pane:
+
+| Tab Kind | Component | Purpose |
+|----------|-----------|---------|
+| `terminal` (default) | `TerminalPane` | Interactive terminal session (PTY) with xterm.js |
+| `diff` | `DiffPane` | Git status, staging, commit, push operations |
+| `preview` | `PreviewPane` | Live preview of dev server (Vite, Next.js, etc.) |
+| `editor` | `CodeMirrorPane` | Read/edit files with syntax highlighting |
+| Agent session | `TerminalPane` | Terminal running an agent CLI (Claude, Opencode, etc.) |
+
+Tabs are displayed in a horizontal tab bar at the top of the workspace. Only one tab is active at a time unless split panes are enabled. Terminal and agent tabs are persisted across restarts; diff/preview/editor tabs are transient.
+
+## State Management
+
+WorkspaceView uses over 50 `useState` hooks managing:
+
+### Session Management
+- `sessions`: Array of all open Session objects
+- `activeSessionId`: Currently focused session UUID
+- `renamingSessionId`: Session being renamed (if any)
+
+### Tab Bar
+- `dragTabId`, `dragOverTabId`, `dragOverSide`: Tab reordering state
+- Refs (`dragTabIdRef`, `dragOverTabIdRef`) to avoid stale closures
+
+### Layout
+- `paneLayout`: Split pane tree (null = single pane mode)
+- `activeSplitIds`: Set of session IDs in current split layout
+- `paneRects`: Computed absolute positions for each pane
+
+### Navigation
+- `activeSection`: "overview" | "nexus" (main page when no tab active)
+- `sidebarOpen`: Left sidebar visibility
+- `rightSidebarOpen`: Right sidebar visibility
+
+### Terminal/Worktree Creation
+- `showTerminalNaming`: Modal open state for naming new sessions
+- `terminalName`, `terminalPrompt`: User input for new sessions
+- `terminalLaunching`: Async operation in progress
+- `gitNotFound`, `gitNotFoundRoot`: Git initialization dialogs
+- `pendingProjectId`, `pendingAgent`: Deferred session creation
+
+### Project Management
+- `projects`: Array of projects (default mode only)
+- `zenWorktrees`: Worktree list for zen mode
+
+### UI State
+- `settingsOpen`, `broadcastOpen`, `promptPickerOpen`: Modal states
+- `ctxMenu`: Right-click context menu position/context
+- `deleteDialog`: Workspace deletion confirmation state
+- `atlasPromptPath`, `atlasIndexingPaths`: Atlas (Token Intelligence) state
+- `queueOpenSessionId`: Message queue panel visibility
+- `gitRevision`: Increment counter that triggers DiffPane refreshes
+
+## Split Pane Layout
+
+WorkspaceView supports dividing the workspace into a 2D grid using a binary tree structure.
+
+### Tree Structure
+
+```typescript
+type SplitDir = "h" | "v";  // horizontal or vertical split
+
+interface SplitLeaf {
+  type: "leaf";
+  sessionId: string;  // Which session occupies this pane
+}
+
+interface SplitBranch {
+  type: "split";
+  id: string;        // Unique branch identifier
+  dir: SplitDir;     // "h" (stacked) or "v" (side-by-side)
+  ratio: number;     // 0.0-1.0: proportion of space for first child
+  first: PaneNode;   // Left/top subtree
+  second: PaneNode;  // Right/bottom subtree
+}
+
+type PaneNode = SplitLeaf | SplitBranch;
+```
+
+### Pane Positioning
+
+Tree functions compute absolute rectangles (0-1 normalized coordinates) for each leaf:
+
+```typescript
+interface PaneRect {
+  top: number;     // 0.0-1.0 fractional offset from top
+  left: number;    // 0.0-1.0 fractional offset from left
+  width: number;   // 0.0-1.0 fractional width
+  height: number;  // 0.0-1.0 fractional height
+}
+
+function computeRects(n: PaneNode): Map<string, PaneRect>
+function collectHandles(n: PaneNode): HandleInfo[]
+```
+
+When a split is active, panes are rendered with absolute positioning using these computed coordinates. Draggable resize handles appear between panes and call `patchRatio()` to update split ratios on mouse drag.
+
+### Split Operations
+
+```typescript
+async function splitPane(dir: SplitDir) {
+  // Create new session at same cwd as active pane
+  const newId = crypto.randomUUID();
+  const branch: SplitBranch = {
+    type: "split", id: crypto.randomUUID(), dir, ratio: 0.5,
+    first:  { type: "leaf", sessionId: activeSessionId },
+    second: { type: "leaf", sessionId: newId },
+  };
+  setPaneLayout(...)  // Insert branch into tree
+  await openSession(..., newId, activeSessionId)  // Link as sub-session
+}
+```
+
+Only terminal panes can be split. Diff/preview/editor tabs do not support splitting.
+
+## Session Lifecycle
+
+### Creating a Session
+
+`openSession()` is called from multiple paths: user clicks "New Workspace", restore loop, split pane. The function:
+
+1. Mints or reuses a stable `instanceId` for persistence
+2. Determines the storage key (`storeKey`): root sessions use `rootSessionKey(cwd, sessionId)`, worktree agents key on `cwd`
+3. Builds agent arguments via `buildAgentArgs()`: session/resume flags + prompt
+4. Calls `invoke("create_pty_session")` → Rust PTY spawns
+5. Registers with SessionManager, which owns the Channel and runs work-done detection
+6. Adds to `sessions` state, making it appear as a tab
+7. Persists metadata to localStorage
+
+**Deduplication**: During restore (dedupe=true), the function guards against duplicate spawns at the same cwd using `spawningPaths` ref.
+
+### Resuming a Conversation
+
+Agents save their `conversationId` (Claude: UUID, Opencode: captured from PTY output). On restore:
+
+```typescript
+await openSession(
+  name, cwd, projectId, agent,
+  undefined,      // no initial prompt
+  undefined,      // metadata
+  conversationId, // pass stored UUID
+  isRootSession,
+  noGit
+);
+```
+
+The `buildAgentArgs()` function substitutes the UUID into the agent's resume arguments:
+
+```typescript
+config.resumeArgs?.forEach(arg => {
+  args.push(arg.replace("{UUID}", conversationId))
+})
+```
+
+### Closing and Cleanup
+
+`closeSession(sessionId)` is called via tab close button, context menu, or workspace deletion. It:
+
+1. Recursively closes all sub-sessions (spawned via split)
+2. Kills the PTY: `invoke("close_pty_session", {sessionId})`
+3. Marks persisted entry as closed: `markWorktreeSessionClosed(storeKey)`
+4. Unregisters from SessionManager
+5. Removes from pane layout tree if in split mode
+6. Clears work state badge
+7. Updates active session if needed
+
+## Work-Done Detection
+
+Agent sessions show a spinner badge while the agent is working and a green dot when done. This is powered by the **SessionManager**, which monitors raw PTY output bytes:
+
+### Detection Logic (in SessionManager)
+
+1. **Byte-quiet timer**: Start on first data chunk from the agent
+2. **Title watching**: Monitor OSC 0/2 escape sequences (agent sends status like "✳ refactoring")
+3. **Two thresholds**:
+   - 5 seconds of silence without title changes = "work done"
+   - 12 seconds of silence with title changes (still thinking) = extend to "done"
+4. **User input resets**: When user types and presses Enter, arm a new quiet timer
+
+WorkspaceView subscribes to work state via `useWorkState(sessionId)` hook, updating the badge in real-time as the state changes from idle to working to done.
+
+### Display
+
+```typescript
+const WorkStateBadge = memo(function WorkStateBadge({ sessionId }) {
+  const state = useWorkState(sessionId);
+  if (state === "working") return <Loader size={11} className="spin" />;
+  if (state === "done") return <span className="work-done-dot" />;
+  return null;
+});
+```
+
+## Restore on Launch
+
+On mount, WorkspaceView restores all previously open sessions in saved order:
+
+1. **Discover valid paths**: Scan each project's `.tempest/` for worktrees, add to `validPaths`
+2. **Mark root sessions as valid**: Retrieve all root session store keys (project.path + "::root::" + sessionId)
+3. **Prune orphaned entries**: Delete persisted sessions whose paths no longer exist on disk
+4. **Collect restore items**: Build list from `sessionOrder` (tab bar order) + saved active session
+5. **Open in order**: Restore non-active sessions, then active session last so it gets focus
+
+Active session is determined by `activeInstanceId` from runtimeState, not the current active tab—ensures focus survives a reload.
+
+## Keyboard Shortcuts
+
+All shortcuts are registered in the capture phase (before xterm.js can consume). `matchesEvent()` checks if an event matches a keybinding:
+
+| Action | Default | Usage |
+|--------|---------|-------|
+| Toggle theme | Ctrl+Shift+T | Switch light/dark |
+| Toggle left sidebar | Ctrl+B | Show/hide projects |
+| Toggle right sidebar | Ctrl+Shift+P | Show/hide file tree |
+| Open settings | Ctrl+, | Settings panel |
+| New workspace | Ctrl+Shift+N | Open session menu |
+| Close tab | Ctrl+W | Close active session |
+| Next tab | Ctrl+Tab | Move right in tab bar |
+| Prev tab | Ctrl+Shift+Tab | Move left in tab bar |
+| Split vertical | Ctrl+Shift+\\ | Side-by-side panes |
+| Split horizontal | Ctrl+Shift+_ | Stacked panes |
+| Open queue | Ctrl+Shift+Q | Message queue panel |
+| Broadcast | Ctrl+Shift+M | Send to all agents |
+
+Terminal's xterm.js custom key handler lets app shortcuts through even when focused.
+
+## Event Listeners
+
+WorkspaceView registers global Tauri event listeners:
+
+```typescript
+listen<{ path: string; line: string }>("atlas:log", (e) => {
+  console.log(`[Atlas] ${e.payload.line}`);
+});
+```
+
+Streams Atlas indexer output to the browser DevTools console for debugging.
+
+## Persistence
+
+Three localStorage stores sync automatically:
+
+1. **sessionOrder, activeInstanceId**: Via `setRuntimeState()`
+   - Restores tab bar order and last active tab on launch
+
+2. **Per-session metadata**: Via `saveWorktreeSession(storeKey, {...})`
+   - name, agent, conversationId, instanceId, projectId, isRootSession, noGit
+
+3. **Transient tabs (diff/preview/editor)**: Via `runtimeState.tabs` array
+   - Includes kind, cwd, projectId, previewUrl for preview tabs
+
+4. **Project list**: Via `saveOpenProjects()`
+   - Only default mode (not zen)
+
+## Theme Integration
+
+WorkspaceView uses `useTheme()` hook to:
+- Read current theme name ("Tempest Dark" vs "Tempest Light")
+- Provide sun/moon toggle button in sub-bar
+- Pass theme context to all child components
+
+All panes (TerminalPane, CodeMirrorPane) subscribe independently to theme changes and hot-swap colors without restarting.
+
+## Context Menus
+
+Right-click on sidebar items opens a context menu with actions:
+
+**Worktree session**:
+- Close session
+- Delete workspace (with optional branch deletion)
+
+**Root session**:
+- Remove session (delete persisted entry)
+
+**Project header**:
+- Index project (Atlas/Token Intelligence)
+- Remove project (close all its sessions)
+
+Menus are rendered via `createPortal()` into document.body to escape scroll clipping.
+
+## Modal Dialogs
+
+WorkspaceView renders several modals via `createPortal()`:
+
+1. **Terminal naming modal**: Enter worktree name, optional prompt, choose git init strategy
+2. **Delete workspace dialog**: Two-step confirm with optional branch deletion
+3. **Atlas index prompt**: Ask user to opt-in to local indexing
+4. **Settings panel**: Full settings UI
+5. **Broadcast dialog**: Send message to all agent sessions
+6. **Right sidebar**: File tree + git operations
+
+## Memoization Strategy
+
+Heavy use of `memo()` prevents unnecessary re-renders:
+
+```typescript
+const WorkStateBadge = memo(function WorkStateBadge({ sessionId }) {
+  const state = useWorkState(sessionId);  // Only re-render when THIS session's state changes
+  ...
+});
+
+const QueueBadge = memo(function QueueBadge({ sessionId, onClick }) {
+  const queue = useQueue(sessionId);  // Isolated queue subscription
+  ...
+});
+
+const SidebarWorkBadge = memo(function SidebarWorkBadge({ sessionId }) {
+  // Sidebar row updates only when this specific session's work state changes
+  ...
+});
+```
+
+The component tree is designed so parent re-renders don't cascade unnecessarily. Each badge is a separate memo boundary that only re-renders when its own sessionId's state changes.
+
+## Refs for Avoiding Stale Closures
+
+Several refs maintain always-current state for event handlers registered once:
+
+```typescript
+const paneLayoutRef = useRef<PaneNode | null>(null);
+paneLayoutRef.current = paneLayout;  // Updated every render
+
+const shortcutHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
+// Updated in useEffect, used in addEventListener (registered once)
+
+const sessionsRef = useRef<Session[]>([]);
+sessionsRef.current = sessions;  // Read in post-restore active-session lookup
+```
+
+This pattern lets handlers read current state without re-registering listeners on every render.
+
+## Sidebar Navigation
+
+Two modes:
+
+**Default**: Multi-project view with expandable projects. Each project shows:
+- Expandable header with project name
+- Root sessions (agent + terminal in project root, badged "main")
+- Worktree sessions (git branches with their own sessions)
+- Sub-sessions (spawned via split, indented with connecting lines)
+
+**Zen**: Flat list of worktrees for a single project. Useful for focused work on one codebase. Worktree session state persists but doesn't sync with sidebar—sidebar is always synced with disk.
+
+Both modes render sessions with icons: TerminalSquare for terminals, AgentIcon for agents, Eye/Globe/FileCode for diff/preview/editor tabs.
+
+## Future-Proofing
+
+The `kind` field on Session allows new tab types to be added without breaking existing sessions. When a new kind is added, the render tree checks `kind` and renders the appropriate component:
+
+```typescript
+{s.kind === "diff" ? <DiffPane ... />
+ : s.kind === "preview" ? <PreviewPane ... />
+ : s.kind === "editor" ? <CodeMirrorPane ... />
+ : <TerminalPane ... />  // default
+}
+```
+
+Similarly, the split pane tree is generic and works with any pane, so split support for non-terminal tabs could be added in the future.

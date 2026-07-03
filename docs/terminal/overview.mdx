@@ -1,0 +1,833 @@
+---
+title: "Terminal System"
+description: "PTY architecture, xterm.js integration, and shell session management in Tempest."
+icon: "terminal"
+---
+
+# Tempest Terminal System
+
+Tempest's terminal system is a sophisticated real PTY architecture that bridges the Tauri desktop application with xterm.js, enabling full shell capability and agent CLI integration. This guide documents the architecture, lifecycle, and key subsystems.
+
+## Architecture Overview
+
+The terminal system is split into two domains:
+
+1. **Rust Backend (PTY Management)**: `src-tauri/src/lib.rs` manages actual pseudo-terminal sessions using `portable-pty`, spawning real shell processes and bidirectional I/O.
+2. **React Frontend (Terminal Rendering)**: `src/components/TerminalPane.tsx` renders terminal output via xterm.js and handles user input, with session state managed by `src/store/sessionManager.ts`.
+
+Tauri channels connect the two: the backend streams PTY output over a Channel, and the frontend sends keystrokes back via Tauri commands.
+
+## PTY Architecture and Shell Selection
+
+### Shell Detection
+
+Tempest probes for the preferred interactive shell once at startup and caches it:
+
+```rust
+static SHELL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+fn resolve_shell() -> String {
+    #[cfg(windows)]
+    {
+        if new_command("pwsh").arg("-?").output().is_ok() {
+            "pwsh".to_string()  // PowerShell Core 7+
+        } else {
+            "powershell.exe".to_string()  // Windows built-in PowerShell 5.1
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
+    }
+}
+```
+
+**Windows**: Tries PowerShell Core (`pwsh`) first, falls back to built-in `powershell.exe`. The probe (`pwsh -?`) costs 100-200ms, so the result is cached via `std::sync::OnceLock` to avoid repeated probes per PTY spawn.
+
+**Unix/Linux/macOS**: Uses the `$SHELL` environment variable if set, otherwise defaults to `/bin/bash`.
+
+### PTY Session Lifecycle
+
+The `create_pty_session` Tauri command is the entry point. It accepts:
+
+```rust
+#[tauri::command]
+async fn create_pty_session(
+    session_id: String,
+    cwd: String,
+    rows: u16,
+    cols: u16,
+    command: Option<String>,           // Agent binary (e.g. "claude", "gemini")
+    args: Option<Vec<String>>,         // Pre-assembled agent flags
+    on_event: Channel<PtyOutputPayload>,
+    state: tauri::State<'_, PtyState>,
+) -> Result<(), String>
+```
+
+The heavy I/O work (opening PTY, spawning process) runs on a dedicated blocking thread to prevent starving Tauri's IPC pool:
+
+```rust
+let (session, reader) = tauri::async_runtime::spawn_blocking(move || {
+    let pty_system = native_pty_system();
+    let size = PtySize {
+        rows,
+        cols,
+        pixel_width: 0,
+        pixel_height: 0,
+    };
+    let pair = pty_system.openpty(size).map_err(|e| e.to_string())?;
+    // Build shell command (see Agent Command Injection below)
+    // Spawn child, setup I/O streams, return handles
+})
+.await
+.map_err(|e| e.to_string())??;
+```
+
+### PTY Session Storage
+
+Sessions are stored in a thread-safe concurrent map (DashMap) indexed by `session_id`:
+
+```rust
+struct PtySession {
+    writer: Mutex<Box<dyn Write + Send>>,
+    master: Mutex<Box<dyn portable_pty::MasterPty + Send>>,
+    _slave: Mutex<Box<dyn portable_pty::SlavePty + Send>>,
+    child:  Mutex<Box<dyn portable_pty::Child + Send + Sync>>,
+    cwd: String,  // worktree path; used for cleanup
+}
+
+pub struct PtyState(pub(crate) Arc<DashMap<String, Arc<PtySession>>>);
+```
+
+Each session holds three Mutexes (writer, master, child) to allow concurrent access from the I/O pump thread, Tauri commands, and cleanup routines.
+
+### Output Streaming
+
+After PTY spawn, a background thread reads from the PTY master and sends chunks to the frontend:
+
+```rust
+let reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
+std::thread::spawn(move || {
+    let mut buf = [0u8; 4096];
+    loop {
+        match reader.read(&mut buf) {
+            Ok(0) | Err(_) => break,  // EOF or error: child exited
+            Ok(n) => {
+                let data = String::from_utf8_lossy(&buf[..n]).to_string();
+                on_event_clone.send(PtyOutputPayload {
+                    session_id: sid.clone(),
+                    data,
+                }).ok();
+            }
+        }
+    }
+});
+```
+
+This pump thread is fire-and-forget; it exits when the PTY closes (child process ends).
+
+### PID Persistence
+
+The child process OS PID is written to a sidecar file `.tempest-pid` in the worktree directory. This enables cleanup after app restart if the PTY State map is lost:
+
+```rust
+if let Some(pid) = child.process_id() {
+    let _ = std::fs::write(pid_file_path(&cwd), pid.to_string());
+}
+```
+
+On workspace deletion or PTY close, the PID file is deleted. If an orphaned process is found during cleanup, `kill_pid_tree()` uses `taskkill /F /T` (Windows) or `kill -9` (Unix) to recursively kill the shell and all descendants.
+
+## Agent Command Injection
+
+When spawning an agent session (e.g. Claude Code, Gemini CLI), the frontend pre-assembles the full command line (with session IDs, resume flags, prompt hints) and passes it to the backend as `command` + `args` vectors.
+
+The backend shell-quotes arguments containing spaces or single quotes and joins them into an agent invocation string:
+
+```rust
+let mut parts: Vec<String> = vec![agent_exe.clone()];
+if let Some(ref extra) = args {
+    for arg in extra {
+        if arg.contains(' ') || arg.contains('\'') {
+            parts.push(format!("'{}'", arg.replace('\'', "'''")));
+        } else {
+            parts.push(arg.clone());
+        }
+    }
+}
+let agent_invocation = parts.join(" ");
+```
+
+The invocation is then run inside an interactive shell with `NoExit` flags:
+
+**Windows**:
+```rust
+CommandBuilder::new("pwsh")
+    .cwd(&cwd)
+    .arg("-NoLogo")
+    .arg("-NoExit")
+    .arg("-Command")
+    .arg(agent_invocation)
+```
+
+**Unix**:
+```rust
+CommandBuilder::new("/bin/bash")
+    .cwd(&cwd)
+    .arg("-c")
+    .arg(format!("{}; exec $SHELL -i", agent_invocation))
+```
+
+The `-NoExit` / `exec $SHELL -i` ensures the shell stays open after the agent command completes, allowing user interaction. On Unix, `exec $SHELL -i` drops into an interactive shell after the agent finishes.
+
+## I/O Commands: write_to_pty, resize_pty, close_pty_session
+
+### write_to_pty
+
+```rust
+#[tauri::command]
+fn write_to_pty(
+    session_id: String,
+    data: Vec<u8>,
+    state: tauri::State<PtyState>,
+) -> Result<(), String> {
+    let session_arc = state.0.get(&session_id).map(|r| Arc::clone(&*r));
+    if let Some(session) = session_arc {
+        session.writer.lock().unwrap().write_all(&data).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+```
+
+Sends raw bytes to the PTY. Called every time the user types or pastes. The frontend encodes keystrokes as UTF-8 bytes and sends them via this command.
+
+### resize_pty
+
+```rust
+#[tauri::command]
+fn resize_pty(
+    session_id: String,
+    rows: u16,
+    cols: u16,
+    state: tauri::State<PtyState>,
+) -> Result<(), String> {
+    let session_arc = state.0.get(&session_id).map(|r| Arc::clone(&*r));
+    if let Some(session) = session_arc {
+        session.master.lock().unwrap()
+            .resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+```
+
+Updates PTY dimensions (rows/cols). Called by the frontend whenever the window resizes or the terminal pane is resized. Sends SIGWINCH to the shell so full-screen TUIs (vim, less, fzf) reflow their layout.
+
+### close_pty_session
+
+```rust
+#[tauri::command]
+fn close_pty_session(
+    session_id: String,
+    state: tauri::State<PtyState>,
+) -> Result<(), String> {
+    let removed = state.0.remove(&session_id).map(|(_, arc)| arc);
+    if let Some(session) = removed {
+        let _ = session.child.lock().unwrap().kill();
+        for _ in 0..40u32 {
+            match session.child.lock().unwrap().try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) => std::thread::sleep(std::time::Duration::from_millis(25)),
+                Err(_) => break,
+            }
+        }
+        let _ = std::fs::remove_file(pid_file_path(&session.cwd));
+    }
+    Ok(())
+}
+```
+
+Removes the session from the registry, kills the child process (and all descendants via `taskkill /F /T` on Windows), waits for exit (up to ~1 second with 40 * 25ms checks), and deletes the PID sidecar file.
+
+On Windows, `portable-pty` uses a job object to track the shell and all descendants, so killing the child terminates the entire process tree in one operation. This is critical: if the agent CLI spawned subprocesses, they all die together and the worktree directory is released immediately.
+
+## Terminal Lifecycle: Frontend (React)
+
+### TerminalPane Component
+
+The `TerminalPane` React component (in `src/components/TerminalPane.tsx`) is a memoized renderer. One instance exists per session. Its key responsibilities:
+
+1. Create xterm.js terminal on mount
+2. Attach to the SessionManager to receive buffered output
+3. Handle keyboard input and send to PTY
+4. Manage WebGL contexts for rendering
+5. Handle terminal resizing
+6. Clean up on unmount
+
+### Initialization
+
+```tsx
+useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const s = getSettings();
+    const term = new Terminal({
+        theme: getTerminalTheme(),
+        fontFamily: `"${s.terminalFontFamily}", monospace`,
+        fontSize: s.terminalFontSize,
+        cursorStyle: s.terminalCursorStyle,
+        cursorBlink: s.terminalCursorBlink,
+        scrollback: s.terminalScrollback,
+        allowProposedApi: true,
+    });
+    termRef.current = term;
+
+    // Load addons
+    const fitAddon = new FitAddon();
+    term.loadAddon(fitAddon);
+    term.loadAddon(new Unicode11Addon());
+    term.loadAddon(new SearchAddon());
+    term.loadAddon(new WebLinksAddon(...));
+
+    term.open(el);
+
+    // Register with SessionManager and replay buffer
+    const onData = (data: string) => term.write(data);
+    onDataRef.current = onData;
+    const buffered = sessionManager.attach(sessionId, onData);
+    for (const chunk of buffered) term.write(chunk);
+
+    // ... remaining setup (resize, input handlers, cleanup)
+}, [sessionId]);
+```
+
+The `FitAddon` calculates terminal dimensions (rows/cols) from the container element using font metrics. The `SearchAddon` enables Ctrl+F terminal search. The `WebLinksAddon` makes URLs clickable.
+
+### Input Handling and Keyboard Shortcuts
+
+xterm.js emits `onData` events for every keystroke. The frontend captures these and sends them to the PTY:
+
+```tsx
+term.onData((data) => {
+    const bytes = Array.from(new TextEncoder().encode(data));
+    invoke("write_to_pty", { sessionId, data: bytes }).catch(() => {});
+
+    // Signal Enter to SessionManager for work-done detection
+    if (isAgent && data.includes("\r")) sessionManager.markUserInput(sessionId);
+});
+```
+
+Special keyboard shortcuts are handled via `attachCustomKeyEventHandler`:
+
+- **Ctrl/Cmd+F**: Toggle search bar (return false to prevent xterm default)
+- **Ctrl+C**: Smart copy-or-SIGINT (if text is selected, copy; otherwise send SIGINT to PTY)
+- **Ctrl+V**: Paste from clipboard
+- **Ctrl+Shift+C/V**: Explicit copy/paste
+- **App shortcuts** (Ctrl+Shift+T, Ctrl+B, etc.): Let pass through to WorkspaceView's capture-phase listener
+
+### Resizing
+
+On mount, a ResizeObserver watches the container element and calls `fitAddon.fit()` to recompute dimensions, then sends `resize_pty` to the backend:
+
+```tsx
+const fitAndResize = () => {
+    if (el.offsetWidth === 0 || el.offsetHeight === 0) return;
+    fitAddon.fit();
+    invoke("resize_pty", { sessionId, rows: term.rows, cols: term.cols }).catch(() => {});
+};
+
+const observer = new ResizeObserver(() => {
+    if (resizeTimerRef.current !== null) clearTimeout(resizeTimerRef.current);
+    resizeTimerRef.current = setTimeout(fitAndResize, 16);  // Debounce to 16ms (60fps)
+});
+observer.observe(el);
+```
+
+### WebGL Context Pool
+
+xterm.js can render with WebGL acceleration (faster) or canvas fallback (slower). Tempest pools up to 6 WebGL contexts and assigns them to visible panes. When a pane is hidden, its context is released back to the pool.
+
+```tsx
+// On show: acquire a context
+webglPool.acquire(term, sessionId);
+
+// On hide: release it
+webglPool.release(sessionId);
+```
+
+This maximizes performance while keeping OS resources bounded.
+
+### Cleanup
+
+On unmount, the component detaches from SessionManager, releases WebGL context, and disposes xterm:
+
+```tsx
+return () => {
+    if (resizeTimerRef.current !== null) clearTimeout(resizeTimerRef.current);
+    sessionManager.detach(sessionId, onDataRef.current);
+    webglPool.release(sessionId);
+    termRef.current = null;
+    observer.disconnect();
+    term.dispose();
+};
+```
+
+## xterm.js Configuration and Theming
+
+### xterm.js Addons
+
+Tempest loads the following xterm.js addons:
+
+- **FitAddon**: Calculates rows/cols from container element
+- **Unicode11Addon**: Enables Unicode 11 support for wide characters, emoji, etc.
+- **SearchAddon**: Provides Ctrl+F search bar
+- **WebLinksAddon**: Makes URLs clickable, delegates to Tauri's `openUrl()` plugin
+
+### Terminal Theme
+
+xterm.js colors are mapped from Tempest CSS custom properties:
+
+```tsx
+function getTerminalTheme() {
+    const s = getComputedStyle(document.documentElement);
+    const v = (name: string) => s.getPropertyValue(`--tempest-${name}`).trim();
+    return {
+        background:          v("bg-editor"),
+        foreground:          v("terminal-fg"),
+        cursor:              v("terminal-fg"),
+        cursorAccent:        v("bg-editor"),
+        selectionBackground: v("terminal-selection"),
+        black:               v("terminal-black"),
+        red:                 v("terminal-red"),
+        green:               v("terminal-green"),
+        yellow:              v("terminal-yellow"),
+        blue:                v("terminal-blue"),
+        magenta:             v("terminal-purple"),
+        cyan:                v("terminal-cyan"),
+        white:               v("terminal-white"),
+        brightBlack:         v("terminal-brightBlack"),
+        brightRed:           v("terminal-brightRed"),
+        brightGreen:         v("terminal-brightGreen"),
+        brightYellow:        v("terminal-brightYellow"),
+        brightBlue:          v("terminal-brightBlue"),
+        brightMagenta:       v("terminal-brightPurple"),
+        brightCyan:          v("terminal-brightCyan"),
+        brightWhite:         v("terminal-brightWhite"),
+    };
+}
+```
+
+These CSS variables are defined in Tempest's theme system and updated whenever the user switches themes. The theme is hot-swapped on existing terminals without recreating the PTY:
+
+```tsx
+useEffect(() => {
+    if (termRef.current) termRef.current.options.theme = getTerminalTheme();
+}, [theme]);
+```
+
+### Terminal Display Settings
+
+Font size, font family, cursor style, cursor blink, and scrollback line count are all configurable via app settings and applied to xterm without PTY recreation:
+
+```tsx
+useEffect(() => {
+    const t = termRef.current;
+    if (!t) return;
+    t.options.fontSize = settings.terminalFontSize;
+    t.options.fontFamily = `"${settings.terminalFontFamily}", monospace`;
+    t.options.cursorStyle = settings.terminalCursorStyle;
+    t.options.cursorBlink = settings.terminalCursorBlink;
+    t.options.scrollback = settings.terminalScrollback;
+    requestAnimationFrame(fitIfVisible);
+}, [settings.terminalFontSize, settings.terminalFontFamily, ...]);
+```
+
+Defaults are:
+- Font size: 13px
+- Font family: Geist Mono
+- Cursor style: block
+- Cursor blink: enabled
+- Scrollback: 1000 lines
+
+## Session Management and ID Mapping
+
+### SessionManager Architecture
+
+The `SessionManager` (in `src/store/sessionManager.ts`) is a singleton that owns all Channel subscriptions and session state. Each Tauri command invocation creates a Channel that the frontend attaches to. SessionManager registers sessions and listens on their channels:
+
+```ts
+class SessionManager {
+    private sessions = new Map<string, SessionRecord>();
+
+    register(
+        sessionId: string,
+        channel: Channel<{ session_id: string; data: string }>,
+        isAgent: boolean,
+        onDone?: () => void,
+        onChunk?: (data: string) => void,
+        agentHint?: string,
+    ) {
+        const record: SessionRecord = {
+            isAgent,
+            agentHint,  // e.g. "claude", "gemini" for title classification
+            onDone,
+            onChunk,
+            buffer: [],
+            bufferBytes: 0,
+            quietTimer: null,
+            ceilTimer: null,
+            deadZoneUntil: 0,
+            outputSinceInput: 0,
+            senderBusy: false,
+            seqTail: "",
+            listeners: new Set(),
+        };
+        this.sessions.set(sessionId, record);
+        channel.onmessage = (payload) => this.processChunk(sessionId, payload.data);
+    }
+}
+```
+
+### Buffer and Replay
+
+Each session maintains a ring buffer of recent PTY output (capped at 2MB). When a TerminalPane component attaches, it receives all buffered chunks for replay:
+
+```ts
+attach(sessionId: string, onData: (data: string) => void): string[] {
+    const record = this.sessions.get(sessionId);
+    if (!record) return [];
+    record.listeners.add(onData);
+    return [...record.buffer];
+}
+```
+
+This enables hidden or initially-unmounted panes to display history when they become visible.
+
+### Multi-Listener Distribution
+
+All listeners (TerminalPane instances) for a session receive each chunk. This allows multiple panes to render the same PTY simultaneously (though this is not yet a UI feature):
+
+```ts
+private processChunk(sessionId: string, data: string) {
+    // ... buffer management ...
+    for (const listener of record.listeners) {
+        listener(data);
+    }
+}
+```
+
+## Work-Done Detection System
+
+For agent sessions, Tempest automatically detects when an agent CLI finishes and marks the session as "done". This is complex because agents emit streaming output and keepalive bytes, making simple EOF detection unreliable.
+
+### Detection Mechanisms
+
+The system uses a multi-layered approach, checked in this order:
+
+#### 1. Explicit Terminal Signals (Highest Priority)
+
+These fire immediately and bypass the dead zone:
+
+- **OSC 9 (ConEmu/iTerm2 notification)**: Agent sends `OSC 9` or `OSC 9;4;0` (state 0 = complete) when it finishes
+- **OSC 9;4;3 (Windows Terminal progress bar - indeterminate)**: Still working
+- **OSC 9;4;1/2/4 (progress normal/error/paused)**: Mark as working, not done
+- **OSC 133 (FinalTerm shell-integration)**: 
+  - Code D = command finished (done)
+  - Code B = prompt ready (done)
+  - Code C = command started (working)
+- **OSC 777 (rxvt-unicode notification)**: Same as OSC 9
+- **DEC 2004h (Bracketed paste enable)**: Line editor ready = done
+- **DEC 2004l (Bracketed paste disable)**: About to execute = working
+- **DEC 1049l (Leave alternate screen buffer)**: TUI app exited = done
+
+### 2. Byte-Quiet Heuristic (Fallback)
+
+If no explicit signal fires, the system uses byte counting and timers. After the user presses Enter (`markUserInput` called):
+
+- Starts a "quiet timer" that fires after 5 seconds with no PTY output
+- Suppressed if `senderBusy` (title says agent is thinking) or if fewer than 200 bytes have been received since the user input (gates false-positives during pre-output thinking)
+- When quiet timer fires and conditions are met, marks session as done
+
+#### 3. Hard Ceiling (Safety Net)
+
+If the session stays in "working" state for longer than 12 seconds, force done (even if bytes keep trickling in). This catches keepalive-emitting agents that never reach a true quiet window. The ceiling is also suppressed by `senderBusy` and the byte gate.
+
+### Title-Based senderBusy State
+
+For Claude Code, the title contains a Unicode glyph that changes:
+- `✳` (white diamond) = idle at prompt
+- Unicode spinner frames (◆, ◇, etc.) = thinking/generating
+
+The SessionManager classifies titles per CLI:
+
+```ts
+private classifyTitle(agentHint: string, title: string): "busy" | "idle" | null {
+    const t = title.trim();
+    if (!t) return null;
+
+    if (agentHint === "claude") {
+        if (/^\s*✳/.test(t)) return "idle";
+        if (/^\s*[^\w\s]/.test(t)) return "busy";
+        return null;
+    }
+
+    if (agentHint === "gemini") {
+        if (/^\s*◇/.test(t)) return "idle";
+        if (/^\s*[✦✋]/.test(t)) return "busy";
+        return null;
+    }
+
+    return null;
+}
+```
+
+When the title changes (via xterm.js `onTitleChange`), the frontend calls `sessionManager.updateTitle()`, which updates the `senderBusy` flag. This blocks heuristic timers while the agent is actively thinking.
+
+### Dead Zone
+
+After the user presses Enter, there's a 300ms "dead zone" where all done signals are suppressed. This prevents the echo of the Enter key itself from triggering false-positive done (the shell echoes the input before processing it).
+
+### Integration with Work State
+
+The work state (idle/working/done) is persisted in `workState.ts`:
+
+```ts
+export type WorkState = "idle" | "working" | "done";
+
+export function setWorkState(sessionId: string, state: WorkState): void {
+    if (getWorkState(sessionId) === state) return;
+    if (state === "idle") {
+        states.delete(sessionId);
+    } else {
+        states.set(sessionId, state);
+    }
+    emit(sessionId);
+}
+```
+
+UI components subscribe via `useWorkState(sessionId)` to display a spinner while "working" and a dot when "done".
+
+## Multiple Terminal Sessions
+
+### Concurrent Sessions
+
+Tempest supports multiple PTY sessions running concurrently. Each has a unique `sessionId` (UUID). The frontend maintains an array of `Session` objects, each mapping to a PTY session on the backend:
+
+```tsx
+interface Session {
+    id: string;
+    name: string;
+    cwd: string;
+    projectId: string;
+    kind?: "terminal" | "diff" | "preview" | "editor";
+    agent?: string;
+    conversationId?: string;
+    instanceId: string;
+    createdAt: string;
+    isRootSession?: boolean;
+    noGit?: boolean;
+    parentSessionId?: string;
+    storeKey?: string;
+    metadata: { resumeCount: number; hasBeenResumed: boolean; };
+}
+```
+
+### Session Persistence
+
+Sessions are saved to localStorage keyed by project/worktree. When the app restarts, WorkspaceView's `useEffect` re-hydrates stored sessions and calls `openSession` for each, which calls `create_pty_session` on the backend.
+
+### Multiple Panes (Split View)
+
+Multiple sessions can be visible simultaneously via split panes (horizontal or vertical). Each pane is a separate TerminalPane component rendering its own xterm instance. The split pane layout is stored as a binary tree:
+
+```tsx
+type PaneNode = SplitLeaf | SplitBranch;
+interface SplitLeaf   { type: "leaf";  sessionId: string; }
+interface SplitBranch { type: "split"; id: string; dir: SplitDir; ratio: number; first: PaneNode; second: PaneNode; }
+```
+
+Layout changes are persisted to localStorage so multi-pane layouts survive restart.
+
+## Copy and Paste Behavior
+
+### Copy
+
+Two methods:
+
+1. **Ctrl+C with selection**: Copies selected text to clipboard (xterm.js `getSelection()`), returns false to prevent SIGINT
+2. **Ctrl+Shift+C**: Explicit copy of any selection to clipboard (no SIGINT)
+
+```tsx
+if (e.ctrlKey && !e.shiftKey && (e.key === "C" || e.key === "c")) {
+    const sel = term.getSelection();
+    if (sel) {
+        navigator.clipboard.writeText(sel).catch(() => {});
+        return false;  // don't send SIGINT
+    }
+    return true;  // no selection, send SIGINT
+}
+```
+
+### Paste
+
+Three methods:
+
+1. **Ctrl+V**: Paste clipboard to PTY
+2. **Ctrl+Shift+V**: Explicit paste
+3. **Cmd+V (macOS)**: Paste
+
+All read from the Tauri clipboard plugin and call `term.paste()`, which sends the text to xterm as if the user typed it:
+
+```tsx
+if (e.ctrlKey && !e.shiftKey && (e.key === "V" || e.key === "v")) {
+    readText().then((text) => { if (text) term.paste(text); }).catch(() => {});
+    return false;
+}
+```
+
+xterm.js handles bracketed paste mode (OSC 200;0 / OSC 200;1) automatically if the PTY supports it, ensuring pasted text is delivered as a single unit even if it contains special characters.
+
+## Frontend Session Registration
+
+When a new session is opened, the frontend calls `create_pty_session` with a Channel for output events. The backend sends `PtyOutputPayload` chunks over this channel:
+
+```rust
+#[derive(Clone, serde::Serialize)]
+struct PtyOutputPayload {
+    session_id: String,
+    data: String,
+}
+```
+
+The frontend's Tauri app initialization code creates a Channel and registers the session:
+
+```ts
+const channel = new Channel<PtyOutputPayload>();
+await invoke("create_pty_session", {
+    session_id: sessionId,
+    cwd,
+    rows,
+    cols,
+    command: agentCommand,
+    args: agentArgs,
+    on_event: channel,
+});
+
+sessionManager.register(sessionId, channel, isAgent, onDone, onChunk, agentHint);
+```
+
+From that point, SessionManager owns the Channel and listens for chunks on `channel.onmessage`.
+
+## Display Settings and Defaults
+
+Terminal display settings are stored in localStorage via `appSettings.ts`:
+
+```ts
+export interface AppSettings {
+    terminalFontSize: number;
+    terminalFontFamily: string;
+    terminalCursorStyle: "block" | "bar" | "underline";
+    terminalCursorBlink: boolean;
+    terminalScrollback: number;
+    sidebarFontSize: number;
+    branchPrefix: string;
+    commitMessageTemplate: string;
+    atlasEnabled: boolean;
+    atlasAutoIndex: boolean;
+}
+
+export const SETTINGS_DEFAULTS: AppSettings = {
+    terminalFontSize: 13,
+    terminalFontFamily: "Geist Mono",
+    terminalCursorStyle: "block",
+    terminalCursorBlink: true,
+    terminalScrollback: 1000,
+    // ...
+};
+```
+
+Available font families include Geist Mono, JetBrains Mono, Fira Code, Cascadia Code, Consolas, Menlo, and system monospace.
+
+Settings are applied to xterm reactively without PTY recreation, using `useSettings()` hook:
+
+```tsx
+useEffect(() => {
+    const t = termRef.current;
+    if (!t) return;
+    t.options.fontSize = settings.terminalFontSize;
+    t.options.fontFamily = `"${settings.terminalFontFamily}", monospace`;
+    t.options.cursorStyle = settings.terminalCursorStyle;
+    t.options.cursorBlink = settings.terminalCursorBlink;
+    t.options.scrollback = settings.terminalScrollback;
+    requestAnimationFrame(fitIfVisible);
+}, [settings.terminalFontSize, settings.terminalFontFamily, ...]);
+```
+
+## Styling and Layout
+
+### CSS Custom Properties
+
+The terminal pane uses Tempest theme CSS variables:
+
+- `--tempest-bg-editor`: Terminal background
+- `--tempest-terminal-fg`: Foreground text
+- `--tempest-terminal-selection`: Selection highlight color
+- `--tempest-terminal-{black,red,green,yellow,blue,purple,cyan,white}`: ANSI colors
+- `--tempest-terminal-bright{Black,Red,Green,...}`: Bright ANSI colors
+- `--tempest-bg-elevated`: Search bar background
+- `--tempest-border-subtle`: Border colors
+- `--tempest-accent-blue`: Focus indicator (search input)
+
+### Container Sizing
+
+The terminal pane is positioned absolutely to fill its parent container, with 8px padding and overflow hidden:
+
+```css
+.terminal-pane {
+    flex: 1;
+    padding: 8px;
+    box-sizing: border-box;
+    overflow: hidden;
+    min-height: 0;
+}
+```
+
+The inner xterm viewport respects a thin scrollbar (4px) with system-native styling.
+
+## Error Handling and Edge Cases
+
+### PTY Spawn Failures
+
+If `create_pty_session` fails (e.g. shell not found, permission denied), the error is returned as a Tauri error and displayed to the user. Common causes:
+- Shell binary not found
+- Working directory does not exist
+- Insufficient permissions to create PTY
+
+### Lost Connections
+
+If the output pump thread encounters read errors or EOF, it exits silently. The frontend continues rendering but receives no new output. Resizing or writing to a closed PTY returns an error (safe no-op).
+
+### Window Minimization
+
+On Windows, WebView2 may drop rendered content when the window is minimized. TerminalPane listens for window focus and forces a redraw:
+
+```tsx
+useEffect(() => {
+    const onFocus = () => {
+        const term = termRef.current;
+        if (!term || hidden) return;
+        webglPool.acquire(term, sessionId);
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            fitIfVisible();
+            termRef.current?.refresh(0, (termRef.current?.rows ?? 1) - 1);
+        }));
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+}, [sessionId, hidden]);
+```
+
+## Summary
+
+Tempest's terminal system combines portable-pty (a lightweight, cross-platform PTY abstraction) with xterm.js (a full-featured terminal emulator) to deliver a responsive, feature-rich shell environment. The architecture cleanly separates concerns: Rust manages OS-level I/O and process lifecycle, React handles rendering and user input, and SessionManager bridges them with intelligent work-done detection for agent CLIs. The system supports concurrent sessions, split panes, theme hot-swapping, and graceful shutdown.

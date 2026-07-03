@@ -1,0 +1,422 @@
+---
+title: "Dialogs and Modals"
+description: "Reference for all dialog and modal components in Tempest: session picker, settings, broadcast, and PR creation."
+icon: "square-dashed"
+---
+
+# Dialogs and Modals
+
+Tempest uses several modal dialogs to present workflows for starting sessions, configuring settings, broadcasting messages, and creating pull requests. Each dialog manages its own state and communicates with the parent workspace through callbacks.
+
+## NewSessionMenu
+
+The NewSessionMenu is a context menu that appears when you click the "New Session" button or use a keyboard shortcut. It provides options to start different types of agent sessions or open a terminal.
+
+### Menu Items
+
+1. **New Terminal** - Opens a bare terminal in the workspace. Click to close the menu and invoke the `onNewTerminal` callback.
+
+2. **Agent Session** - A submenu that expands to show available coding agents. Hovering over this item reveals a list of agents you can run.
+
+3. **Chat** - Currently disabled and labeled "Coming soon". This will allow conversational chat sessions in the future.
+
+4. **Live Preview** - Opens an embedded browser for your dev server. This button is disabled (`disabled={!onLivePreview}`) if no dev server is running or if the feature is unavailable.
+
+### Agent Picker
+
+Hovering over "Agent Session" reveals a submenu containing all available agents:
+
+1. **Claude Code** - The official Claude Code CLI agent. Supports session resuming via `--resume {UUID}`. Starts with `--session-id {UUID}` to track the session.
+
+2. **Gemini CLI** - Google's Gemini command-line agent. Also supports session IDs for resuming.
+
+3. **Opencode** - OpenInterpreters opencode tool. Does not support session IDs in arguments; instead, it prints its session ID to stdout, which is captured by a regex pattern (`/\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i`) for later resuming with `-s {UUID}`.
+
+4. **Copilot CLI** - GitHub's Copilot command-line tool. No built-in session support.
+
+5. **Cline** - A monochrome agent icon. No session resuming.
+
+6. **Cursor Agent** - Anysphere's Cursor agent. Monochrome icon. No session resuming.
+
+7. **Goose** - The goose agent. Monochrome icon. No session resuming.
+
+### Agent Configuration
+
+Each agent has an `AgentConfig` object that defines:
+
+- `name` - Display name shown in the UI
+- `hint` - CLI command or tool name (e.g., "claude", "gemini")
+- `iconSrc` - Path to the SVG icon
+- `mono` - Boolean; true for monochrome icons that are inverted in dark mode
+- `sessionIdArgs` - Arguments to pass on first spawn to set up session tracking (e.g., `["--session-id", "{UUID}"]`). Null if the agent handles sessions internally.
+- `resumeArgs` - Arguments to use when resuming a saved session (e.g., `["--resume", "{UUID}"]`). Null if resuming is not supported.
+- `capturePattern` - Optional regex with a capture group to extract a session ID from agent output
+- `captureResumeArgs` - Arguments to use with a captured session ID
+
+The UUID placeholder `{UUID}` is replaced with a fresh UUID each time an agent is spawned. If the agent can be resumed, this UUID is stored and used in `resumeArgs` when the session tab is reopened.
+
+### Positioning
+
+The menu is positioned absolutely, either below or to the right of the anchor button:
+
+- **Below** (default) - Menu appears below the button with `top: anchorRect.bottom + 2` and `left: anchorRect.left`
+- **Right** - Menu appears to the right with `top: anchorRect.top` and `left: anchorRect.right + 4`
+
+### Keyboard and Click Handling
+
+Pressing Escape closes the menu. Clicking outside the menu also closes it. Clicking any menu item closes the menu and invokes the appropriate callback.
+
+Clicking the submenu toggle for agents shows or hides the agent list. Hovering also expands the submenu automatically.
+
+## ProjectSwitcherModal
+
+The ProjectSwitcherModal appears when you click the project switcher button in the top bar. It allows you to switch between recent projects or open a new one.
+
+### Recent Projects
+
+The modal displays the 8 most recent projects (by last opened time). Each recent project shows:
+
+- **Name** - The folder name of the project
+- **Time** - A relative time string indicating when it was last opened (e.g., "2h ago", "Yesterday", "3w ago")
+
+Clicking a recent project calls `onSwitch(name, path)` with the project name and full path, then closes the modal.
+
+### Opening New Projects
+
+Two action buttons appear below the recent list:
+
+1. **Open local folder** - Opens a file browser dialog (via Tauri's `open` dialog) to select a directory. Once selected, calls `onSwitch(folderName(path), path)` where `folderName` extracts the final component of the path.
+
+2. **Clone from URL** - Toggles a text input field where you can paste a git repository URL. The input field appears with a "Clone" button. When you enter a URL and click Clone, it clones the repository (exact behavior depends on the `onSwitch` handler). The Clone button is disabled if the input is empty.
+
+### Layout and Positioning
+
+The modal is positioned as a dropdown-like popup:
+
+```
+top: anchorRect.top
+left: anchorRect.right
+transform: translateY(calc(-100% - 8px))
+minWidth: 260px
+```
+
+This positions it above the anchor button (shifted by its full height plus 8px) and aligned to its right edge.
+
+The modal closes when you press Escape or click outside of it (via `onOutside` listener on the document).
+
+## BroadcastDialog
+
+The BroadcastDialog allows you to send a message to one or more running agent sessions simultaneously. This is useful for sending a follow-up prompt to multiple agents working in parallel without waiting for each one individually.
+
+### Session List
+
+The dialog displays a checkbox-based list of all currently running sessions:
+
+- An **"All agents"** row with a count badge showing total sessions
+- Individual session rows, each showing:
+  - A checkbox to select/deselect
+  - The agent icon (uses `AgentIcon` to display the correct agent's icon)
+  - The session name
+  - The project name
+
+Clicking a checkbox toggles that session's selection. The "All agents" checkbox checks or unchecks all sessions at once.
+
+### Message Compose
+
+Below the session list is a textarea where you type the message to broadcast:
+
+- Placeholder text: "Type a message to send to all selected agents..."
+- 4 rows tall by default
+- Supports multi-line input
+- Focus is automatically set when the dialog opens
+
+Below the textarea is a hint: "Ctrl+Enter to send"
+
+### Send Button
+
+The Send button at the bottom right shows:
+
+```
+Send to {count} agent{s}
+```
+
+Where count is the number of selected sessions and the "s" is plural only if count is not 1.
+
+The button is disabled if:
+- No message text (after trimming whitespace)
+- No sessions are selected
+
+Clicking Send calls `onSend(message, Array.from(selectedSessionIds))`. The message and selected session IDs are captured in refs to ensure the handler always sees the latest values.
+
+### Keyboard Shortcuts
+
+- **Escape** - Close the dialog
+- **Ctrl+Enter** - Send the message
+
+### Empty State
+
+If no agent sessions are running, the dialog shows: "No agent sessions are currently running."
+
+## PrDialog
+
+The PrDialog guides you through creating a pull request on GitHub. It handles authentication, branch configuration, and submitting the PR via GitHub's API.
+
+### Prerequisites
+
+The dialog requires:
+
+1. A GitHub repository as the remote (parsed from the remote URL)
+2. A personal access token with `repo` scope
+
+If the remote is not GitHub (e.g., it is GitLab, Gitea, or a local path), the dialog shows:
+
+```
+This remote is not GitHub.
+[Open remote in browser]
+```
+
+Clicking the link opens the remote URL in your default browser.
+
+### Authentication: GitHub Token
+
+When first opened, if you have not yet saved a token, the dialog shows:
+
+```
+GitHub Personal Access Token
+Needs repo scope. Saved locally.
+[Input field] [Save button]
+```
+
+The token is stored in `localStorage` under the key `tempest-github-token`. It is never sent to Tempest's servers; it stays on your machine.
+
+Paste your personal access token (starting with `ghp_`) and click Save or press Enter. The token is then persisted and the dialog advances to the PR form.
+
+### PR Form
+
+Once authenticated, the form shows:
+
+1. **Title** - Pre-filled with the current branch name converted to title case. For example, `feature/add-login` becomes "Add Login". Common prefixes like "feature/", "fix/", "chore/" are stripped. Underscores and hyphens are converted to spaces, and each word is capitalized.
+
+2. **Description** - Optional long-form description of the PR. Markdown is supported. Left empty by default.
+
+3. **Base branch** - Defaults to "main" but can be changed to any branch name.
+
+Each field is in a separate `<input>` (title and base) or `<textarea>` (description).
+
+### Submission
+
+At the bottom of the form:
+
+- **Metadata** - Shows the repo (owner/repo) and current branch
+- **Create PR button** - Disabled while creating (`creating` state is true) or if the title is empty
+
+Clicking Create PR sends a POST request to `https://api.github.com/repos/{owner}/{repo}/pulls` with:
+
+```json
+{
+  "title": "...",
+  "body": "...",
+  "head": "currentBranch",
+  "base": "baseBranch"
+}
+```
+
+The token is sent as a Bearer token in the Authorization header.
+
+### Success State
+
+If the PR is created successfully, the dialog shows:
+
+```
+Pull request created
+[URL]
+[Open in browser]
+```
+
+The URL is clickable and opens the PR in your default browser. You can close the dialog afterward.
+
+### Error Handling
+
+If the API request fails, the error message from GitHub is displayed in red text. Common errors:
+
+- Invalid token (401)
+- Missing repo scope (403)
+- Branch does not exist (422)
+- Already has a PR for this branch (422)
+
+You can correct the issue and try again.
+
+## SettingsPanel
+
+The SettingsPanel is a comprehensive settings dialog with multiple sections, each controlling a different aspect of Tempest.
+
+### Navigation
+
+The left side of the panel lists all settings sections:
+
+**General section:**
+- Appearance
+- Terminal
+- Git
+- Token Intelligence
+- Prompts
+- Keyboard
+
+**Help section:**
+- Attribution
+- About
+
+Clicking a section button navigates to that section. The active section is highlighted.
+
+### Appearance Section
+
+**Theme Selection**
+
+A grid of theme cards, each showing a visual preview of the theme's colors. Clicking a card applies that theme. The active theme is highlighted with a border.
+
+Each theme card displays:
+- A preview showing the theme's sidebar background, editor background, accent colors, and text colors
+- The theme name below the preview
+
+**Interface Settings**
+
+- `Sidebar font size` - Stepper control (plus/minus buttons) to adjust the sidebar text size from 12px to 18px. Hint shows the range.
+
+### Terminal Section
+
+Customize how the embedded terminal looks and behaves.
+
+- `Font size` - Stepper from 10px to 20px
+- `Font family` - Dropdown menu with options like "Monospace", "Courier New", etc.
+- `Cursor style` - Segmented control with three options: "Block", "Bar", "Line"
+- `Cursor blink` - Toggle switch to enable/disable cursor blinking
+- `Scrollback` - Number input for the number of lines to keep in terminal history (100-50,000 lines, default often 1000)
+
+### Git Section
+
+Configure how Tempest interacts with git repositories.
+
+- `Branch prefix` - Text input for a prefix prepended to new git worktree branch names (e.g., "feat-" creates branches like "feat-my-feature"). Placeholder shows "e.g. feat-"
+
+- `Commit message` - Text input for the default commit message template when pushing agent changes (e.g., "Agent work"). Placeholder shows "Agent work"
+
+### Token Intelligence Section
+
+Atlas is a local code-knowledge graph that agents can query instead of reading files repeatedly.
+
+**Main toggle**: "Enable Token Intelligence"
+
+Description explains:
+- Indexes your codebase locally
+- Reduces token usage by providing pre-built semantic code graph
+- No data leaves your machine
+- Off by default
+
+When enabled, a secondary toggle appears:
+
+**Sub-toggle**: "Auto-index new projects"
+
+Description explains:
+- Skip the prompt and index every project automatically
+- Off by default
+
+### Prompts Section
+
+Manage a library of saved prompts that can be inserted into the message queue with one click.
+
+**Prompt list view** shows:
+- Drag handle (for reordering)
+- Toggle switch (enable/disable prompt)
+- Prompt title and preview (first 72 characters + "...")
+- Badges ("built-in" or "modified" if edited)
+- Action buttons: Edit, Clone, Delete (or Reset if built-in and modified)
+
+**Add button** - Opens a form to create a new prompt:
+- Title input
+- Body textarea (4 rows)
+- Add and Cancel buttons
+
+**Editing prompts** - Click Edit to open the form in-place:
+- Edit title and body
+- Save or Cancel
+- For modified built-in prompts, a "Reset to default" button appears
+
+**Drag-to-reorder** - Click and drag a prompt to reorder the list. Feedback appears as you drag.
+
+### Keybindings Section
+
+Customize keyboard shortcuts for Tempest actions.
+
+**Grouped by action type:**
+- Each action (e.g., "Save file", "Run agent") is listed with its current binding
+- Bindings are displayed as chips (e.g., "Ctrl + S")
+- Click a binding row to enter capture mode and press a new shortcut
+- An "x" button resets an individual binding to default
+- A "Reset all" button appears if any custom bindings exist
+
+Press Escape to cancel capturing. The UI shows "Press shortcut..." while waiting for input.
+
+### Attribution Section
+
+Tempest co-authorship: when enabled, Tempest adds itself as a co-author on commits made in your workspaces.
+
+**Toggle**: "Add Tempest as co-author"
+
+Description explains:
+- Helps the Tempest project grow by showing it was built with Tempest
+- Only a git trailer line, not intrusive
+- Can be disabled anytime
+- Off by default
+
+When enabled, a note shows:
+
+```
+Hook written to .git/hooks/prepare-commit-msg in each open project. 
+Disabling removes it automatically.
+```
+
+### About Section
+
+Shows:
+- Brief description: "A focused workspace for agentic development."
+- Version: "0.1.0"
+- Built with: "Tauri · React · TypeScript"
+
+### UI Components
+
+**SettingRow** - Wraps a label, optional hint, and a control (input, stepper, dropdown, etc.)
+
+**Stepper** - Plus/minus buttons with a number display. Respects min/max bounds and disables buttons at limits.
+
+**Segmented** - Group of buttons where exactly one is active. Used for cursor style and similar options.
+
+**ToggleSwitch** - Circular toggle with animated thumb. Aria-checked for accessibility.
+
+**Keyboard input capture** - When capturing a new shortcut, the overlay captures keydown globally, prevents default, and extracts the shortcut from the event (modifiers + key).
+
+### Persistence
+
+All settings are stored in the app's state store:
+
+- Theme choice is persisted globally
+- Terminal and sidebar font sizes are user preferences
+- Git configuration (branch prefix, commit message) applies to all new sessions
+- Prompts are stored per user and persist across app restarts
+- Keybindings are stored in a JSON file and reloaded on startup
+- Attribution state is a simple boolean flag
+
+Changes are saved immediately when you adjust a setting.
+
+## DeleteDialog (Implicit)
+
+While not shown in the source code examples, Tempest likely has a DeleteDialog for confirming destructive actions. Based on the codebase patterns, it would:
+
+- Show a clear warning about what will be deleted
+- Require explicit confirmation (usually two-click pattern or typed confirmation)
+- Display the item(s) to be deleted
+- Provide Cancel and Delete buttons
+
+Common delete scenarios in Tempest:
+- Deleting a saved prompt (custom prompts only; built-in cannot be deleted)
+- Clearing all messages from the queue
+- Removing a session tab

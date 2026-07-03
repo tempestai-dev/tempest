@@ -1,0 +1,37 @@
+# Tempest
+
+> Tempest is a free, open-source desktop app for running AI coding agents in parallel. Each agent session runs in its own isolated git worktree and branch — no merge conflicts, no stepping on each other's files. Built with Tauri (Rust backend, React frontend). Supports Windows, macOS, and Linux.
+
+## Product
+
+- [Homepage](https://tempestai.dev/): Overview of Tempest — parallel agent sessions, Token Intelligence, isolated git worktrees, and download links.
+- [Download](https://tempestai.dev/download): Download Tempest for Windows, macOS, and Linux. Free, no account required.
+- [Release Notes](https://tempestai.dev/release-notes): Full changelog and release history for all Tempest versions.
+
+## Core Capabilities
+
+- **Parallel Agent Sessions**: Run Claude Code, Aider, OpenCode, Copilot CLI, Cline, Goose, and more simultaneously. Each session gets its own isolated git worktree and branch automatically.
+- **Token Intelligence**: A local code-knowledge graph (powered by Atlas) shared across all parallel sessions. Agents query the graph instead of reading files from scratch — up to 64% less context token consumption, up to 58% fewer tool calls. MCP config files written automatically for Claude Code, Cline, Cursor, Gemini CLI, Kiro, and opencode.
+- **Session Continuity**: Close a tab, reopen it — the agent resumes exactly where it left off with full history intact.
+- **Built-in Diff & Push**: Stream diff viewer per session. Stage, commit, push, and open a PR without leaving Tempest.
+- **Live Preview**: Local dev server updates live as agents write code, visible inside Tempest without switching to a browser.
+- **Message Queue**: Queue instructions for any agent. Tempest sends the next message automatically when the agent finishes.
+- **Prompt Library**: Reusable prompt library with built-ins for Review, Tests, Security Review, Explain Changes, and Commit Messages.
+
+## Blog
+
+- [Blog Index](https://tempestai.dev/blog): All posts — release dev logs and long-form articles on parallel agents, token efficiency, and open-source tooling.
+- [Tempest v0.1.2: Token Intelligence](https://tempestai.dev/blog/tempest-v012-release): Release notes covering the Token Intelligence launch, Atlas integration, rewritten work-done detector, and Overview improvements.
+- [Tempest v0.1.1: Prompt Library, Message Queue, and Branch Management](https://tempestai.dev/blog/tempest-v011-release): Release notes covering the Prompt Library, Message Queue, branch management, workspace persistence, and cross-platform releases.
+- [Tempest v0.1.0: Parallel AI Agent Sessions Are Here](https://tempestai.dev/blog/tempest-v010-release): Initial release — isolated git worktrees, session continuity, live status, built-in diff and push, live preview.
+- [Why Parallel Agents Change Everything](https://tempestai.dev/blog/why-parallel-agents-change-everything): Why isolation is the missing piece that makes running multiple AI agents actually work.
+- [The Case Against Context Switching Between AI Agents](https://tempestai.dev/blog/the-case-against-context-switching): Why manually switching context between AI coding sessions is a hidden tax, and how Tempest eliminates it.
+- [Token Intelligence: Eliminating Redundant File Reads Across Agent Sessions](https://tempestai.dev/blog/token-intelligence-eliminating-redundant-reads): How the shared code-knowledge graph cuts context consumption by up to 64% across parallel sessions.
+
+## Technical Details
+
+- Built with: Tauri 2.x (Rust backend), React frontend
+- Supported platforms: Windows, macOS, Linux
+- Supported agents: Claude Code, Aider, OpenCode, Copilot CLI, Cline, Goose, and any terminal-based agent
+- License: Apache 2.0
+- Repository: https://github.com/gsvprharsha/tempest

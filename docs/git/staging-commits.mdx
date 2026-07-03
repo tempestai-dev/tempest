@@ -1,0 +1,452 @@
+---
+title: "Staging, Committing, and Viewing Diffs in Tempest"
+description: "Complete guide to Tempest's staging workflow, commit operations, and diff viewing."
+icon: "layer-group"
+---
+
+# Staging, Committing, and Viewing Diffs in Tempest
+
+Tempest provides a visual staging and commit workflow through the Diff pane, allowing you to review changes, stage files selectively, and commit with custom messages. This page covers every git operation Tempest offers for staging, committing, and viewing diffs, along with how the UI represents git state.
+
+## The Staging Workflow in Tempest UI
+
+The staging workflow is centered in the **Diff pane**, a two-column layout accessed from the main sidebar or via the Eye icon in the RightSidebar.
+
+### Left Column: File Lists and Commit Form
+
+The left side shows two sections:
+
+1. **Staged files**: Files you have explicitly staged for the next commit (via `git add`).
+2. **Unstaged changes**: Modified and untracked files not yet staged.
+
+Each section displays:
+- A count of files (`Staged 3`, `Unstaged 5`)
+- A list of files with their status badge (M, A, D, R, ?)
+- Action buttons to stage, unstage, or discard individual files
+- A header button to stage/unstage all files at once
+
+Below the file lists is the **commit form**:
+- Title input (required)
+- Description textarea (optional)
+- Co-author checkbox (toggles `Co-authored-by: Tempest <tempest@local>`)
+- Commit button (disabled until files are staged and title is non-empty)
+
+### Right Column: Per-File Diff Viewer
+
+Clicking a file shows its unified diff on the right side:
+- File header showing the file path and section (staged/unstaged)
+- Diff lines with old and new line numbers
+- Four line types: hunk headers (@@), added (+), removed (-), context ( )
+- Color coding: added lines green, removed lines red, context lines gray
+
+If no file is selected, a prompt asks you to select a file to view its diff.
+
+### Branch Picker and Push Controls
+
+The Diff pane header includes:
+- **Branch picker**: Shows current branch, allows switching to other branches or deleting branches.
+- **Reload button**: Refreshes the file list and all counts.
+- **Push button**: Pushes the current branch to remote (does not auto-commit; use only if all changes are already committed).
+- **New Branch button**: Creates a new branch and pushes it (useful for creating a PR without committing first).
+
+## Git Operations: The Complete Command Set
+
+Tempest exposes seven core git staging operations plus diff viewing and committing.
+
+### 1. Stage a Single File
+
+**UI action**: Click the `+` button next to a file in the Unstaged section.
+
+**Tauri command**:
+```
+git_stage(repoPath: string, filePath: string) -> Result<(), String>
+```
+
+**Git operations**:
+```
+git add -- <file>
+git status --short  # Reload the file list
+```
+
+**Effect**: Moves the file from Unstaged to Staged. The file's status is preserved (M for modified, A for added, etc.). If the file is already in Staged, this is a no-op.
+
+**Example**:
+```
+git add -- src/components/Button.tsx
+```
+
+The file `src/components/Button.tsx` is now staged for the next commit.
+
+### 2. Unstage a Single File
+
+**UI action**: Click the `-` button next to a file in the Staged section.
+
+**Tauri command**:
+```
+git_unstage(repoPath: string, filePath: string) -> Result<(), String>
+```
+
+**Git operations**:
+```
+git restore --staged -- <file>
+git status --short  # Reload
+```
+
+**Effect**: Moves the file from Staged back to Unstaged. The file's working tree changes are preserved; only the index (staging area) is modified.
+
+**Example**:
+```
+git restore --staged -- src/index.ts
+```
+
+The file `src/index.ts` is no longer staged, but your edits remain in the working tree.
+
+### 3. Discard Changes to a File
+
+**UI action**: Click the `X` button next to a file in the Unstaged section. Confirm the warning dialog.
+
+**Tauri command**:
+```
+git_discard(repoPath: string, filePath: string, untracked: bool) -> Result<(), String>
+```
+
+**Git operations** (depends on file type):
+
+For tracked files:
+```
+git restore -- <file>
+```
+
+For untracked files:
+```
+rm -r <file>  # Or: fs::remove_file or fs::remove_dir_all
+```
+
+**Effect**: 
+- If tracked (modified or deleted in index): reverts the file to the HEAD version. All uncommitted changes are lost.
+- If untracked (new file): deletes the file entirely.
+
+This action cannot be undone. The UI confirms via a dialog.
+
+**Example**:
+```
+git restore -- src/debug.log  # Reverts to HEAD
+rm src/temp.tmp               # Deletes untracked file
+```
+
+### 4. Stage All Files
+
+**UI action**: Click the `Stage All` button in the Unstaged section header (only visible if unstaged files exist).
+
+**Tauri command**:
+```
+git_stage(repoPath: string, filePath: ".") -> Result<(), String>
+```
+
+**Git operations**:
+```
+git add -- .
+```
+
+**Effect**: Stages all modified, added, and deleted tracked files, plus all untracked files (respects `.gitignore`).
+
+This is equivalent to running `git add -A` in the working tree. All files move from Unstaged to Staged.
+
+### 5. Unstage All Files
+
+**UI action**: Click the `Unstage All` button in the Staged section header (only visible if staged files exist).
+
+**Tauri command**:
+```
+git_unstage(repoPath: string, filePath: ".") -> Result<(), String>
+```
+
+**Git operations**:
+```
+git restore --staged -- .
+```
+
+**Effect**: Unstages all files in the index. All changes remain in the working tree; they are just no longer staged.
+
+### 6. Commit Staged Files
+
+**UI action**: Type a title in the commit form, optionally add a description, ensure at least one file is staged, then click the `Commit` button.
+
+**Tauri command**:
+```
+git_commit_staged(repoPath: string, message: string) -> Result<(), String>
+```
+
+**Git operations**:
+```
+git commit -m <message>
+```
+
+**Effect**: Creates a new commit with the staged files. The commit message is the title plus description (if provided), separated by a blank line. If the co-author checkbox is enabled, `Co-authored-by: Tempest <tempest@local>` is appended.
+
+**Message format**:
+```
+Title
+
+Description line 1
+Description line 2
+
+Co-authored-by: Tempest <tempest@local>
+```
+
+If the title is empty or no files are staged, the Commit button is disabled and does nothing.
+
+**Validation**:
+- Title must be non-empty after trimming whitespace.
+- At least one file must be staged.
+
+**Error handling**: If git commit fails (e.g., pre-commit hook rejects the commit), the error is displayed in the Diff pane and the user can fix it and retry.
+
+### 7. View a File's Diff
+
+**UI action**: Click a file in either the Staged or Unstaged section to view its diff on the right.
+
+**Tauri command**:
+```
+git_diff_file(path: string, filePath: string, staged: bool, untracked: bool) -> Result<Vec<DiffLine>, String>
+```
+
+**Git operations** (depends on file state):
+
+For staged files:
+```
+git diff --cached -- <file>
+```
+
+For unstaged changes:
+```
+git diff -- <file>
+```
+
+For untracked files:
+```
+# Read the file as-is and render every line as "added"
+cat <file>
+```
+
+**Effect**: Loads and displays the per-file diff. The diff is a unified diff format with:
+- Line numbers for old and new versions
+- Hunk headers (`@@ -old_start,count +new_start,count @@`)
+- Added lines (green, prefixed `+`)
+- Removed lines (red, prefixed `-`)
+- Context lines (gray, prefixed ` `)
+
+For untracked files, the entire file is shown as added lines (since there is no previous version).
+
+**Example output**:
+```
+@@ -5,7 +5,8 @@
+ const handler = async () => {
+   try {
+-    const result = await fetch(url);
++    const result = await fetch(url, { timeout: 5000 });
++    console.log("Fetched:", result);
+     return result;
+   } catch (e) {
+     console.error(e);
+```
+
+## The Commit Flow: Complete Journey
+
+Here is the exact sequence when you commit via the Diff pane:
+
+1. **User enters title and optional description** in the commit form.
+
+2. **User clicks Commit button** (only enabled if title is non-empty and at least one file is staged).
+
+3. **Tempest builds the commit message**:
+   ```typescript
+   let msg = commitTitle.trim();
+   if (commitDesc.trim()) msg += "\n\n" + commitDesc.trim();
+   if (coauthor) msg += "\n\n" + COAUTHOR_LINE;
+   // msg now contains: "Title\n\nDescription\n\nCo-authored-by: ..."
+   ```
+
+4. **Tempest invokes `git_commit_staged`**:
+   ```
+   git commit -m <msg>
+   ```
+
+5. **Git writes the commit object** and updates the branch ref. The working tree is now clean (all staged files are in history).
+
+6. **UI updates**:
+   - Commit message fields are cleared.
+   - Selected file is deselected.
+   - Diff viewer is hidden.
+   - File lists are reloaded via `git status`.
+   - Commit button shows a green check for 1.5 seconds (success feedback).
+
+7. **If git commit fails**, the error is displayed in the Diff pane and the user can fix the issue and retry.
+
+## Viewing Diffs: The DiffPane Component
+
+The DiffPane component is Tempest's unified diff viewer. It takes a file's raw git diff output and renders it with syntax-aware line numbers and color coding.
+
+### Diff Parsing
+
+The unified diff parser (in `lib.rs` lines 889-940) processes git's raw diff output and extracts:
+- File status (M, A, D, R for modified, added, deleted, renamed)
+- File path
+- Hunk headers (start line numbers for old and new)
+- Line types (added, removed, context)
+- Line content (including the leading `+`, `-`, or ` `)
+- Added and deleted counts per file
+
+### Diff Display
+
+The DiffPane displays the parsed diff as:
+- **File header**: Shows the file path and which section (staged/unstaged).
+- **Diff scroll area**: Renders lines in a monospace font.
+- **Line numbers**: Shows old line number (left) and new line number (right).
+- **Color coding**:
+  - Hunk headers (`@@`): Gray background
+  - Added lines (`+`): Green background
+  - Removed lines (`-`): Red background
+  - Context lines (` `): No background
+
+If a file is untracked, all lines are shown as added (since the file is new).
+
+### Empty Diff
+
+If a file has no diff (no changes, or file is staged but has no unstaged changes), the diff area shows "No diff to display".
+
+## The RightSidebar: File Tree and Changes Panel
+
+The RightSidebar is Tempest's secondary view for files and changes. It has two tabs:
+
+### All Files Tab
+
+Displays the full project directory tree, collapsed by default. Click folders to expand and browse files. Click files to open them in the editor (if `onOpenFile` is provided).
+
+This is for navigating your project; it does not show git status.
+
+### Changes Tab
+
+Displays git status output as a flat list of changed files:
+- **Status label**: Single character (M, A, D, R, C, ?)
+- **File path**: Relative path from the project root
+- **Color coding**: Each status has a distinct color (modified blue, added green, deleted red, etc.)
+
+This is a quick overview of what has changed. Click a file to open it in the editor.
+
+### Git Status Representation
+
+Git status is fetched via:
+```
+git status --short
+```
+
+The output format is a two-character index (position 0-1) followed by the file path:
+- `M ` = Modified in working tree only
+- ` M` = Modified in index only (staged)
+- `MM` = Modified in both
+- `A ` = Added to working tree (untracked)
+- ` A` = Added to index (staged)
+- `D ` = Deleted from working tree
+- ` D` = Deleted from index
+- `R ` = Renamed
+- `C ` = Copied
+- `??` = Untracked
+
+The RightSidebar displays the "dominant" character: if either position is not space, use that status. Otherwise, use position 1. This gives a high-level view of each file's state.
+
+In the Diff pane, the full two-character `xy` value is captured and used to determine whether a file is staged or unstaged:
+- If `x != ' '` and `x != '?'`: file is in the index (staged)
+- If `y != ' '` or `xy == "??"`: file has working tree changes or is untracked
+
+## Auto-Commit Behavior in git_push_branch
+
+Tempest has one special auto-commit behavior in the `git_push_branch` command (used when pushing via the "Push & PR" button in a new branch).
+
+When you create a new branch and push without committing, Tempest checks if there are uncommitted changes:
+
+```
+git status --porcelain
+git diff --cached --quiet  # Exit 1 if staged changes exist
+```
+
+If there are no staged changes but there are unstaged changes:
+```
+git add -A  # Auto-stage everything
+```
+
+Then:
+```
+git commit -m "Agent work on <branch-name>\n\nCo-authored-by: Tempest <tempest@local>"
+```
+
+This ensures the push is never empty. If staged files exist, only those are committed (respecting user's selective staging). If nothing is staged but the working tree is dirty, everything is staged and committed.
+
+This behavior is specific to `git_push_branch` (the "Push & PR" flow). The regular `git_push_current_branch` command does not auto-commit; it pushes only what is already committed.
+
+## Git Status States and What They Mean
+
+The RightSidebar and Diff pane display files with status codes. Here is what each means:
+
+| Status | Meaning | Editable? | Stageable? |
+|--------|---------|-----------|-----------|
+| **M** | Modified | Yes (edited in working tree) | Yes (stage to index) |
+| **A** | Added | Yes (new tracked file) | Yes (stage to index) |
+| **D** | Deleted | Yes (deleted in working tree, tracked before) | Yes (stage deletion) |
+| **R** | Renamed | Yes (file moved/renamed) | Yes (stage rename) |
+| **C** | Copied | Yes (file copied, tracked) | Yes (stage copy) |
+| **?** | Untracked | Yes (new file not in any commit) | Yes (stage as new file) |
+
+In the Diff pane:
+- **Staged section**: Files with changes in the index (ready to commit).
+- **Unstaged section**: Files with changes in the working tree (not yet staged).
+
+Hovering over a status label in the Changes tab shows the human-readable form.
+
+## Pushing Changes
+
+Tempest provides two push commands via the Diff pane header:
+
+### Push to Current Branch
+
+**UI**: Click the `Push` button in the header.
+
+**Tauri command**:
+```
+git_push_current_branch(repoPath: string) -> Result<String, String>
+```
+
+**Git operations**:
+```
+git symbolic-ref --short HEAD  # Get current branch name
+git push -u origin <branch>    # Push to remote
+```
+
+**Effect**: Pushes all commits on the current branch to the remote. Does not auto-commit; only pushes what is already committed.
+
+If the branch does not exist on the remote, `-u` creates it. If the branch already exists and is behind the remote, the push fails (no force).
+
+### Create New Branch and Push
+
+**UI**: Click the `New Branch` button in the header, enter a branch name, then click `Push & PR`.
+
+**Tauri command**:
+```
+git_create_push_branch(repoPath: string, branchName: string) -> Result<String, String>
+```
+
+**Git operations**:
+```
+git checkout -b <branch-name>  # Create and switch to branch
+git add -A                      # Auto-stage if nothing is staged
+git commit -m "Agent work on ..." # Auto-commit if there are changes
+git push -u origin <branch-name> # Push to remote
+```
+
+**Effect**: Creates a new branch, optionally auto-commits any changes, pushes to the remote, and opens the PR creation link in your browser.
+
+If the branch name is empty, this is a no-op.
+
+## Summary
+
+Tempest's staging and commit workflow is centered in the Diff pane. The left side shows staged and unstaged files with action buttons to move them between states. The right side shows per-file diffs in unified format. The commit form takes a title and description, optionally adds a co-author line, and creates a commit. The RightSidebar provides a quick overview of changed files via git status. Push commands are available in the header: push to the current branch or create a new branch and open a PR. Every operation respects git's model of index and working tree, giving you full control over which changes are committed.

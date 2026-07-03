@@ -1,0 +1,528 @@
+---
+title: Creating Workspaces
+sidebarTitle: Creating Workspaces
+description: Understand how Tempest creates isolated git worktrees for parallel AI agent sessions
+icon: "folder-plus"
+---
+
+import { Tabs, Tab } from "@/components/Tabs";
+
+A workspace in Tempest is an isolated git worktree that runs one agent or terminal session. Each workspace lives in its own branch, allowing multiple agents to work in parallel without conflicts. This page walks through the complete workspace creation flow, from the initial prompt to the on-disk structure.
+
+## What is a Workspace?
+
+A workspace is:
+- A git worktree (independent working tree) created under `.tempest/<name>/`
+- A dedicated branch with the same name as the worktree folder
+- A terminal session or an agent session (Claude Code, Gemini CLI, Opencode, Cursor, Cline, Copilot CLI, or Goose)
+- An isolated environment where one agent can make changes without affecting others
+
+Workspaces share the project's node_modules, .venv, and environment files (.env) through filesystem links to avoid duplication and overhead.
+
+## Initiating Workspace Creation
+
+Workspace creation begins through the NewSessionMenu, which you open by clicking the **+** button in the tab bar or using the keyboard shortcut.
+
+### Opening the New Session Menu
+
+The menu appears with these options:
+
+<Tabs>
+  <Tab title="New Terminal">
+    Open a bare terminal session in this workspace. No agent is involved, just bash or powershell.
+  </Tab>
+  <Tab title="Agent Session">
+    Start a coding agent. Hover to see all available agents:
+    - **Claude Code** - claude.com CLI with session resumption
+    - **Gemini CLI** - Google's Gemini agent
+    - **Opencode** - OpenAPI-driven agent with session capture
+    - **Copilot CLI** - GitHub Copilot command line
+    - **Cline** - Autonomous browser-based agent
+    - **Cursor Agent** - Cursor editor agent
+    - **Goose** - Autonomous code generation agent
+  </Tab>
+  <Tab title="Chat" disabled>
+    Coming soon. Will allow direct conversation within the workspace.
+  </Tab>
+  <Tab title="Live Preview">
+    Open an embedded browser to preview your dev server output. Only available when enabled in settings.
+  </Tab>
+</Tabs>
+
+Clicking any option opens a modal to name your workspace and optionally configure the session.
+
+## The Workspace Creation Modal
+
+After selecting New Terminal or an Agent Session, you see a modal asking you to name your workspace.
+
+### Step 1: Name Your Workspace
+
+```
+┌─────────────────────────────────────┐
+│ New Claude Code Session             │
+├─────────────────────────────────────┤
+│ Give your workspace a name to get   │
+│ started.                            │
+│                                     │
+│ [my-feature          ]  <- input    │
+│                                     │
+│ Custom Prompt (agent only)          │
+│ [Refactor the auth module...]       │
+│                                     │
+│ [Cancel] [in Root] [in Branch] ──→ │
+└─────────────────────────────────────┘
+```
+
+**Name rules:**
+- Required for "in Branch" creation
+- Alphanumeric, hyphens, underscores allowed
+- Whitespace is trimmed
+- If a `branchPrefix` is set in settings, it will be prepended (e.g., `prefix-my-feature`)
+
+**For agent sessions only:**
+- Optional **Custom Prompt** field appears
+- Text entered here is sent to the agent the moment it spawns
+- Blank prompts are fine; the agent will wait for manual input
+- Useful for: "Refactor the auth module", "Add unit tests", etc.
+
+### Step 2: Git Initialization Check
+
+After you click **in Branch**, Tempest checks if the project is a git repository.
+
+**If git repo exists:**
+- Proceeds to worktree creation (Step 3)
+
+**If git repo does not exist:**
+- Modal shows: "No Git Repository Found"
+- Two options:
+  - **Initialize Git & Launch** - Creates a git repo, optionally adds a remote URL, then creates the worktree
+  - **Continue without Git** - Launches a root session (no worktree, no branch, limited functionality)
+
+#### If Initializing Git
+
+```
+┌─────────────────────────────────────┐
+│ No Git Repository Found             │
+├─────────────────────────────────────┤
+│ This folder isn't a Git repository. │
+│ Tempest can initialize one for you. │
+│                                     │
+│ Remote URL (optional)               │
+│ [https://github.com/user/repo.git]  │
+│                                     │
+│ [Continue without Git]              │
+│ [Initialize Git]                    │
+└─────────────────────────────────────┘
+```
+
+After clicking **Initialize Git**, Tempest:
+1. Runs `git init` in the project root
+2. Adds the remote URL if provided
+3. Proceeds to worktree creation
+
+<Callout type="warning">
+If the repository has no commits yet, Tempest automatically creates one. See [Git and Commits](#git-and-commits) below.
+</Callout>
+
+### Step 3: Creating the Worktree
+
+Once git is confirmed to exist, Tempest calls the Rust backend to create the worktree:
+
+1. **Ensure at least one commit exists**
+   - Checks `git rev-parse --verify HEAD`
+   - If no commits: creates `.tempest.gitignore`, stages files, and commits with author "Tempest"
+   - This is necessary because git worktree needs a HEAD to branch from
+
+2. **Prune stale worktree metadata**
+   - Runs `git worktree prune` to clean up any leftover metadata from failed attempts
+
+3. **Create the directory**
+   - Makes `.tempest/<name>/` directory
+
+4. **Check for conflicts**
+   - If `.tempest/<name>/` already exists and is registered with git, errors: "A workspace named 'X' already exists"
+   - If the directory exists but is not registered, removes it and continues
+
+5. **Create the git worktree**
+   - Runs `git worktree add .tempest/<name> -b <name>`
+   - Creates a new branch with the same name as the worktree folder
+   - The branch is a sibling to main, ready for independent commits
+
+6. **Configure git exclude file**
+   - Writes `.git/worktrees/<name>/info/exclude` with `.tempest-pid`
+   - This keeps Tempest's internal files from showing in git status
+
+7. **Copy environment files**
+   - Copies (does not commit) files from project root into the worktree:
+     - `.env`
+     - `.env.local`
+     - `.env.development`
+     - `.env.production`
+   - These are copied because they are gitignored but the agent needs them
+
+8. **Link dependency directories**
+   - Creates a Windows directory junction or Unix symlink for:
+     - `node_modules` (if it exists in the project root)
+     - `.venv` (if it exists in the project root)
+   - See [Dependency Linking](#dependency-linking) for details
+
+9. **Validate non-empty worktree**
+   - Checks that the worktree contains more than just `.git/`
+   - If empty, errors: "Workspace created but contains no files. Your project files may be untracked or gitignored. Run 'git add && git commit' in the project root first."
+   - This prevents the agent from seeing an empty directory
+
+10. **Ensure .tempest.gitignore exists**
+    - Writes a root-level `.tempest.gitignore` that ignores `.tempest/` (so worktrees don't get committed)
+
+Once creation succeeds, the workspace's path is returned to the frontend and the session launches.
+
+## Root Sessions vs. Worktree Sessions
+
+Tempest supports two types of sessions:
+
+### Worktree Sessions
+
+<Tabs>
+  <Tab title="What">
+    A session running inside `.tempest/<name>/` with its own git branch
+  </Tab>
+  <Tab title="When to use">
+    - Always use this for agent sessions
+    - Ideal for terminal sessions when you want isolated branches
+    - Multiple agents can work on different features simultaneously
+  </Tab>
+  <Tab title="Branches">
+    New branch created automatically during worktree creation
+  </Tab>
+  <Tab title="Data isolation">
+    Complete - each workspace is independent
+  </Tab>
+  <Tab title="Persistence">
+    Resumed by worktree path. Agent sessions (with conversation ID) survive app restart
+  </Tab>
+</Tabs>
+
+### Root Sessions
+
+<Tabs>
+  <Tab title="What">
+    A session running directly in the project root (no `.tempest/` subdirectory)
+  </Tab>
+  <Tab title="When to use">
+    - When you want to work on the main branch
+    - When the project is not yet a git repository and you choose "Continue without Git"
+    - Quick terminal access without creating a branch
+  </Tab>
+  <Tab title="Branches">
+    No branch created. Works on whatever branch is currently checked out
+  </Tab>
+  <Tab title="Data isolation">
+    None - all sessions see the same working tree
+  </Tab>
+  <Tab title="Persistence">
+    Agent root sessions are resumed by conversation ID. Terminal root sessions are not persisted between restarts
+  </Tab>
+</Tabs>
+
+**To open a session in the root:** Click **in Root** instead of **in Branch** in the naming modal.
+
+### Choosing Between Them
+
+| Scenario | Use |
+|----------|-----|
+| Multiple agents working on different features | Worktree sessions (root gets cluttered) |
+| Single agent on the main branch | Root session |
+| Testing/debugging with manual terminal | Either (worktree avoids polluting main) |
+| Project has no git yet | Root session (if skipping git) or create worktree after git init |
+
+## The .tempest/ Directory Structure
+
+When you create your first workspace, Tempest creates a `.tempest/` directory in your project root. This directory is gitignored and contains all worktrees and internal metadata.
+
+```
+my-project/
+├── .git/
+├── .tempest/
+│   ├── feature-auth/          <-- worktree 1
+│   │   ├── .git -> ../../../.git/worktrees/feature-auth
+│   │   ├── src/
+│   │   ├── package.json
+│   │   └── node_modules -> ../../node_modules  (symlink/junction)
+│   ├── fix-ui-bug/            <-- worktree 2
+│   │   ├── .git -> ../../../.git/worktrees/fix-ui-bug
+│   │   ├── src/
+│   │   ├── package.json
+│   │   └── node_modules -> ../../node_modules  (symlink/junction)
+│   ├── atlas/                 <-- internal (not a worktree)
+│   │   └── index.db
+│   └── logs/                  <-- internal (not a worktree)
+│       └── tempest.log
+├── src/
+├── node_modules/              <-- shared across all worktrees
+├── .venv/                      <-- shared across all worktrees
+├── .tempest.gitignore
+├── .env
+└── package.json
+```
+
+**Key points:**
+- `.tempest/` itself is ignored by git (added to `.tempest.gitignore`)
+- Each worktree is a sibling folder named after its branch
+- `atlas/` and `logs/` are reserved for Tempest internals and are never treated as git worktrees
+- Each worktree's `.git` is a file pointing to `.git/worktrees/<name>` in the main repository
+
+<Callout type="info">
+The sidebar will only list `.tempest/` subdirectories that are registered as git worktrees. Reserved directories like `atlas/` and `logs/` are hidden from the workspace list.
+</Callout>
+
+## Branch Naming Conventions
+
+When you create a worktree workspace, a git branch is automatically created with the same name as the worktree folder.
+
+### Branch Prefix Setting
+
+Tempest respects a `branchPrefix` setting (configured in Settings > Appearance). If set:
+- Workspace name: `my-feature`
+- Branch prefix: `dev/`
+- Actual branch name: `dev/my-feature`
+- Worktree folder name: `dev/my-feature`
+
+### Valid Characters
+
+Branch names follow git conventions:
+- Alphanumeric, hyphens, underscores, dots
+- No spaces (trimmed from input)
+- No `~`, `^`, `[`, `]`, `\`, ` ` (space), or other special characters
+- Cannot end with `.lock`
+
+## Dependency Linking
+
+When a worktree is created, Tempest links (not copies) large dependency directories to save disk space and time.
+
+### Why Link Instead of Copy?
+
+- **node_modules** can be 100s of MB with 100,000+ files
+- Copying takes 30-120 seconds and doubles disk usage
+- A symlink (Unix) or directory junction (Windows) is instantaneous and shares one copy
+
+### How It Works
+
+#### Windows
+
+```powershell
+# Creates a directory junction (reparse point)
+mklink /J C:\project\.tempest\feature\node_modules C:\project\node_modules
+```
+
+- A reparse point that points to the original directory
+- Reads and writes go through the junction to the shared copy
+- `del` removes only the junction, not the target
+
+#### Unix/macOS/Linux
+
+```bash
+# Creates a symlink
+ln -s ../../node_modules .tempest/feature/node_modules
+```
+
+- A symbolic link to the original directory
+- Reads and writes follow the link to the shared copy
+- `rm` removes only the symlink
+
+### What Gets Linked
+
+- `node_modules/`
+- `.venv/`
+
+Only these two directories are large enough to warrant linking. If they don't exist in the project root, the link is skipped (the agent can run `npm install` or `python -m venv` in the worktree).
+
+### Failure Handling
+
+If linking fails (e.g., permission error on Windows):
+- Tempest logs a warning to stderr
+- **Does NOT fail the worktree creation**
+- The agent still gets a usable worktree
+- The agent can manually `npm install` or set up `.venv` if needed
+
+<Callout type="warning">
+When deleting a worktree, Tempest removes junctions/symlinks BEFORE removing the directory. This prevents `rm -rf` from accidentally deleting the shared node_modules in the project root.
+</Callout>
+
+## Git and Commits
+
+### Initial Commit Creation
+
+If the repository has no commits when you create a worktree:
+
+1. Tempest stages all tracked files: `git add -A`
+2. Creates an initial commit:
+   ```bash
+   git -c user.email=tempest@local \
+       -c user.name=Tempest \
+       commit --allow-empty -m "Initial commit"
+   ```
+3. This gives the git worktree command a HEAD to branch from
+
+The initial commit is always local only; no push is performed.
+
+### Empty Worktree Detection
+
+After creating a worktree, Tempest checks that it contains files (not just `.git/`). If the worktree is empty:
+
+```
+Workspace created but contains no files. Your project files may be untracked
+or gitignored. Run 'git add && git commit' in the project root first, or the
+agent will see an empty directory.
+```
+
+This usually happens if:
+- All project files are gitignored
+- `.gitignore` is overly broad
+- You created the repo but never committed anything
+
+**Fix:** Add and commit your files in the project root before creating a worktree.
+
+## Opening an Existing Project vs. Creating New
+
+### Opening an Existing Project
+
+In default mode (not zen), click **Open Project** on the Overview page or use Ctrl+K (Settings > Keybindings):
+
+1. Choose a folder containing a `.git/` directory
+2. Tempest scans `.tempest/` for existing worktrees
+3. All existing worktrees appear in the sidebar ready to open
+4. Sessions you had open before are restored
+
+### Creating a New Project
+
+Click **New Project** in the welcome modal (or File > New Project in top menu, if available):
+
+1. Name your project
+2. Choose where to save it
+3. Tempest creates an empty directory
+4. You can now create workspaces inside it
+
+The first workspace creation will initialize git if needed.
+
+### Zen Mode
+
+If you launch Tempest pointing to a single project folder (via CLI or app launcher), Zen mode activates:
+
+- Only that project's workspaces are shown
+- Sidebar is simplified
+- "New Workspace" button is prominent
+- No project switcher
+
+Zen mode is useful for focused work on one project.
+
+## Branch Naming Edge Cases
+
+### No Commits Yet
+
+If git is initialized but has no commits:
+- Tempest creates an initial empty commit (see [Git and Commits](#git-and-commits))
+- Then creates the worktree branch
+- You can now commit real files on the new branch
+
+### Duplicate Branch Names
+
+If a workspace with the same name already exists:
+
+```
+A workspace named 'feature-auth' already exists.
+Choose a different name.
+```
+
+This check runs before any git operations. Either:
+- Use a different name
+- Delete the existing workspace first (right-click > Delete)
+
+### Very Long Names
+
+Git has no hard limit on branch name length, but some filesystems do. Tempest doesn't truncate names, so if your worktree folder path exceeds the OS limit (usually 260 chars on Windows, 4096 on Unix), git operations may fail.
+
+Keep workspace names under 30 characters to be safe.
+
+## Session Naming and Persistence
+
+### What Gets Displayed
+
+In the sidebar, sessions are identified by:
+1. **Worktree sessions**: The folder name under `.tempest/` (also the branch name)
+2. **Root sessions**: The session name you provided, or "Terminal" / agent name if you left it blank
+3. Optionally, an icon showing whether it's a terminal or which agent is running
+
+### How Sessions Persist
+
+**Worktree agent sessions:**
+- Stored in browser localStorage under the worktree path
+- Includes agent type, conversation ID, and session name
+- Resumed on app restart if the worktree still exists
+
+**Root agent sessions:**
+- Stored with a unique key based on project path + session UUID
+- Conversation ID is persisted so the agent can resume
+- Survive app restart as long as the project is still open
+
+**Terminal sessions (worktree or root):**
+- Not persisted between restarts
+- New terminal appears as a fresh tab each time
+
+**Non-terminal tabs (Diff, Preview, Editor):**
+- Persisted by instance ID in runtime state
+- Re-opened on app launch
+
+<Callout type="tip">
+You can rename any session by double-clicking its tab. The rename doesn't change the branch name (worktree) or workspace folder, only the display name in Tempest.
+</Callout>
+
+## Troubleshooting Workspace Creation
+
+### "Not a git repository"
+
+**Cause:** Project root is not a git repo
+
+**Fix:** Use the modal's **Initialize Git** button, or run `git init` manually
+
+### "Workspace created but contains no files"
+
+**Cause:** All project files are gitignored
+
+**Fix:** Commit at least one tracked file to the project root:
+```bash
+git add -A
+git commit -m "Initial commit"
+```
+
+### "A workspace named 'X' already exists"
+
+**Cause:** Folder `.tempest/X/` exists and is registered as a git worktree
+
+**Fix:** Choose a different name, or delete the workspace first
+
+### Workspace creation hangs
+
+**Cause:** Usually copying a very large `node_modules` (if symlinking fails)
+
+**Fix:** Wait or kill the app. Next time, ensure node_modules permissions allow symlinking on Windows, or pre-install dependencies in the project root.
+
+### Agent not starting / workspace is empty
+
+**Cause:** Agent spawned but has no files to see
+
+**Fix:** Verify files are committed in the project root (see [Empty Worktree Detection](#empty-worktree-detection))
+
+## Summary
+
+Creating a workspace in Tempest is a streamlined process:
+
+1. **Click +** in the tab bar or use keyboard shortcut
+2. **Choose an agent or terminal** from the menu
+3. **Name your workspace** (alphanumeric + hyphens)
+4. **Git check** (initialize if needed)
+5. **Worktree created** under `.tempest/<name>/` with a matching branch
+6. **Session launches** with that worktree as the working directory
+7. **Share dependencies** via symlinks to save disk space
+8. **Work in isolation** while other agents work in parallel
+
+Each workspace is a fully independent git worktree, ready for agents to collaborate without conflicts.

@@ -1,0 +1,651 @@
+---
+title: Atlas MCP Server
+description: Model Context Protocol implementation for Atlas code graph, connecting agents to semantic code intelligence
+icon: "plug"
+---
+
+# Atlas MCP Server
+
+The **Atlas MCP Server** exposes the code knowledge graph via the Model Context Protocol (MCP), allowing Claude, Cline, Roo, and other agents to query semantic code intelligence using standardized tools.
+
+## Overview
+
+The MCP server is a Node.js process that:
+
+- Opens the `.atlas/` SQLite database for a project
+- Implements the MCP specification (tools, resources, protocol)
+- Exposes Atlas functionality as AI-readable tools
+- Handles concurrent requests from multiple agents
+- Manages its own lifecycle (daemon, proxy, direct modes)
+
+**Key benefit:** Agents get surgical, ranked context instead of raw files, reducing token usage and improving reasoning quality.
+
+## Architecture & Modes
+
+The MCP server supports three runtime modes, decided at startup based on configuration and availability:
+
+### 1. Direct Mode
+
+**One process = one MCP client over stdio**
+
+```
+Agent → MCP host ← stdio → MCP server (process)
+                              └─ .atlas/atlas.db
+```
+
+- Simplest setup
+- No background daemon
+- Process exits when client disconnects
+- Used when:
+  - `ATLAS_NO_DAEMON=1` environment variable is set
+  - No `.atlas/` directory exists
+  - Daemon machinery fails to initialize
+
+**Startup:**
+```bash
+node .../atlas/dist/mcp/server-entry.js --path /project
+```
+
+### 2. Proxy Mode
+
+**Thin stdio ← → socket bridge to a shared daemon**
+
+```
+Agent ← stdio → Proxy (short-lived)
+                    │
+                    └─ socket ── Daemon (long-lived)
+                                   └─ .atlas/atlas.db
+```
+
+- Used by default when `.atlas/` exists and daemon is available
+- Proxy is lightweight, exits when agent disconnects
+- Daemon persists in background, serves multiple clients
+- Proxy carries PPID watchdog to gracefully tear down if host is killed
+
+**Startup:**
+```bash
+node .../atlas/dist/mcp/server-entry.js --path /project
+# → Attempts to connect to existing daemon
+# → If no daemon, spawns one detached, then proxies
+```
+
+### 3. Daemon Mode
+
+**Shared background process with Unix socket or named pipe**
+
+```
+Proxy 1 ─┐
+Proxy 2 ─┼─ socket/pipe ── Daemon
+Proxy 3 ─┘     (Unix: /tmp/.../atlas.sock)
+               (Windows: //./pipe/atlas_<hash>)
+               
+               ┌─ Single Atlas instance
+               ├─ One database connection
+               ├─ Shared file watcher
+               └─ All clients see same index
+```
+
+- Spawned on-demand by the first proxy
+- Detached process, not a child of any host
+- Survives individual agent disconnects
+- Exits after client-refcount timeout (~5 minutes idle)
+- Logs to `.atlas/daemon.log`
+
+**Process management:**
+
+- Lockfile at `.atlas/daemon.lock` arbitrates startup races
+- Multiple launchers may race to spawn; only one wins
+- Winner acquires O_EXCL lock, binds socket, serves all proxies
+- Losers detect the lock, connect to winner's socket
+
+**Startup:**
+```bash
+# From proxy/launcher
+node .../atlas/dist/mcp/server-entry.js --path /project \
+  --mcp
+# Daemon is spawned with ATLAS_DAEMON_INTERNAL=1 (internal flag)
+```
+
+## Server Startup & Discovery
+
+### From Tempest (Automatic)
+
+When you enable Token Intelligence or start an agent in Tempest:
+
+1. Tempest's Rust backend calls `start_atlas_index()` if `.atlas/` doesn't exist
+   - Spawns `atlas --init --path <project>` (background Node process)
+   - Tauri toast polls for `.atlas/atlas.db` to appear
+   - Background indexing happens while you work
+
+2. When an agent spawns, Tempest starts the MCP server:
+   - Calls `invoke<boolean>("start_atlas_mcp", { projectPath })`
+   - Spawns `node .../atlas/dist/mcp/server-entry.js --path <project>`
+   - Server immediately prints MCP handshake to stdout
+
+3. The agent's MCP host receives the server process and connects over stdio
+
+**Configuration:** Tempest writes MCP server config to:
+
+- `.mcp.json` (Claude Code, Cline, Roo, Zed, Windsurf standard)
+- `.cursor/mcp.json` (Cursor)
+- `.gemini/settings.json` (Google Gemini)
+- `.kiro/settings/mcp.json` (AWS Kiro)
+- `.github/copilot/config.json` (GitHub Copilot)
+
+Example `.mcp.json`:
+```json
+{
+  "mcpServers": {
+    "atlas": {
+      "command": "node",
+      "args": ["/path/to/atlas/dist/mcp/server-entry.js", "--path", "/project"]
+    }
+  }
+}
+```
+
+### Manual Setup (Outside Tempest)
+
+To connect any agent to Atlas:
+
+```bash
+# First, initialize the project (one-time)
+node .../atlas/dist/mcp/server-entry.js --init --path /your/project
+
+# Then add to your .mcp.json or equivalent:
+{
+  "mcpServers": {
+    "atlas": {
+      "command": "node",
+      "args": [
+        "/path/to/@tempest/atlas/dist/mcp/server-entry.js",
+        "--path",
+        "/absolute/path/to/your/project"
+      ]
+    }
+  }
+}
+```
+
+The server will start in proxy or daemon mode automatically.
+
+## MCP Protocol Details
+
+### Initialization (Handshake)
+
+When the MCP host starts the server process, the server writes MCP initialization messages to stdout:
+
+```json
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{},"resources":{}},"serverInfo":{"name":"atlas","version":"1.1.6"}}}
+```
+
+The host responds with:
+```json
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{...}}}
+```
+
+After `initialize`, the server is ready to receive tool calls via `tools/call`.
+
+### Tools/List
+
+Clients request available tools via `tools/list`:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/list",
+  "params": {}
+}
+```
+
+The server responds with schemas for all exposed tools (see Tools section below).
+
+### Tool Invocation
+
+Clients invoke tools via `tools/call`:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "atlas_search",
+    "arguments": {
+      "query": "authentication"
+    }
+  }
+}
+```
+
+Server responds with results or error, including:
+- `success: boolean` — operation succeeded
+- `isError?: boolean` — tool result is an error (false for recoverable "no index" conditions)
+- `content: TextContent[]` — tool output
+
+## Exposed Tools
+
+The Atlas MCP server exposes the following tools to agents:
+
+### atlas_search
+
+Search the code graph by name or full-text.
+
+**Purpose:** Find symbols matching a query, ranked by relevance.
+
+**Arguments:**
+- `query` (string, required): Search term (e.g., "authenticate", "User", "handleSubmit")
+- `limit` (number, optional): Max results to return (default: 20)
+
+**Returns:**
+```json
+{
+  "results": [
+    {
+      "id": "src/auth.ts::authenticate",
+      "name": "authenticate",
+      "kind": "function",
+      "qualifiedName": "authenticate",
+      "filePath": "src/auth.ts",
+      "startLine": 42,
+      "endLine": 58,
+      "signature": "(username: string, password: string): Promise<User>",
+      "docstring": "Validate user credentials...",
+      "score": 0.95
+    },
+    ...
+  ]
+}
+```
+
+### atlas_explore
+
+Find relevant code context for a natural language query.
+
+**Purpose:** Answer "How does X work?" by returning a focused subgraph of relevant nodes and code snippets.
+
+**Arguments:**
+- `query` (string, required): Task or question (e.g., "How does user login work?")
+- `maxFiles` (number, optional): Max files to include (default: adaptive based on project size)
+
+**Returns:**
+```json
+{
+  "nodes": [...],
+  "edges": [...],
+  "files": {
+    "src/auth.ts": {
+      "snippets": [
+        {
+          "nodeId": "src/auth.ts::authenticate",
+          "startLine": 42,
+          "endLine": 58,
+          "code": "..."
+        }
+      ]
+    }
+  },
+  "relationships": {
+    "calls": [...],
+    "references": [...]
+  }
+}
+```
+
+Intelligently scales output based on project size (small projects get more context per call).
+
+### atlas_node
+
+Retrieve detailed information about a specific symbol.
+
+**Purpose:** Get a symbol's definition, metadata, and related symbols.
+
+**Arguments:**
+- `symbol` (string, required): Symbol name or qualified name (e.g., "authenticate" or "src/auth.ts::authenticate")
+- `includeCode` (boolean, optional): Include source code (default: true)
+- `kind` (string, optional): Filter by node kind (e.g., "function", "class")
+- `includeRelated` (boolean, optional): Include callers, callees, usages (default: false)
+
+**Returns:**
+```json
+{
+  "node": {
+    "id": "src/auth.ts::authenticate",
+    "name": "authenticate",
+    "kind": "function",
+    "qualifiedName": "authenticate",
+    "filePath": "src/auth.ts",
+    "startLine": 42,
+    "endLine": 58,
+    "signature": "(username: string, password: string): Promise<User>",
+    "docstring": "Validate user credentials...",
+    "visibility": "public",
+    "isAsync": true,
+    "isExported": true
+  },
+  "code": "async function authenticate(username: string, password: string): Promise<User> { ... }",
+  "callers": [...],
+  "callees": [...],
+  "usages": [...]
+}
+```
+
+### atlas_graph
+
+Traverse the code graph to answer structural questions.
+
+**Purpose:** Explore relationships: "Who calls this?", "What does this class extend?", "Where is this variable used?"
+
+**Arguments:**
+- `query` (string, required): Graph query in format `<operation> <symbol>`
+  - `find_callers <symbol>` — functions/methods that call this
+  - `find_callees <symbol>` — functions/methods this calls
+  - `find_usages <symbol>` — all references to this symbol
+  - `find_type_hierarchy <symbol>` — ancestors and descendants
+  - `find_implementations <interface>` — classes implementing this interface
+  - `find_impact <symbol>` — all symbols potentially affected by changes to this
+  - `find_circular_dependencies` — cycles in the codebase
+  - `find_dead_code` — unreferenced symbols
+
+**Returns:**
+```json
+{
+  "nodes": [...],
+  "edges": [...],
+  "paths": [
+    {
+      "from": "src/routes.ts::POST /login",
+      "to": "src/auth.ts::authenticate",
+      "path": [...]
+    }
+  ]
+}
+```
+
+### atlas_status
+
+Get project index status and statistics.
+
+**Purpose:** Check if index exists, how fresh it is, and get graph statistics.
+
+**Arguments:**
+- `projectPath` (string, optional): Project path (default: cwd or discovered)
+
+**Returns:**
+```json
+{
+  "initialized": true,
+  "lastIndexedAt": 1234567890000,
+  "indexFreshness": "fresh",
+  "indexBuildInfo": {
+    "version": "1.1.6",
+    "extractionVersion": 5
+  },
+  "isStale": false,
+  "stats": {
+    "nodeCount": 1523,
+    "edgeCount": 4251,
+    "fileCount": 127,
+    "dbSizeBytes": 52428800,
+    "languages": {
+      "typescript": 85,
+      "javascript": 12,
+      "json": 30
+    }
+  },
+  "backend": "node:sqlite",
+  "journalMode": "wal",
+  "watcherStatus": {
+    "active": true,
+    "pendingFiles": [],
+    "degraded": false
+  }
+}
+```
+
+### atlas_file_dependencies
+
+Get files that a source file depends on.
+
+**Purpose:** Understand import structure and find integration points.
+
+**Arguments:**
+- `filePath` (string, required): Path to file (relative to project root)
+
+**Returns:**
+```json
+{
+  "file": "src/services/user.ts",
+  "dependencies": [
+    "src/db/index.ts",
+    "src/types.ts",
+    "src/utils/validation.ts"
+  ],
+  "dependents": [
+    "src/routes/user.ts",
+    "src/tests/user.test.ts"
+  ]
+}
+```
+
+## Agent Integration Examples
+
+### Claude (Claude Code)
+
+Claude automatically uses Atlas tools when available. Example:
+
+```
+User: "How does the authentication flow work in this project?"
+
+Claude detects atlas_explore tool available
+→ Calls atlas_explore("How does the authentication flow work?", maxFiles: 6)
+→ Receives relevant subgraph with code snippets
+→ Synthesizes answer from structured graph data
+→ References specific files and line numbers
+```
+
+### Cline / Roo
+
+Cline and Roo read MCP server config from `.mcp.json` and connect to Atlas automatically:
+
+```
+Cline detects atlas MCP server in .mcp.json
+→ Spawns MCP server process
+→ Connects over stdio
+→ Includes atlas_explore, atlas_search in available tools
+→ Uses tools when building context for edits/exploration
+```
+
+### Zed, Windsurf, Cursor
+
+These editors include their own AI agents with MCP support. Add Atlas to their MCP config:
+
+**Zed (.zed/settings.json):**
+```json
+{
+  "language_models": {
+    "claude": {
+      "model": "claude-3-5-sonnet-20241022"
+    }
+  },
+  "mcp": {
+    "atlas": {
+      "command": "node",
+      "args": ["/path/to/atlas/dist/mcp/server-entry.js", "--path", "/project"]
+    }
+  }
+}
+```
+
+**Windsurf (.windsurf/settings.json):**
+
+Same format as `.mcp.json`.
+
+**Cursor (.cursor/mcp.json):**
+
+Standard MCP format.
+
+## Performance & Optimization
+
+### Tool Response Times
+
+- `atlas_search`: 10-100ms (depends on query specificity)
+- `atlas_explore`: 50-500ms (includes graph traversal and code extraction)
+- `atlas_node`: 5-50ms (cached queries)
+- `atlas_graph`: 50-1000ms (depends on graph depth and size)
+- `atlas_status`: < 5ms
+
+**Impact on agent latency:**
+
+- Per tool call: 100-500ms (network + execution)
+- Typical agent query: 1-3 tool calls + LLM inference
+- Total latency: Usually 2-5 seconds (LLM dominates)
+
+### Database Concurrency
+
+Atlas uses SQLite with WAL (Write-Ahead Log) mode:
+
+- Multiple MCP clients can read simultaneously
+- Background file watcher can write while tools are running
+- No locks needed for reads (except when sync is in progress)
+- Sync holds a file lock for 1-10 seconds on typical changes
+
+**Watchdog mechanisms:**
+
+- **PPID watchdog** (proxy mode): If host process dies (SIGKILL), proxy detects parent process death and shuts down gracefully
+- **Liveness watchdog** (daemon mode): Heartbeat monitor that detects main-thread hangs and SIGKILLs the process if unresponsive for 10+ seconds
+- **Idle timeout** (daemon mode): After 5 minutes with no clients, daemon exits to free resources
+
+### Token Efficiency
+
+Typical token savings using Atlas:
+
+| Query | Without Atlas | With Atlas | Savings |
+|-------|---|---|---|
+| "How does auth work?" | 2000-3000 tokens | 300-500 tokens | 75-85% |
+| "Find all callers of X" | 1500-2000 tokens | 200-400 tokens | 80-90% |
+| "Implement feature Y" | 3000-5000 tokens | 400-800 tokens | 75-85% |
+| "Refactor module Z" | 2500-4000 tokens | 300-600 tokens | 80-88% |
+
+Savings come from:
+- Returning ranked search results instead of whole files
+- Providing symbol metadata instead of raw code parsing
+- Showing relationships instead of requiring file reads
+
+## Troubleshooting
+
+### Server Won't Start
+
+**Error:** "Cannot resolve CLI script path to spawn the daemon"
+
+- Cause: Node entry point (`process.argv[1]`) is invalid
+- Fix: Use full path to `server-entry.js` in MCP config
+
+**Error:** "Database is locked"
+
+- Cause: Another process is indexing or the database is corrupted
+- Fix: Wait for indexing to complete, or remove `.atlas/` and re-index
+
+### Daemon Won't Start
+
+**Error:** "Could not bind socket" or "daemon.sock exists"
+
+- Cause: Stale socket from previous daemon or race condition
+- Fix: Remove `.atlas/daemon.lock` and retry
+- OR: Set `ATLAS_NO_DAEMON=1` to run in direct mode instead
+
+### Proxy/Client Won't Connect
+
+**Error:** "ECONNREFUSED: connection refused"
+
+- Cause: Daemon didn't start or socket isn't ready
+- Fix: Check `.atlas/daemon.log` for errors
+- Fallback: `ATLAS_NO_DAEMON=1` to run in direct mode
+
+### Tool Returns Empty Results
+
+**Possible causes:**
+
+1. Index is empty (no files indexed yet)
+   - Run `atlas index --path <project>` manually
+   - Check `atlas_status` to verify index exists
+
+2. Query is too specific
+   - Try broader terms ("auth" instead of "authenticate")
+   - Use `atlas_search` first to see what symbols exist
+
+3. File is excluded
+   - Check `.gitignore` and `atlas.json` exclude patterns
+   - Verify file is in an indexed language
+
+### MCP Connection Drops
+
+**Error:** "MCP server disconnected" or repeated timeouts
+
+- Cause: Server process crashed or ran out of resources
+- Check: `.atlas/daemon.log` for errors
+- Solution: Restart agent or Tempest
+
+### High Memory Usage
+
+- Cause: Large graph or long-running daemon with many symbols
+- Solution: Restart daemon (`kill -9` process with PID from `.atlas/daemon.lock`)
+- Or: Use `ATLAS_NO_DAEMON=1` for fresh process per agent
+
+## Architecture & Code Structure
+
+Key files in `packages/atlas/src/mcp/`:
+
+- `index.ts` — MCPServer class (main entry point)
+- `server-entry.ts` — CLI entry point (handles --init, --path flags)
+- `engine.ts` — MCP protocol implementation (tool schemas, dispatch)
+- `tools.ts` — Tool handler implementations (search, explore, graph, etc.)
+- `daemon.ts` — Detached daemon process lifecycle
+- `proxy.ts` — Stdio ← → socket bridge
+- `transport.ts` — MCP protocol serialization
+- `session.ts` — Per-connection session state
+- `daemon-manager.ts` — Daemon lifecycle management
+- `ppid-watchdog.ts` — Process parent monitoring
+- `liveness-watchdog.ts` — Main thread health monitoring
+- `query-pool.ts` — Worker thread pool for graph queries
+- `dynamic-boundaries.ts` — Dynamic dispatch (scanning code for certain patterns)
+
+## Advanced Configuration
+
+### Disable Daemon Mode
+
+Set environment variable to force direct mode (no background daemon):
+
+```bash
+ATLAS_NO_DAEMON=1 node .../atlas/dist/mcp/server-entry.js --path /project
+```
+
+### Custom Daemon Paths
+
+The daemon socket path is computed from:
+- Project root `.atlas/` directory
+- Hash of the absolute path (prevents collisions with symlinks)
+
+**Result:**
+- Linux/macOS: `/run/user/1000/atlas_<hash>.sock`
+- Windows: `//./pipe/atlas_<hash>`
+
+### Logging
+
+Daemon logs to `.atlas/daemon.log`. Enable verbose logging:
+
+```bash
+DEBUG=atlas:* node .../atlas/dist/mcp/server-entry.js --path /project
+```
+
+## Future Enhancements
+
+Planned features for the MCP server:
+
+- **WebSocket transport** — For remote agents/IDEs
+- **Batch operations** — Multiple queries in one RPC call
+- **Caching layer** — Per-session query result cache
+- **Streaming responses** — Large subgraphs streamed incrementally
+- **Custom resolvers** — Plugin system for language-specific analysis
+- **Agent profiling** — Metrics on tool usage and response times

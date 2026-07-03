@@ -1,0 +1,750 @@
+---
+title: Installation
+description: Install Tempest from pre-built binaries or build from source on Windows, macOS, and Linux
+icon: "download"
+---
+
+# Installation
+
+Choose your installation method: download pre-built binaries for your platform or build from source. Both paths are fully supported.
+
+## System Requirements
+
+Tempest is a native desktop application built with Tauri and React. Minimum requirements vary by platform.
+
+<Tabs>
+  <Tab title="Windows">
+    <Properties>
+      <Property name="OS Version" value="Windows 10 (build 1809) or later" />
+      <Property name="Architecture" value="x86_64 (Intel, AMD)" />
+      <Property name="RAM" value="4 GB minimum, 8 GB recommended" />
+      <Property name="Disk Space" value="500 MB for app, additional space for codebase" />
+      <Property name="WebView2 Runtime" value="Latest (auto-installed if missing)" />
+    </Properties>
+  </Tab>
+  <Tab title="macOS">
+    <Properties>
+      <Property name="OS Version" value="macOS 11 (Big Sur) or later" />
+      <Property name="Architecture" value="Apple Silicon (M1/M2/M3) or Intel x86_64" />
+      <Property name="RAM" value="4 GB minimum, 8 GB recommended" />
+      <Property name="Disk Space" value="500 MB for app, additional space for codebase" />
+      <Property name="Xcode Command Line Tools" value="Required for building from source" />
+    </Properties>
+  </Tab>
+  <Tab title="Linux">
+    <Properties>
+      <Property name="OS" value="Ubuntu 22.04 LTS or compatible (Debian-based)" />
+      <Property name="Architecture" value="x86_64 (Intel, AMD)" />
+      <Property name="RAM" value="4 GB minimum, 8 GB recommended" />
+      <Property name="Disk Space" value="500 MB for app, additional space for codebase" />
+      <Property name="GTK" value="libwebkit2gtk-4.1 and related libraries required" />
+    </Properties>
+  </Tab>
+</Tabs>
+
+## Installation from Pre-built Binaries
+
+Pre-built installers are available for all platforms. Download from the [GitHub Releases page](https://github.com/gsvprharsha/tempest/releases).
+
+<Tabs>
+  <Tab title="Windows">
+    ### Windows Installer (.exe)
+
+    <Steps>
+      <Step title="Download the installer">
+        From [Releases](https://github.com/gsvprharsha/tempest/releases), download the file named `tempest_x.x.x_x64-setup.exe` (where `x.x.x` is the version number).
+      </Step>
+      <Step title="Verify WebView2 Runtime (optional but recommended)">
+        Tempest requires the WebView2 Runtime to render its UI. Check if it is already installed:
+
+        - Press `Win + R`, type `appwiz.cpl`, and press Enter to open Programs and Features
+        - Search for "WebView2" in the list
+
+        If not found, download and install from [Microsoft Edge WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/). Click "Evergreen Standalone Installer (x64)". The installer runs silently in the background.
+      </Step>
+      <Step title="Run the installer">
+        Double-click `tempest_x.x.x_x64-setup.exe`. The NSIS installer window appears. Follow the on-screen prompts. By default, Tempest installs to `C:\Users\[YourUsername]\AppData\Local\Programs\Tempest`.
+      </Step>
+      <Step title="Launch Tempest">
+        After installation, Tempest appears in your Start Menu as "Tempest". Click to launch. A frameless window opens with the workspace management interface.
+      </Step>
+      <Step title="Enable long paths (for large codebases)">
+        If working with repositories containing very long file paths, Windows may limit path length to 260 characters by default. To enable long paths:
+
+        <CodeBlock language="powershell">
+          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1
+        </CodeBlock>
+
+        Also configure Git:
+
+        <CodeBlock language="bash">
+          git config --global core.longpaths true
+        </CodeBlock>
+
+        Restart Tempest after this change.
+      </Step>
+    </Steps>
+
+    ### Uninstalling
+
+    Go to Settings > Apps > Apps and features, search for "Tempest", and click "Uninstall". Configuration and workspace data are preserved in `%APPDATA%\Tempest\` and can be manually removed if desired.
+  </Tab>
+
+  <Tab title="macOS">
+    ### macOS Installer (.dmg)
+
+    <Steps>
+      <Step title="Check architecture">
+        Determine your Mac's architecture:
+
+        <CodeBlock language="bash">
+          arch
+        </CodeBlock>
+
+        Output is either `arm64` (Apple Silicon M1/M2/M3) or `i386` (Intel). Tempest binaries are available for both.
+      </Step>
+      <Step title="Download the disk image">
+        From [Releases](https://github.com/gsvprharsha/tempest/releases), download:
+        - `tempest.app.tar.gz` for your architecture (universal binary)
+        - Or the `.dmg` file if available (drag-and-drop installer)
+      </Step>
+      <Step title="Mount the disk image or extract the archive">
+        If you downloaded the `.dmg`:
+        - Double-click to mount
+        - Drag the Tempest app icon to the Applications folder
+
+        If you downloaded the `.tar.gz`:
+
+        <CodeBlock language="bash">
+          tar -xzf tempest.app.tar.gz
+          mv Tempest.app /Applications/
+        </CodeBlock>
+      </Step>
+      <Step title="Grant security exceptions">
+        On first launch, macOS may block the app due to notarization. To allow it:
+
+        - Open Finder, navigate to Applications
+        - Right-click Tempest.app, select "Open"
+        - Click "Open" in the security prompt
+        - The app launches. You won't see this prompt again.
+
+        Alternatively, allow unsigned apps system-wide (not recommended):
+
+        <CodeBlock language="bash">
+          sudo spctl --master-disable
+        </CodeBlock>
+      </Step>
+      <Step title="Launch Tempest">
+        Open Applications folder and double-click Tempest.app, or use Spotlight (Cmd+Space) and type "Tempest".
+      </Step>
+    </Steps>
+
+    ### Uninstalling
+
+    Drag Tempest.app to Trash. Configuration and workspace data are stored in `~/Library/Application Support/Tempest/` and can be manually deleted if desired.
+  </Tab>
+
+  <Tab title="Linux">
+    ### Linux: AppImage Portable Executable
+
+    <Steps>
+      <Step title="Download the AppImage">
+        From [Releases](https://github.com/gsvprharsha/tempest/releases), download `tempest_x.x.x_amd64.AppImage`.
+      </Step>
+      <Step title="Make executable">
+        <CodeBlock language="bash">
+          chmod +x tempest_x.x.x_amd64.AppImage
+        </CodeBlock>
+      </Step>
+      <Step title="Run directly">
+        <CodeBlock language="bash">
+          ./tempest_x.x.x_amd64.AppImage
+        </CodeBlock>
+
+        The app launches in a window. No installation required. You can keep the AppImage file anywhere (Documents, Downloads, a custom bin directory).
+      </Step>
+      <Step title="Optional: Install to system path">
+        <CodeBlock language="bash">
+          sudo mv tempest_x.x.x_amd64.AppImage /usr/local/bin/tempest
+          chmod +x /usr/local/bin/tempest
+        </CodeBlock>
+
+        Then run with:
+
+        <CodeBlock language="bash">
+          tempest
+        </CodeBlock>
+      </Step>
+      <Step title="Optional: Create desktop shortcut">
+        Create `~/.local/share/applications/tempest.desktop`:
+
+        <CodeBlock language="ini">
+          [Desktop Entry]
+          Type=Application
+          Name=Tempest
+          Exec=/path/to/tempest_x.x.x_amd64.AppImage
+          Icon=tempest
+          Categories=Development;Utility;
+        </CodeBlock>
+
+        Then update the desktop database:
+
+        <CodeBlock language="bash">
+          update-desktop-database ~/.local/share/applications/
+        </CodeBlock>
+
+        The app appears in your application launcher.
+      </Step>
+    </Steps>
+
+    ### Linux: .deb Package
+
+    <Steps>
+      <Step title="Download the package">
+        From [Releases](https://github.com/gsvprharsha/tempest/releases), download `tempest_x.x.x_amd64.deb`.
+      </Step>
+      <Step title="Install">
+        <CodeBlock language="bash">
+          sudo dpkg -i tempest_x.x.x_amd64.deb
+        </CodeBlock>
+
+        If dependency errors appear, run:
+
+        <CodeBlock language="bash">
+          sudo apt-get install -f
+        </CodeBlock>
+      </Step>
+      <Step title="Launch">
+        <CodeBlock language="bash">
+          tempest
+        </CodeBlock>
+
+        Or find "Tempest" in your application launcher.
+      </Step>
+      <Step title="Uninstall">
+        <CodeBlock language="bash">
+          sudo apt-get remove tempest
+        </CodeBlock>
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## Building from Source
+
+Build Tempest locally if you want the latest development features, plan to contribute, or prefer compiling on your machine.
+
+### Prerequisites
+
+Install these tools first. The exact steps vary by platform.
+
+<Tabs>
+  <Tab title="Windows">
+    ### Windows Prerequisites
+
+    <Steps>
+      <Step title="Node.js 18 or later">
+        1. Download from [nodejs.org](https://nodejs.org/). Choose the LTS version (currently 22.x).
+        2. Run the installer. Accept all defaults (npm is included).
+        3. Verify installation:
+
+        <CodeBlock language="powershell">
+          node --version
+          npm --version
+        </CodeBlock>
+
+        Both commands should print version numbers. Node 18.0.0 or later is required. Node 22+ is recommended.
+      </Step>
+      <Step title="Rust 1.77 or later">
+        1. Download and run the Rust installer from [rustup.rs](https://rustup.rs/).
+        2. Choose the default option (standard installation).
+        3. Verify installation:
+
+        <CodeBlock language="powershell">
+          rustc --version
+          cargo --version
+        </CodeBlock>
+
+        Both should print version 1.77.0 or later. Rust updates itself automatically via rustup.
+      </Step>
+      <Step title="Git">
+        1. Download from [git-scm.com](https://git-scm.com/).
+        2. Run the installer and accept defaults.
+        3. Verify:
+
+        <CodeBlock language="powershell">
+          git --version
+        </CodeBlock>
+      </Step>
+      <Step title="WebView2 Runtime">
+        Download and install from [Microsoft Edge WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/). Choose "Evergreen Standalone Installer (x64)". The installer runs silently.
+      </Step>
+      <Step title="Visual C++ Build Tools (if missing)">
+        Some Rust crates require the MSVC compiler. If you see errors like "Microsoft Visual C++ 14.0 or greater is required", download the Visual C++ Build Tools from [Microsoft](https://visualstudio.microsoft.com/visual-cpp-build-tools/). Choose "Desktop development with C++". This is a 1.5 GB download; installation takes 5 minutes.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="macOS">
+    ### macOS Prerequisites
+
+    <Steps>
+      <Step title="Xcode Command Line Tools">
+        Required for compilation. Install via the Terminal:
+
+        <CodeBlock language="bash">
+          xcode-select --install
+        </CodeBlock>
+
+        A dialog appears. Click "Install". This downloads 500 MB and takes 5-10 minutes. Verify:
+
+        <CodeBlock language="bash">
+          clang --version
+        </CodeBlock>
+
+        Should print a version number (e.g., "Apple clang version 15.0.0").
+      </Step>
+      <Step title="Node.js 18 or later">
+        Install via [Homebrew](https://brew.sh/) (recommended):
+
+        <CodeBlock language="bash">
+          brew install node@22
+          brew link node@22
+        </CodeBlock>
+
+        Or download from [nodejs.org](https://nodejs.org/) and run the .dmg installer.
+
+        Verify:
+
+        <CodeBlock language="bash">
+          node --version
+          npm --version
+        </CodeBlock>
+
+        Should show Node 22.x and npm 10.x or later.
+      </Step>
+      <Step title="Rust 1.77 or later">
+        Install via [rustup](https://rustup.rs/):
+
+        <CodeBlock language="bash">
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+        </CodeBlock>
+
+        Follow the prompts (default settings are fine). Then:
+
+        <CodeBlock language="bash">
+          source $HOME/.cargo/env
+        </CodeBlock>
+
+        Verify:
+
+        <CodeBlock language="bash">
+          rustc --version
+          cargo --version
+        </CodeBlock>
+
+        Should show Rust 1.77.0 or later.
+      </Step>
+      <Step title="Git">
+        Usually pre-installed. Verify:
+
+        <CodeBlock language="bash">
+          git --version
+        </CodeBlock>
+
+        If missing, install via Homebrew:
+
+        <CodeBlock language="bash">
+          brew install git
+        </CodeBlock>
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="Linux">
+    ### Linux Prerequisites (Ubuntu 22.04 LTS and Debian-based)
+
+    <Steps>
+      <Step title="System packages">
+        <CodeBlock language="bash">
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libxdo-dev \
+            curl
+        </CodeBlock>
+
+        These libraries are required for Tauri and native windowing. Breakdown:
+        - `libwebkit2gtk-4.1-dev`: WebKit rendering engine
+        - `libappindicator3-dev`: System tray integration
+        - `librsvg2-dev`: SVG rendering
+        - `patchelf`: Binary patching for bundled libraries
+        - `libxdo-dev`: X11 window management
+      </Step>
+      <Step title="Node.js 18 or later">
+        Install via NodeSource repository (for latest LTS):
+
+        <CodeBlock language="bash">
+          curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+          sudo apt-get install -y nodejs
+        </CodeBlock>
+
+        Or use the Ubuntu default (older version):
+
+        <CodeBlock language="bash">
+          sudo apt-get install -y nodejs npm
+        </CodeBlock>
+
+        Verify:
+
+        <CodeBlock language="bash">
+          node --version
+          npm --version
+        </CodeBlock>
+
+        Should show Node 18.0.0 or later.
+      </Step>
+      <Step title="Rust 1.77 or later">
+        Install via [rustup](https://rustup.rs/):
+
+        <CodeBlock language="bash">
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+        </CodeBlock>
+
+        Follow the prompts (default settings are fine). Then add Rust to your PATH:
+
+        <CodeBlock language="bash">
+          source $HOME/.cargo/env
+        </CodeBlock>
+
+        Verify:
+
+        <CodeBlock language="bash">
+          rustc --version
+          cargo --version
+        </CodeBlock>
+
+        Should show Rust 1.77.0 or later.
+      </Step>
+      <Step title="Git">
+        <CodeBlock language="bash">
+          sudo apt-get install -y git
+        </CodeBlock>
+
+        Verify:
+
+        <CodeBlock language="bash">
+          git --version
+        </CodeBlock>
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+### Clone and Build
+
+Once prerequisites are installed, clone the repository and build:
+
+<Steps>
+  <Step title="Clone the repository">
+    <CodeBlock language="bash">
+      git clone https://github.com/gsvprharsha/tempest
+      cd tempest
+    </CodeBlock>
+  </Step>
+  <Step title="Install npm dependencies">
+    <CodeBlock language="bash">
+      npm install
+    </CodeBlock>
+
+    This installs React, Tauri CLI, TypeScript, Vite, and other JavaScript dependencies. Typically takes 1-2 minutes.
+  </Step>
+  <Step title="Build workspace assets (Atlas)">
+    <CodeBlock language="bash">
+      npm run setup
+    </CodeBlock>
+
+    This builds the Atlas workspace (code intelligence and token-graph features) and bundles them into resources. Required before running or building.
+  </Step>
+  <Step title="Build for production">
+    <CodeBlock language="bash">
+      npm run build
+    </CodeBlock>
+
+    This step:
+    1. Compiles TypeScript and bundles the React UI with Vite
+    2. Compiles the Rust backend with Tauri
+    3. Creates platform-specific installers
+
+    Build time is 3-10 minutes depending on your machine.
+
+    <Tabs>
+      <Tab title="Windows">
+        Installers are created in `src-tauri\target\release\bundle\nsis\`:
+        - `tempest_x.x.x_x64-setup.exe` (NSIS installer)
+        - `tempest_x.x.x_x64-setup.exe.sig` (updater signature file)
+
+        Also created in `src-tauri\target\release\`:
+        - `tempest.exe` (portable executable)
+      </Tab>
+      <Tab title="macOS">
+        Installers are created in `src-tauri/target/release/bundle/`:
+        - `dmg/` contains `Tempest_x.x.x_x64.dmg` (disk image installer)
+        - `macos/` contains `Tempest.app.tar.gz` (compressed app bundle)
+      </Tab>
+      <Tab title="Linux">
+        Installers are created in `src-tauri/target/release/bundle/`:
+        - `appimage/` contains `tempest_x.x.x_amd64.AppImage` (portable)
+        - `deb/` contains `tempest_x.x.x_amd64.deb` (package)
+      </Tab>
+    </Tabs>
+  </Step>
+  <Step title="Run the build output">
+    <Tabs>
+      <Tab title="Windows">
+        <CodeBlock language="powershell">
+          .\src-tauri\target\release\tempest.exe
+        </CodeBlock>
+      </Tab>
+      <Tab title="macOS">
+        <CodeBlock language="bash">
+          open src-tauri/target/release/bundle/macos/Tempest.app
+        </CodeBlock>
+      </Tab>
+      <Tab title="Linux">
+        <CodeBlock language="bash">
+          ./src-tauri/target/release/bundle/appimage/tempest_*.amd64.AppImage
+        </CodeBlock>
+      </Tab>
+    </Tabs>
+
+    A frameless Tempest window should appear with the workspace management interface.
+  </Step>
+</Steps>
+
+## Development Mode (with Hot Reload)
+
+To iterate quickly on code changes:
+
+<Steps>
+  <Step title="Install prerequisites (same as above)">
+    Ensure Node.js 18+, Rust 1.77+, and platform-specific tools are installed.
+  </Step>
+  <Step title="Clone and setup">
+    <CodeBlock language="bash">
+      git clone https://github.com/gsvprharsha/tempest
+      cd tempest
+      npm install
+      npm run setup
+    </CodeBlock>
+  </Step>
+  <Step title="Start development server">
+    <CodeBlock language="bash">
+      npm run dev
+    </CodeBlock>
+
+    This command:
+    1. Starts the Vite dev server on `http://localhost:1420`
+    2. Launches the Tauri app window
+    3. Enables hot module replacement (HMR): React components, styles, and TypeScript changes reload instantly
+
+    The Rust backend recompiles automatically if you edit `src-tauri/` files. The process takes a few seconds.
+  </Step>
+  <Step title="Edit and develop">
+    - React files in `src/` reload instantly
+    - Rust files in `src-tauri/` trigger a rebuild
+    - The window stays open and reflects changes
+
+    To stop, press Ctrl+C in the terminal.
+  </Step>
+</Steps>
+
+## Verifying Installation
+
+After installation (binary or build), verify that Tempest works:
+
+<Steps>
+  <Step title="Launch the app">
+    Open Tempest using your platform's standard launch method (Start Menu on Windows, Applications on macOS, application launcher on Linux, or command line).
+  </Step>
+  <Step title="Check the welcome screen">
+    You should see a frameless window with:
+    - "Workspaces" header with workspace management options
+    - Option to create a new workspace or open an existing one
+    - Dark or light theme applied (based on system preferences)
+  </Step>
+  <Step title="Create a test workspace">
+    1. Click "New Workspace" or similar button
+    2. Choose a local directory (or let Tempest create one)
+    3. Click "Create"
+
+    The workspace loads. You should see workspace tabs and options to run agents.
+  </Step>
+  <Step title="Check system info">
+    If a system info or about screen exists, verify:
+    - Tempest version matches the build you installed/created
+    - Platform is correct (Windows, macOS, or Linux)
+  </Step>
+</Steps>
+
+## Common Issues and Fixes
+
+### Windows: WebView2 Runtime Not Found
+
+**Symptom:** App crashes on launch with "WebView2 Runtime not found" or similar error.
+
+**Fix:**
+1. Download WebView2 Runtime from [Microsoft Edge WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)
+2. Click "Evergreen Standalone Installer (x64)"
+3. Run the installer and wait for completion
+4. Restart Tempest
+
+### Windows: Long Paths in Repository
+
+**Symptom:** Git operations fail with "path too long" or "file not found" errors when the repository contains deep directory structures.
+
+**Fix:** Enable long paths in Windows and Git:
+
+<CodeBlock language="powershell">
+  Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1
+  git config --global core.longpaths true
+</CodeBlock>
+
+Restart your terminal and Tempest.
+
+### macOS: App Blocked by Security
+
+**Symptom:** "Tempest cannot be opened because it is from an unidentified developer."
+
+**Fix:**
+1. Open Finder and navigate to Applications
+2. Right-click Tempest.app and select "Open"
+3. Click "Open" in the security dialog
+
+The app launches and the warning does not appear again.
+
+### Linux: Missing WebKit Libraries
+
+**Symptom:** App fails to start with errors referencing "libwebkit2gtk" or "appindicator".
+
+**Fix:** Install system dependencies:
+
+<CodeBlock language="bash">
+  sudo apt-get install -y \
+    libwebkit2gtk-4.1-dev \
+    libappindicator3-dev \
+    librsvg2-dev \
+    libxdo-dev
+</CodeBlock>
+
+Then restart Tempest.
+
+### Build Fails: Rust Compilation Error
+
+**Symptom:** `npm run build` fails with Rust compiler errors.
+
+**Fix:**
+1. Ensure Rust is up to date:
+
+<CodeBlock language="bash">
+  rustup update
+</CodeBlock>
+
+2. Clean and rebuild:
+
+<CodeBlock language="bash">
+  cd src-tauri
+  cargo clean
+  cd ..
+  npm run build
+</CodeBlock>
+
+This removes cached build artifacts and recompiles from scratch.
+
+### Build Fails: Node or npm Not Found
+
+**Symptom:** Command not found when running `npm install` or `npm run dev`.
+
+**Fix:**
+1. Verify installation:
+
+<CodeBlock language="bash">
+  node --version
+  npm --version
+</CodeBlock>
+
+If not found, reinstall Node.js from [nodejs.org](https://nodejs.org/).
+
+2. On Windows PowerShell, if npm is not recognized after installation, restart PowerShell or use Command Prompt (cmd.exe).
+
+### Development Server Won't Start
+
+**Symptom:** `npm run dev` fails or hangs without output.
+
+**Fix:**
+1. Kill any existing processes using port 1420:
+
+<Tabs>
+  <Tab title="Windows">
+    <CodeBlock language="powershell">
+      netstat -ano | findstr :1420
+      taskkill /PID [PID] /F
+    </CodeBlock>
+  </Tab>
+  <Tab title="macOS/Linux">
+    <CodeBlock language="bash">
+      lsof -i :1420
+      kill -9 [PID]
+    </CodeBlock>
+  </Tab>
+</Tabs>
+
+2. Rebuild workspace assets:
+
+<CodeBlock language="bash">
+  npm run setup
+  npm run dev
+</CodeBlock>
+
+### Installer Won't Run on Windows
+
+**Symptom:** NSIS installer (.exe) fails to execute or displays error messages.
+
+**Fix:**
+1. Ensure you have administrative privileges. Right-click the .exe and select "Run as administrator".
+2. Check disk space. The installer requires at least 1 GB free.
+3. Disable antivirus temporarily (some antivirus software blocks installers).
+4. Download the installer again. The file may be corrupted.
+
+### DMG Installer Won't Open on macOS
+
+**Symptom:** ".dmg appears as a blank folder or won't mount."
+
+**Fix:**
+1. Delete the corrupt .dmg and download again.
+2. Alternatively, extract the `.app.tar.gz` file instead:
+
+<CodeBlock language="bash">
+  tar -xzf Tempest.app.tar.gz
+  mv Tempest.app /Applications/
+</CodeBlock>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Run Tempest in development mode or create your first workspace.
+  </Card>
+  <Card title="Workspaces" icon="folder" href="/workspaces/overview">
+    Learn how to create and manage parallel agent workspaces.
+  </Card>
+  <Card title="Theme Customization" icon="palette" href="/themes/overview">
+    Customize colors and typography using CSS variables.
+  </Card>
+  <Card title="Building from Source" icon="code" href="/quickstart">
+    Deep dive into the development setup and build process.
+  </Card>
+</CardGroup>

@@ -1,0 +1,745 @@
+---
+title: Content Panes
+description: Detailed documentation of TerminalPane, DiffPane, CodeMirrorPane, PreviewPane, and TopBar components that render workspace content.
+icon: "table-columns"
+---
+
+# Content Panes
+
+The workspace content area is populated by content panes, each responsible for rendering a specific type of view. WorkspaceView orchestrates which pane is visible based on the active session's `kind` field or whether it's a terminal/agent session.
+
+## TerminalPane
+
+**File**: `src/components/TerminalPane.tsx`
+
+TerminalPane renders an interactive terminal using **xterm.js** and manages the PTY session lifecycle. It's the most complex pane due to WebGL context pooling, resize handling, and keyboard interception.
+
+### Props
+
+```typescript
+interface Props {
+  sessionId: string;        // PTY session UUID
+  hidden?: boolean;         // true when tab is not active (display: none, no GPU)
+  isAgent?: boolean;        // true for agent sessions (subscribes to title changes)
+}
+```
+
+### xterm.js Extensions
+
+TerminalPane loads several xterm.js addons:
+
+```typescript
+const term = new Terminal({...});
+term.loadAddon(new FitAddon());        // Resize to container
+term.loadAddon(new Unicode11Addon());  // Full Unicode support
+term.loadAddon(new SearchAddon());     // Ctrl+F search bar
+term.loadAddon(new WebLinksAddon());   // Clickable URLs
+```
+
+### Theme
+
+Terminal colors are pulled from CSS custom properties (--tempest-terminal-*) and injected as an xterm.js theme object:
+
+```typescript
+function getTerminalTheme() {
+  const s = getComputedStyle(document.documentElement);
+  const v = (name: string) => s.getPropertyValue(`--tempest-${name}`).trim();
+  return {
+    background: v("bg-editor"),
+    foreground: v("terminal-fg"),
+    red: v("terminal-red"),
+    green: v("terminal-green"),
+    // ... 16 colors total
+  };
+}
+```
+
+On theme change, the theme object is re-injected without recreating the terminal:
+
+```typescript
+useEffect(() => {
+  if (termRef.current) termRef.current.options.theme = getTerminalTheme();
+}, [theme]);
+```
+
+### PTY Attachment
+
+On mount, TerminalPane:
+
+1. Creates the xterm.js Terminal instance
+2. Calls `sessionManager.attach(sessionId, onData)` to subscribe to PTY output
+3. Replays any buffered data (from before the pane mounted)
+4. Registers an `onData` handler to write incoming bytes to the terminal
+
+```typescript
+const onData = (data: string) => term.write(data);
+onDataRef.current = onData;
+const buffered = sessionManager.attach(sessionId, onData);
+for (const chunk of buffered) term.write(chunk);
+```
+
+The SessionManager owns the Channel subscription and manages the replay buffer, so TerminalPane is just a thin renderer.
+
+### Keyboard Handling
+
+Custom key event handler intercepts specific keys:
+
+```typescript
+term.attachCustomKeyEventHandler((e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+    setSearchOpen((o) => !o);  // Ctrl+F toggles search bar
+    return false;              // Consume; don't send to PTY
+  }
+
+  // Smart Ctrl+C (copy if selection, else SIGINT)
+  if (e.ctrlKey && !e.shiftKey && (e.key === "C" || e.key === "c")) {
+    const sel = term.getSelection();
+    if (sel) {
+      navigator.clipboard.writeText(sel).catch(() => {});
+      return false;  // Copy; consume key
+    }
+    return true;   // No selection; send SIGINT to PTY
+  }
+
+  // Paste: Ctrl+V or Ctrl+Shift+V
+  if ((e.ctrlKey && (e.key === "V" || e.key === "v"))) {
+    readText().then((text) => { if (text) term.paste(text); });
+    return false;
+  }
+
+  // App-level shortcuts (Ctrl+Shift+T, Ctrl+B, etc.) pass through
+  if (Object.values(getBindings()).some((sc) => matchesEvent(sc, e))) {
+    return false;  // Don't consume; let WorkspaceView's capture handler act
+  }
+
+  return true;  // Let xterm handle everything else
+});
+```
+
+### Resize Handling
+
+On every resize event, the terminal is re-fitted and the PTY is notified of the new dimensions:
+
+```typescript
+const observer = new ResizeObserver(() => {
+  if (resizeTimerRef.current !== null) clearTimeout(resizeTimerRef.current);
+  resizeTimerRef.current = setTimeout(() => {
+    fitAddon.fit();
+    invoke("resize_pty", { sessionId, rows: term.rows, cols: term.cols });
+  }, 16);
+});
+observer.observe(el);
+```
+
+Debouncing with `setTimeout(..., 16)` prevents excessive PTY resize calls during animated resizes.
+
+### WebGL Context Pooling
+
+xterm.js can render with WebGL for performance, but WebGL contexts are limited (6 per OS). TerminalPane manages this via `webglPool`:
+
+```typescript
+useEffect(() => {
+  if (hidden) {
+    webglPool.release(sessionId);  // Return context to OS pool
+  } else {
+    webglPool.acquire(term, sessionId);  // Request context
+  }
+}, [hidden, sessionId]);
+```
+
+When a tab is hidden (not active, not in split layout), its context is released. When shown, it's re-acquired. This prevents context exhaustion and allows multiple terminals to be open (up to 6 visible at once).
+
+### Search
+
+Ctrl+F opens an in-terminal search bar powered by xterm.js's SearchAddon:
+
+```typescript
+function handleSearchChange(q: string) {
+  setSearchQuery(q);
+  if (q) searchAddonRef.current?.findNext(q, { incremental: true });
+}
+```
+
+Enter/Shift+Enter navigate next/prev matches. Escape closes the bar.
+
+### User Input Tracking
+
+When the user types (PTY `onData` fires), TerminalPane signals the SessionManager:
+
+```typescript
+term.onData((data) => {
+  const bytes = Array.from(new TextEncoder().encode(data));
+  invoke("write_to_pty", { sessionId, data: bytes });
+  if (isAgent && data.includes("\r")) {
+    sessionManager.markUserInput(sessionId);  // User pressed Enter; reset work-done timer
+  }
+});
+```
+
+This arm/reset mechanism is critical for accurate work-done detection in agent sessions.
+
+### Title Change Monitoring
+
+For agent sessions, TerminalPane monitors OSC 0/2 title changes (agents send status glyphs):
+
+```typescript
+if (isAgent) {
+  term.onTitleChange((title) => sessionManager.updateTitle(sessionId, title));
+}
+```
+
+## DiffPane
+
+**File**: `src/components/DiffPane.tsx`
+
+DiffPane provides a full Git UI: staging/unstaging files, viewing diffs, committing, pushing, and branch management. It calls Rust backend commands for all git operations.
+
+### Props
+
+```typescript
+interface Props {
+  sessionId: string;        // Session ID (unused in current impl, for future UI state)
+  cwd: string;              // Repository root (passed to all git commands)
+  hidden: boolean;          // When true, display: none
+  gitRevision?: number;     // Increment to trigger file list reload
+}
+```
+
+### Data Model
+
+```typescript
+interface DiffLine {
+  kind: "hunk" | "context" | "added" | "removed";
+  line_old: number | null;  // Line number in old version
+  line_new: number | null;  // Line number in new version
+  content: string;          // The actual line text
+}
+
+interface FileEntry {
+  xy: string;      // Git status codes (e.g. "M " for modified)
+  path: string;    // Relative file path
+  status: string;  // Extracted status ("M", "A", "D", "?", etc.)
+}
+
+type FileSection = "staged" | "unstaged";
+
+interface BranchInfo {
+  name: string;
+  is_current: boolean;
+}
+```
+
+### Layout
+
+Two-column layout: files on left, diff on right.
+
+**Left column**:
+- Staged files section (with "Unstage All" button)
+- Unstaged files section (with "Stage All" button)
+- Commit form (title + description + co-author toggle + commit button)
+
+**Right column**:
+- Selected file's unified diff with line numbers
+- Header showing file path and section (staged/unstaged)
+- Loading state during diff fetch
+
+### Loading File List
+
+On mount and whenever `gitRevision` changes, load the repo status:
+
+```typescript
+const load = useCallback(async () => {
+  const [entries, branch, branchList] = await Promise.all([
+    invoke<FileEntry[]>("git_status", { path: cwd }),
+    invoke<string>("get_git_branch", { path: cwd }),
+    invoke<BranchInfo[]>("git_list_branches", { repoPath: cwd }),
+  ]);
+  // Parse xy codes to separate staged (x) and unstaged (y)
+  setStaged(s);
+  setUnstaged(u);
+  setCurrentBranch(branch);
+  setBranches(branchList);
+}, [cwd]);
+
+useEffect(() => {
+  if (!hidden) load();
+}, [cwd, gitRevision, hidden]);
+```
+
+The `.tempest-pid` file (used internally) is filtered out.
+
+### Staging Operations
+
+```typescript
+const stageFile = async (path: string) => {
+  await invoke("git_stage", { repoPath: cwd, filePath: path });
+  await load();
+  // Follow file to staged section if it's selected
+};
+
+const unstageFile = async (path: string) => {
+  await invoke("git_unstage", { repoPath: cwd, filePath: path });
+  await load();
+};
+
+const discardFile = async (path: string) => {
+  const isUntracked = unstaged.find((f) => f.path === path)?.xy === "??";
+  await invoke("git_discard", { repoPath: cwd, filePath: path, untracked: isUntracked });
+  await load();
+};
+```
+
+### Per-File Diff Rendering
+
+```typescript
+const loadDiff = useCallback(async (path: string, section: FileSection, isUntracked: boolean) => {
+  const lines = await invoke<DiffLine[]>("git_diff_file", {
+    path: cwd,
+    filePath: path,
+    staged: section === "staged",
+    untracked: isUntracked,
+  });
+  setDiffLines(lines);
+}, [cwd]);
+```
+
+Unified diff format: each line is colored by kind (added/removed/context/hunk header). Line numbers are shown for old and new versions.
+
+```typescript
+function UnifiedDiff({ lines }: { lines: DiffLine[] }) {
+  return <>
+    {lines.map((line, i) => (
+      <div key={i} className={`dp-line dp-line--${line.kind}`}>
+        <span className="dp-ln dp-ln--old">{line.line_old ?? ""}</span>
+        <span className="dp-ln dp-ln--new">{line.line_new ?? ""}</span>
+        <span className="dp-line-content">{line.content}</span>
+      </div>
+    ))}
+  </>;
+}
+```
+
+### Committing
+
+```typescript
+const commitStaged = async () => {
+  let msg = commitTitle.trim();
+  if (commitDesc.trim()) msg += "\n\n" + commitDesc.trim();
+  if (coauthor) msg += "\n\n" + COAUTHOR_LINE;  // Tempest co-author line
+  await invoke("git_commit_staged", { repoPath: cwd, message: msg });
+  setCommitState("done");
+  await load();
+  setTimeout(() => setCommitState("idle"), 1500);  // Show checkmark briefly
+};
+```
+
+Commit is disabled if no staged files or missing title. Co-author toggle subscribes to the Attribution store.
+
+### Branch Operations
+
+**Branch menu**: Click the pill showing current branch to open a dropdown menu:
+- List all branches
+- Switch branch (disabled for current)
+- Delete branch button (shows trash icon for non-current)
+
+```typescript
+const switchBranch = async (name: string) => {
+  await invoke("git_switch_branch", { repoPath: cwd, branch: name });
+  await load();
+};
+
+const confirmDelete = async (force: boolean) => {
+  await invoke("git_delete_branch", {
+    repoPath: cwd,
+    branch: deleteTarget,
+    force,
+    deleteRemote: deleteAlsoRemote,
+  });
+  await load();
+};
+```
+
+**Push operations**:
+
+```typescript
+const pushToCurrent = useCallback(() => {
+  setPushState("pushing");
+  invoke<string>("git_push_current_branch", { repoPath: cwd })
+    .then(() => {
+      setPushState("done");
+      load();
+      setTimeout(() => setPushState("idle"), 2000);
+    })
+    .catch((e) => setPushError(String(e)));
+}, [cwd, load]);
+
+const pushToNewBranch = useCallback(() => {
+  invoke<string>("git_create_push_branch", { repoPath: cwd, branchName: newBranchName.trim() })
+    .then((raw) => {
+      const { remoteUrl, branch } = JSON.parse(raw);
+      openUrl(buildPrUrl(remoteUrl, branch));  // Open PR link in browser
+      load();
+    })
+    .catch((e) => setPushError(String(e)));
+}, [cwd, newBranchName, load]);
+```
+
+**PR Link Builder**: Detects host (GitHub/GitLab/Bitbucket) and opens the appropriate PR creation URL:
+
+```typescript
+function buildPrUrl(remoteUrl: string, branch: string): string {
+  const normalized = remoteUrl.trim().replace(/\.git$/, "");
+  // Parse SSH or HTTPS, extract host and path
+  // Return platform-specific PR URL
+}
+```
+
+### Two-Way Sync
+
+When a file is selected and staged/unstaged (via button), the pane automatically re-loads and follows the file to its new section. This keeps the UI in sync with the git state.
+
+## CodeMirrorPane
+
+**File**: `src/components/CodeMirrorPane.tsx`
+
+CodeMirrorPane provides a read/edit interface for files with syntax highlighting. It doubles as a Markdown previewer.
+
+### Props
+
+```typescript
+interface Props {
+  filePath: string;  // Absolute file path
+  hidden: boolean;   // When true, display: none
+}
+```
+
+### Supported Languages
+
+```typescript
+function getLanguageExtension(filePath: string) {
+  const ext = getExtension(filePath);
+  switch (ext) {
+    case "js": case "mjs": case "cjs": return javascript();
+    case "jsx": return javascript({ jsx: true });
+    case "ts": return javascript({ typescript: true });
+    case "tsx": return javascript({ jsx: true, typescript: true });
+    case "css": return css();
+    case "html": case "htm": return html();
+    case "rs": return rust();
+    case "py": return python();
+    case "json": return json();
+    case "md": case "markdown": return markdown();
+    default: return null;
+  }
+}
+```
+
+Uses CodeMirror language extensions from `@codemirror/lang-*` packages.
+
+### Editor Setup
+
+```typescript
+const extensions = [
+  basicSetup,  // Standard editor UI (line numbers, fold gutters, etc.)
+  themeCompartment.current.of(buildEditorTheme()),
+  highlightCompartment.current.of(syntaxHighlighting(buildHighlightStyle())),
+  EditorView.lineWrapping,
+  Prec.highest(keymap.of([{ key: "Mod-s", run: () => { saveRef.current(); return true; } }])),
+  EditorView.updateListener.of((update) => {
+    if (update.docChanged) {
+      fileContentRef.current = text;
+      setIsDirty(true);
+    }
+  }),
+];
+if (langExt) extensions.push(langExt);
+
+const view = new EditorView({
+  state: EditorState.create({ doc: content, extensions }),
+  parent: containerRef.current,
+});
+```
+
+### Theme
+
+Both editor colors and syntax highlighting use CSS custom properties (--tempest-*):
+
+```typescript
+function buildEditorTheme() {
+  const v = (n: string) => getComputedStyle(document.documentElement)
+    .getPropertyValue(`--tempest-${n}`).trim();
+  
+  return EditorView.theme({
+    "&": { backgroundColor: v("bg-editor"), color: v("fg-default") },
+    ".cm-gutters": { backgroundColor: v("bg-editor"), borderRight: `1px solid ${v("border-subtle")}` },
+    ".cm-activeLine": { backgroundColor: v("bg-hover") },
+    // ... more selectors
+  });
+}
+
+function buildHighlightStyle() {
+  return HighlightStyle.define([
+    { tag: tags.comment, color: v("syntax-comment"), fontStyle: "italic" },
+    { tag: tags.keyword, color: v("syntax-keyword") },
+    // ... 11 more tag definitions
+  ]);
+}
+```
+
+On theme change, compartments reconfigure without recreating the editor:
+
+```typescript
+useEffect(() => {
+  view.dispatch({
+    effects: [
+      themeCompartment.current.reconfigure(buildEditorTheme()),
+      highlightCompartment.current.reconfigure(syntaxHighlighting(buildHighlightStyle())),
+    ],
+  });
+}, [theme]);
+```
+
+### Saving
+
+Ctrl+S writes the file:
+
+```typescript
+saveRef.current = () => {
+  invoke("write_file", { path: filePath, content: fileContentRef.current })
+    .then(() => setIsDirty(false))
+    .catch((e) => console.error("Save failed:", e));
+};
+```
+
+A dot appears next to the filename while unsaved.
+
+### Markdown Preview
+
+For `.md` and `.markdown` files, a toggle appears to switch between "Raw" (editor) and "Preview" modes:
+
+```typescript
+const isMarkdown = ext === "md" || ext === "markdown";
+const showPreview = isMarkdown && mode === "preview";
+```
+
+Preview uses ReactMarkdown with remark-gfm (tables, strikethrough, etc.) and rehype-highlight for code block syntax highlighting.
+
+GitHub markdown CSS is injected based on theme (dark or light) as a raw inline `<style>` tag:
+
+```typescript
+<style>{isDark ? githubMarkdownDark : githubMarkdownLight}</style>
+<style>{isDark ? hljsDark : hljsLight}</style>
+```
+
+This ensures GitHub's `.markdown-body` CSS rules don't conflict between light and dark instances.
+
+### Image Resolution
+
+Relative image paths in Markdown are resolved relative to the file's directory:
+
+```typescript
+function resolveImageSrc(src: string, filePath: string): string {
+  if (/^https?:\/\/|^data:/.test(src)) return src;
+  const dir = filePath.replace(/\\/g, "/").replace(/\/[^/]+$/, "");
+  return convertFileSrc(`${dir}/${src}`);  // Tauri asset: URL
+}
+```
+
+## PreviewPane
+
+**File**: `src/components/PreviewPane.tsx`
+
+PreviewPane embeds a native webview (via Tauri) to display a live dev server preview. It handles URL navigation, history, viewport presets (mobile/tablet/desktop), and bounds synchronization.
+
+### Props
+
+```typescript
+interface Props {
+  sessionId: string;           // Session ID (for panel lifecycle)
+  hidden: boolean;             // When true, display: none
+  previewUrl?: string;         // Initial/persisted URL
+  onUrlChange: (url: string) => void;  // Notify parent of URL changes
+}
+```
+
+### Initialization
+
+First time (no URL set), show the UrlPicker:
+
+```typescript
+function UrlPicker({ onNavigate }: { onNavigate: (url: string) => void }) {
+  return (
+    <div className="preview-picker">
+      <div className="preview-picker-input-row">
+        <input placeholder="localhost:3000 or https://…" />
+      </div>
+      <div className="preview-picker-ports">
+        {COMMON_PORTS.map(({ port, label }) => (
+          <button onClick={() => onNavigate(`http://localhost:${port}`)}>
+            :{port} {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+Normalizes input (port number auto-prefixed with `http://localhost:`) and triggers navigation.
+
+### Webview Embedding
+
+Once a URL is set, invoke Tauri to embed a native webview:
+
+```typescript
+useEffect(() => {
+  if (hidden || !url) return;
+  const r = el.getBoundingClientRect();
+  invoke("embed_ide_panel", { panelId, url, x: r.left, y: r.top, width: r.width, height: r.height })
+    .then(() => { panelEmbedded.current = true; setLoading(false); });
+  return () => invoke("destroy_ide_panel", { panelId });
+}, [url, panelId]);
+```
+
+The webview is anchored over a transparent div (`preview-content`). Bounds are computed from the div's `getBoundingClientRect()`.
+
+### Bounds Synchronization
+
+On resize/scroll, update webview bounds:
+
+```typescript
+const syncBounds = useCallback(() => {
+  const r = containerRef.current?.getBoundingClientRect();
+  const o = outerWrapperRef.current?.getBoundingClientRect();
+  // Clip webview to visible area (important for mobile/tablet presets)
+  invoke("resize_ide_panel", { panelId, x, y, width: w, height: h });
+}, [panelId]);
+```
+
+Watched by ResizeObserver and window resize/scroll listeners.
+
+### Navigation History
+
+Similar to a browser, maintain a history stack:
+
+```typescript
+const [history, setHistory] = useState<string[]>([]);
+const [historyIdx, setHistoryIdx] = useState(-1);
+
+function pushEntry(to: string) {
+  setHistory((prev) => [...prev.slice(0, historyIdx + 1), to]);
+  setHistoryIdx(historyIdx + 1);
+  onUrlChange(to);
+}
+
+function moveTo(nextIdx: number) {
+  const to = history[nextIdx];
+  setHistoryIdx(nextIdx);
+  onUrlChange(to);  // Triggers re-embed with new URL
+}
+```
+
+Back/forward buttons are disabled when at the beginning/end.
+
+### Viewport Presets
+
+Three presets and free-form dimensions:
+
+```typescript
+const PRESETS: Record<PresetKey, { w: number | null; h: number | null; label: string }> = {
+  mobile:  { w: 375,  h: 812,  label: "Mobile"  },
+  tablet:  { w: 768,  h: 1024, label: "Tablet"  },
+  desktop: { w: null, h: null, label: "Desktop" },
+};
+```
+
+Clicking a preset button sets `viewW` and `viewH`. Clicking a dimension value opens an inline editor. Setting to `null` or "auto" returns to full-width/full-height.
+
+The frame div is positioned with constrained dimensions:
+
+```typescript
+<div
+  className={`preview-frame${constrained ? " preview-frame--constrained" : ""}`}
+  style={{
+    width: viewW !== null ? `${viewW}px` : "100%",
+    height: viewH !== null ? `${viewH}px` : "100%",
+  }}
+>
+  <div ref={containerRef} className="preview-content" />
+  {loading && <Loader className="preview-loading-overlay" />}
+</div>
+```
+
+### URL Polling
+
+Every 500ms, poll the webview to detect SPA navigation (pushState):
+
+```typescript
+const poll = async () => {
+  const current = await invoke<string | null>("get_ide_panel_url", { panelId });
+  if (!current || current === "about:blank") return;
+  
+  // Suppress first update after our own navigation
+  if (expectedNavUrlRef.current !== null) {
+    if (sameUrl(current, expectedNavUrlRef.current)) expectedNavUrlRef.current = null;
+    return;
+  }
+  
+  // Update URL bar (unless user is typing)
+  if (!urlBarFocusedRef.current) setInputUrl(current);
+};
+```
+
+This allows navigation within SPAs to update the URL bar without reloading the frame.
+
+### Reload vs. Navigation
+
+- **Reload**: Same URL, increment `reloadKey` to force re-embed
+- **Navigate**: Different URL, call `pushEntry()` to add to history and re-embed
+- **Same-URL reload from URL bar**: Detected by `sameUrl()`, triggers reload
+
+## TopBar
+
+**File**: `src/components/TopBar.tsx`
+
+TopBar is the minimal window chrome at the very top of the app. It includes the Tempest mark, window controls (minimize/maximize/close), and a disabled zen-mode button.
+
+### Components
+
+```typescript
+export function TopBar() {
+  return (
+    <div className="topbar">
+      {/* Drag region for frameless window */}
+      <div className="topbar-drag" data-tauri-drag-region />
+      
+      {/* Left: Mark + Zen button (disabled) */}
+      <div className="topbar-left">
+        <Mark size={14} />
+        <button className="topbar-zen-btn topbar-zen-btn--disabled" disabled>
+          <ExternalLink size={12} />
+        </button>
+      </div>
+      
+      {/* Right: Window controls */}
+      <div className="topbar-controls">
+        <button className="win-btn" onClick={() => win.minimize()}>
+          <Minus size={11} />
+        </button>
+        <button className="win-btn" onClick={() => win.toggleMaximize()}>
+          <Square size={10} />
+        </button>
+        <button className="win-btn win-btn--close" onClick={() => win.close()}>
+          <X size={12} />
+        </button>
+      </div>
+    </div>
+  );
+}
+```
+
+Uses Tauri's `getCurrentWindow()` to call native window methods.
+
+The `data-tauri-drag-region` attribute on the drag div tells Tauri that clicks on it are meant to drag the window (not interact with content).
+
+Zen mode (future feature) would switch the app to focus on a single project with a flat worktree view and hidden sidebars. The button is disabled for now.

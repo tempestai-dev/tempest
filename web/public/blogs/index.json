@@ -1,0 +1,87 @@
+[
+  {
+    "slug": "tempest-v012-release",
+    "title": "Tempest v0.1.2: Token Intelligence",
+    "date": "2026-07-03",
+    "type": "release-notes",
+    "description": "Agents now get a pre-built semantic code graph injected automatically. No setup. Plus a fully rewritten work-done detector and a smarter recent projects list.",
+    "author": "Tempest Team",
+    "tags": [
+      "release",
+      "token-intelligence",
+      "atlas",
+      "parallel-agents"
+    ]
+  },
+  {
+    "slug": "tempest-v011-release",
+    "title": "Tempest v0.1.1: Prompt Library, Message Queue, and Branch Management",
+    "date": "2026-07-01",
+    "type": "dev-log",
+    "description": "A major quality-of-life release. Reusable prompts, queued agent tasks, better Git workflows, workspace persistence, and native releases for Windows, macOS, and Linux.",
+    "author": "Tempest Team",
+    "tags": [
+      "release",
+      "prompts",
+      "git",
+      "workflow",
+      "cross-platform"
+    ]
+  },
+  {
+    "slug": "tempest-v010-release",
+    "title": "Tempest v0.1.0: Parallel AI Agent Sessions Are Here",
+    "date": "2026-06-29",
+    "type": "dev-log",
+    "description": "Tempest v0.1.0 ships the core: isolated git worktrees per agent session, full conversation history, live status, built-in diff and push, and live preview.",
+    "author": "Tempest Team",
+    "tags": [
+      "release",
+      "parallel-agents",
+      "worktrees",
+      "git"
+    ]
+  },
+  {
+    "slug": "why-parallel-agents-change-everything",
+    "title": "Why Parallel Agents Change Everything",
+    "date": "2026-06-28",
+    "type": "blog",
+    "description": "Running one AI agent is useful. Running five in parallel, each on its own branch, is a different category of tool entirely. Here is why isolation is the missing piece.",
+    "author": "Tempest Team",
+    "tags": [
+      "parallel-agents",
+      "git",
+      "workflow",
+      "isolation"
+    ]
+  },
+  {
+    "slug": "the-case-against-context-switching",
+    "title": "The Case Against Context Switching Between AI Agents",
+    "date": "2026-06-27",
+    "type": "blog",
+    "description": "Every time you manually switch context between AI coding sessions, you pay a hidden tax. Here is why session continuity and parallel isolation are not convenience features — they are the whole point.",
+    "author": "Tempest Team",
+    "tags": [
+      "workflow",
+      "context-switching",
+      "productivity",
+      "agents"
+    ]
+  },
+  {
+    "slug": "token-intelligence-eliminating-redundant-reads",
+    "title": "Token Intelligence: Eliminating Redundant File Reads Across Agent Sessions",
+    "date": "2026-06-26",
+    "type": "blog",
+    "description": "When multiple agents read the same files independently, you pay for every read. Token Intelligence builds a local code-knowledge graph so agents share what they already know, cutting context consumption by up to 64%.",
+    "author": "Tempest Team",
+    "tags": [
+      "token-intelligence",
+      "performance",
+      "context",
+      "roadmap"
+    ]
+  }
+]

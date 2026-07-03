@@ -1,0 +1,764 @@
+---
+title: Architecture
+description: How Tempest orchestrates parallel AI coding agents in isolated git worktrees.
+icon: "sitemap"
+---
+
+# Tempest Architecture
+
+Tempest is a **Tauri + React desktop app** designed to run multiple AI coding agents in parallel within isolated git worktrees. This document describes how the system is organized: the Rust backend, React frontend, IPC layer, state management, worktree isolation model, and the semantic code intelligence (Atlas) that powers agent context.
+
+## 1. High-Level Overview
+
+Tempest uses Tauri's framework to split responsibilities between a native backend and a web-based frontend:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                   Main App Window (React/Vite)          │
+│  - Workspace management                                  │
+│  - PTY terminal rendering (xterm.js)                    │
+│  - File editor (CodeMirror 6)                           │
+│  - Diff viewer                                           │
+│  - Git UI (branch, staging, push)                       │
+└────────────────┬──────────────────────────────────────────┘
+                 │ Tauri IPC Commands & Events
+                 ↓
+┌─────────────────────────────────────────────────────────┐
+│          Tauri Backend (Rust / src-tauri)               │
+│  - PTY session management (portable-pty)                │
+│  - Git operations (via subprocess)                      │
+│  - Worktree creation & cleanup                          │
+│  - File system access                                   │
+│  - Atlas MCP server initialization                      │
+│  - Window & webview management                          │
+└────────────────┬──────────────────────────────────────────┘
+                 │
+                 ├──→ Git Worktrees (.tempest/agent-name/)
+                 │
+                 └──→ Atlas Node Process (separate per project)
+                      - Semantic indexing
+                      - MCP server
+                      - Code graph
+```
+
+The **frontend** handles UI logic and user interactions. The **backend** handles all OS-level operations: spawning processes, managing PTY sessions, filesystem I/O, and git operations. They communicate via **Tauri's IPC** (invoke for request-response, emit for events).
+
+---
+
+## 2. Process Model
+
+### Main Process (Rust / Tauri)
+
+The Tauri main process runs once per app instance and manages:
+
+- **PTY Sessions Registry**: A thread-safe `DashMap<String, Arc<PtySession>>` tracking all active terminal/agent sessions.
+- **Webview Windows**: Main window and ephemeral "zen" windows (full-screen worktree views).
+- **Git Operations**: Subprocess invocation for `git worktree`, `git status`, `git push`, etc.
+- **File I/O**: Reading/writing config, runtime state, and project files.
+- **Atlas Spawning**: Starting the Node.js Atlas MCP server process on demand.
+
+**Key structs in `src-tauri/src/lib.rs`:**
+
+```rust
+pub struct PtyState(pub(crate) Arc<DashMap<String, Arc<PtySession>>>);
+
+struct PtySession {
+    writer: Mutex<Box<dyn Write + Send>>,
+    master: Mutex<Box<dyn portable_pty::MasterPty + Send>>,
+    _slave: Mutex<Box<dyn portable_pty::SlavePty + Send>>,
+    child:  Mutex<Box<dyn portable_pty::Child + Send + Sync>>,
+    cwd: String,  // worktree path for cleanup
+}
+
+pub struct ZenState(pub Mutex<std::collections::HashMap<String, (String, String)>>);
+```
+
+### Renderer Process (React / Vite)
+
+The frontend runs in a Tauri webview and orchestrates the UI:
+
+- **Component tree**: React 19 with hooks for state management.
+- **Xterm.js integration**: Renders PTY output in terminal tabs.
+- **CodeMirror 6**: Syntax-highlighted file editing with language support.
+- **Theme system**: Custom CSS variables (`--tempest-*`) with Geist fonts.
+- **Markdown rendering**: GitHub-flavored markdown for diffs, logs, and previews.
+
+### Sidecar Processes
+
+**Atlas Node Process:**
+- One per indexed project (not per worktree).
+- Spawned on-demand by `start_atlas_index()`.
+- Runs `node server-entry.js --path <project>` as a daemon.
+- Handles semantic indexing, code graph queries, and MCP protocol.
+- Survives app restarts (managed by process registry on-disk).
+
+**Agent CLI Processes:**
+- Spawned inside each worktree via `create_pty_session()`.
+- Runs inside an interactive shell (PowerShell/bash) with `-NoExit` / `exec` flags.
+- Receives MCP config pointing to the Atlas server.
+- Killed on session close via `taskkill /F /T` (Windows) or `kill -9` (Unix).
+
+---
+
+## 3. IPC Communication
+
+### Command Invocation (Request-Response)
+
+React components call Tauri commands via `@tauri-apps/api/core`:
+
+```typescript
+import { invoke } from "@tauri-apps/api/core";
+
+// Synchronous-looking (but async under the hood)
+const result = await invoke<string>("create_terminal_worktree", {
+  projectPath: "/path/to/project",
+  name: "agent-run-1",
+});
+```
+
+**Key commands** (see `#[tauri::command]` in `lib.rs`):
+
+- **Worktree Management**: `create_terminal_worktree`, `git_worktree_remove`, `close_and_remove_worktree`
+- **Git Operations**: `git_init`, `git_status`, `git_push_branch`, `git_switch_branch`, `git_diff`
+- **PTY Sessions**: `create_pty_session`, `write_to_pty`, `resize_pty`, `close_pty_session`
+- **File I/O**: `read_file`, `write_file`, `list_directory`
+- **State Persistence**: `read_runtime_state`, `write_runtime_state`
+- **Atlas**: `start_atlas_index`, `check_atlas_db`, `write_atlas_mcp_config`
+
+All commands are serialized/deserialized via `serde_json`.
+
+### Event Streaming
+
+The Tauri backend emits events for long-lived outputs (PTY data, Atlas indexing logs):
+
+```rust
+// In create_pty_session():
+on_event.send(PtyOutputPayload {
+    session_id: sid.clone(),
+    data: String::from_utf8_lossy(&buf[..n]).to_string(),
+}).ok();
+
+// In start_atlas_index():
+app.emit("atlas:log", serde_json::json!({ "path": &project_path, "line": line }));
+```
+
+React components listen via:
+
+```typescript
+import { listen } from "@tauri-apps/api/event";
+
+const unlisten = await listen<PtyOutputPayload>("pty-output", (event) => {
+  // Update terminal state
+});
+```
+
+---
+
+## 4. State Management
+
+Tempest uses a **layered state architecture** to balance persistence, consistency, and performance:
+
+### Layer 1: Tauri Backend State (Per-Process)
+
+**In-Memory:**
+- `PtyState`: Active PTY sessions keyed by session ID.
+- `ZenState`: Ephemeral zen window config.
+
+These are **not persisted** and lost on app restart. PTY processes continue running (tracked via `.tempest-pid` sidecar files) but their React bindings disappear until restoration.
+
+### Layer 2: Persistent JSON (Tauri App Data Dir)
+
+**`runtime-state.json`** (written by `write_runtime_state`):
+
+```typescript
+export interface RuntimeState {
+  version: number;
+  sessions: Record<string, WorktreeSession>;  // path -> session metadata
+  openProjects: StoredProject[];
+  recents: RecentWorkspace[];
+  settings: Partial<AppSettings>;
+  keybindings: Partial<Record<ActionId, Shortcut | null>>;
+  attribution: boolean;
+  migrations: Record<string, boolean>;
+  tabs: PersistedTab[];
+  sessionOrder: string[];
+  activeInstanceId: string | null;
+  prompts: Array<{ id: string; title: string; body: string; ... }>;
+  atlasProjects: Record<string, boolean>;  // index decisions per project
+}
+```
+
+**Purpose**: Survives app restarts. Loaded on startup via `loadRuntimeState()` before rendering.
+
+**WorktreeSession** stores metadata needed to restore a session:
+
+```typescript
+export interface WorktreeSession {
+  name: string;                    // agent or terminal name
+  agent?: string;                  // CLI invocation (e.g., "claude")
+  conversationId?: string;         // Claude conversation UUID (for --resume)
+  instanceId?: string;             // canonical session identity
+  projectId: string;
+  closed?: boolean;                // user closed it (don't restore yet)
+  isRootSession?: boolean;         // opened in project root
+  noGit?: boolean;                 // user skipped git init
+}
+```
+
+### Layer 3: React Store (In-Memory, Ephemeral)
+
+Stores ephemeral state **not persisted** to disk:
+
+- **`workState`**: Per-session "idle" | "working" | "done" badges (agent activity).
+- **`messageQueue`**: Queued Tauri API calls awaiting rate-limit slots.
+- **`sessions`**: Proxy over `runtime-state.json` with lifecycle hooks.
+- **`appSettings`**: Cached user preferences (theme, font size).
+- **`attribution`**: Co-author toggle state.
+
+Use `useSyncExternalStore` for fine-grained subscriptions (e.g., one session's badge doesn't re-render every other session).
+
+### Layer 4: localStorage (Legacy, Deprecated)
+
+Older code read from `localStorage`:
+
+```typescript
+const legacy = localStorage.getItem("tempest-worktree-sessions");
+```
+
+**On startup**, `loadRuntimeState()` imports localStorage into the JSON file, then migrates it out. New code should use only the JSON file and React stores.
+
+---
+
+## 5. The Worktree Model
+
+Tempest achieves **agent parallelization** via **git worktrees** — a Git feature that creates lightweight, isolated checkouts of the same repository.
+
+### Git Worktree Isolation
+
+```
+project/
+├── .git/                    # Single master git directory
+│   ├── refs/
+│   ├── objects/
+│   └── worktrees/           # Metadata for each worktree
+│       ├── agent-run-1/
+│       └── agent-run-2/
+│
+├── .tempest/                # Tempest-managed worktrees (untracked)
+│   ├── agent-run-1/         # Lightweight checkout (linked via junctions/symlinks)
+│   │   ├── .git -> ../.git/worktrees/agent-run-1
+│   │   ├── src/
+│   │   ├── node_modules/ -> ../../../node_modules (JUNCTION on Windows)
+│   │   └── .tempest-pid     # Sidecar: PID of shell holding this tree
+│   │
+│   └── agent-run-2/
+│       └── ...
+│
+└── src/, node_modules/, etc.   # Main working tree
+```
+
+**Why worktrees?**
+- Each worktree has its own working-tree state and checked-out branch.
+- Agents can edit files, run `git status`, commit, and push on their own branches without conflicting.
+- The main `.git/` directory is shared, avoiding storage duplication.
+- Lightweight: no full checkout, just hard links to objects.
+
+### Worktree Creation Flow (`create_terminal_worktree`)
+
+1. **Ensure commits exist**: If the project has no commits, create an empty initial commit (gives `git worktree add` a HEAD to branch off).
+
+2. **Prune stale metadata**: `git worktree prune` removes dangling `.git/worktrees/<name>` entries left from crashes.
+
+3. **Create the worktree**: `git worktree add .tempest/<name> -b <name>`.
+
+4. **Copy small files**: `.env`, `.env.local`, `.env.development`, `.env.production` are copied (not committed, but needed by agents).
+
+5. **Link large directories**: `node_modules` and `.venv` are linked (not copied) using:
+   - **Windows**: `junction::create()` creates a directory junction (efficient hardlink for directories).
+   - **Unix**: `symlink()` creates a symlink.
+   
+   This avoids copying 100s of MB and is instantaneous.
+
+6. **Write metadata**: Persist the worktree's PID to `.tempest/<name>/.tempest-pid` for force-killing on restart.
+
+7. **Detect empty trees**: If the tree has only `.git/`, error out (user needs to commit project files).
+
+**Blocking Behavior**: The entire operation runs on a blocking thread pool so it never starves Tauri's IPC worker pool.
+
+### Worktree Cleanup
+
+When deleting a worktree:
+
+1. **Kill the PTY child**: `child.kill()` on the portable-pty child (kills shell + agent + descendants).
+2. **Wait for exit**: Poll `try_wait()` in a loop (up to ~3s) so the OS releases the directory handle.
+3. **Force-kill by PID**: Read `.tempest-pid` and invoke `taskkill /F /T <pid>` (Windows) or `kill -9 <pid>` (Unix) to handle orphaned processes after app restart.
+4. **Remove junction/symlinks first**: Call `std::fs::remove_dir()` (Windows) or `std::fs::remove_file()` (Unix) to strip junctions/symlinks **before** `remove_dir_all()`. Without this, `remove_dir_all()` follows the junction into the real `node_modules` and freezes or deletes it.
+5. **Retry loop**: On Windows, the PTY process may release its CWD handle asynchronously, so retry `remove_dir_all()` up to 6 times with 500ms gaps (~3s total).
+6. **Last resort**: Shell out to `cmd /c rmdir /s /q` (Windows only).
+7. **Prune git metadata**: `git worktree prune` cleans up any dangling refs.
+
+---
+
+## 6. The Atlas Package
+
+**Atlas** is Tempest's **semantic code intelligence engine** — a Node.js package that builds a code graph and exposes it via MCP (Model Context Protocol) so agents get surgical context.
+
+### What Atlas Does
+
+```
+project/
+├── .atlas/                      # Atlas database and metadata
+│   ├── atlas.db                 # SQLite: code definitions, calls, file maps
+│   ├── extraction.log           # Per-file extraction status
+│   └── ...
+└── ...
+```
+
+**Indexing Process:**
+
+1. User enables "Token Intelligence" for a project.
+2. Tempest calls `start_atlas_index()`, which spawns `node server-entry.js --init --path <project>`.
+3. Atlas scans the project recursively:
+   - Uses **tree-sitter** (WASM grammars) to parse source code.
+   - Extracts function/class/type definitions, calls, imports.
+   - Stores in SQLite database: `atlas.db`.
+4. Exits when done; database persists.
+
+**MCP Server Mode:**
+
+When an agent starts, Tempest spawns `node server-entry.js --path <project>` (no `--init`):
+
+```rust
+// Tempest writes MCP config to .mcp.json, .cursor/mcp.json, etc.
+{
+  "mcpServers": {
+    "atlas": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["--liftoff-only", "/path/to/atlas/dist/mcp/server-entry.js", "--path", "/project/path"]
+    }
+  }
+}
+```
+
+The agent CLI reads this config and spawns the Atlas MCP server as a child process. Queries are routed via JSON-RPC over stdio.
+
+### Atlas Architecture
+
+```typescript
+// packages/atlas/src/index.ts
+export class Atlas {
+  static async init(projectPath: string, options?: IndexOptions): Promise<Atlas>
+  async indexAll(): Promise<void>
+  async query(q: CodeQuery): Promise<Result[]>
+  close(): void
+}
+
+// packages/atlas/src/db/index.ts
+export interface Database {
+  prepare(sql: string): Statement
+  exec(sql: string): void
+}
+
+// packages/atlas/src/extraction/index.ts
+export async function extractFile(filePath: string, language: string): Promise<Symbol[]>
+```
+
+**Key components:**
+
+- **Extraction**: Language-specific parsers (tree-sitter + language handlers for JS, Python, Rust, Go, etc.). Outputs symbols (definitions + refs).
+- **Database**: SQLite schema mapping files -> symbols, call graphs, import chains.
+- **Graph**: Traversal utilities for reaching related code (callers, callees, dependencies).
+- **MCP Server**: Exposes query tools to agents (Claude, Cursor, etc.) over stdio.
+
+### MCP Server Lifecycle
+
+The Atlas server runs in **daemon mode** (single per project):
+
+```rust
+// lib.rs: start_atlas_index() writes the entry script path to config files
+write_atlas_mcp_config(project_path, &entry)
+  // Upserts mcpServers.atlas in:
+  //  - .mcp.json (Claude Code)
+  //  - .cursor/mcp.json (Cursor)
+  //  - .gemini/settings.json (Gemini CLI)
+  //  - .kiro/settings/mcp.json (Kiro)
+  //  - opencode.jsonc (opencode)
+  
+  // Ensures .gitignore excludes all config files (they contain absolute paths)
+```
+
+When multiple agents run in the same project's worktrees, they all connect to the **same** Atlas daemon (process 1 starts it, others reuse it). The daemon is responsible for keeping the index fresh and answering queries.
+
+---
+
+## 7. Data Flow: User Action to Agent Execution
+
+### Scenario: Launch a Claude Agent in a Worktree
+
+**Frontend:**
+1. User clicks "New Agent" button in the WorkspaceView.
+2. React component calls `invoke("create_terminal_worktree", { projectPath, name })`.
+3. Waits for worktree path to return.
+
+**Tauri Backend:**
+1. Spawns blocking thread to create worktree (git commands, file copies, junctions).
+2. Returns worktree path to React.
+
+**Frontend:**
+3. Creates a new session record: `WorktreeSession { agent: "claude", projectId, name, ... }`.
+4. Persists to runtime state via `setRuntimeState()` (calls `write_runtime_state`).
+5. Renders a new terminal tab.
+
+**Frontend:**
+6. User enters a prompt or clicks "Resume Conversation".
+7. Component calls `invoke("create_pty_session", { session_id, cwd: worktreePath, command: "claude", args: ["--path", worktreePath, "--session", sessionId, ...], on_event: channel })`.
+
+**Tauri Backend:**
+1. Runs on blocking thread: opens a PTY via `portable_pty::PtySystem::openpty()`.
+2. Spawns shell: `powershell.exe -NoExit -Command "claude --path ... ; exec $SHELL -i"`.
+3. Writes the shell's PID to `.tempest-pid` sidecar (for cleanup on restart).
+4. Spawns a reader thread that pumps PTY output and sends it via `on_event.send()`.
+5. Inserts the `PtySession` into the `DashMap` registry.
+6. Returns Ok(()).
+
+**Frontend:**
+1. Receives `pty-output` events via listener.
+2. Updates terminal state (xterm.js) with each data chunk.
+3. Renders live output as the agent runs.
+
+**Agent (Claude CLI inside PTY):**
+1. Reads MCP config from `.mcp.json`, connects to Atlas daemon.
+2. Runs iteration loop: read user prompt, query Atlas for context, call LLM, run tools, write output.
+3. Writes to stdout/stderr (captured by PTY reader thread, streamed to frontend).
+4. On exit, the PTY session closes; React marks session as closed.
+
+**Cleanup (Frontend):**
+1. User closes the tab or clicks "End Workspace".
+2. Component calls `invoke("close_and_remove_worktree", { session_id, repo_path, worktree_path })`.
+
+**Tauri Backend:**
+1. Removes session from `DashMap` registry.
+2. Kills the PTY child (kills shell + agent + descendants).
+3. Waits for process to exit (~3s).
+4. Kills by PID via `.tempest-pid` sidecar (redundant, handles restart case).
+5. Removes junctions/symlinks.
+6. Removes worktree directory.
+7. Prunes git metadata.
+8. Returns Ok(()).
+
+**Frontend:**
+1. Receives Ok(), removes the session from React store and UI.
+
+---
+
+## 8. Key Dependencies and Design Rationale
+
+### Tauri (`@tauri-apps/api`, `@tauri-apps/cli`)
+
+**Why**: Cross-platform desktop app with native backend. Smaller than Electron, Rust-backed for performance, built-in IPC.
+
+**Trade-offs**: Learning curve for Rust + Tauri conventions, but payoff is a ~15 MB app vs. ~150 MB for Electron.
+
+### portable-pty (Rust, `0.8`)
+
+**Why**: Cross-platform PTY spawning. Abstracts Windows conpty + Unix PTYs behind one API. Essential for terminal apps.
+
+**Key challenge**: Windows PTY process lifecycle — must kill the entire job object (shell + descendants) atomically, handle handle lag on directory cleanup.
+
+**Solution**: Track PID in sidecar, force-kill by PID after app restart, retry loop for handle release.
+
+### dashmap (Rust, `6`)
+
+**Why**: Lock-free concurrent hashmap. Stores active PTY sessions keyed by session ID.
+
+**Trade-off**: Ergonomic API (e.g., `map.insert()`) vs. raw `Mutex<HashMap>` — lock contention on many sessions is avoided.
+
+### xterm.js (`@xterm/xterm`, `6.0.0` + addons)
+
+**Why**: Mature, feature-rich web terminal emulator. Supports ANSI color, mouse, search, Unicode.
+
+**Addons used**:
+- `@xterm/addon-fit`: Auto-fit to container size.
+- `@xterm/addon-search`: Find in terminal.
+- `@xterm/addon-unicode11`: Full Unicode support.
+- `@xterm/addon-web-links`: Clickable URLs.
+- `@xterm/addon-webgl`: GPU-accelerated rendering for large scrollback.
+
+**Why WebGL addon**: PTY output can be voluminous (agent debug logs, long test runs). Canvas rendering scales to 10k+ lines smoothly.
+
+### CodeMirror 6 (various `@codemirror/*` packages)
+
+**Why**: Modern code editor framework. Extensible, tree-sitter integration ready, minimal bundle size (~50 KB gzipped core).
+
+**Language packages** (installed separately):
+- `@codemirror/lang-javascript`, `lang-python`, `lang-rust`, `lang-json`, etc.
+- Each ~10-20 KB, loaded on demand.
+
+**Why not Monaco?**: Monaco is ~3 MB bundled, built for VS Code's featureset. CodeMirror is lighter, API is simpler for embedding.
+
+### React 19 + React DOM 19
+
+**Why**: Modern hooks, JSX, ecosystem maturity.
+
+**Setup**: Vite for dev speed, no StrictMode (double-invokes effects, would spawn PTY twice on mount — avoided per Termic's design).
+
+### React Markdown + Rehype + Remark
+
+**Why**: Render git diffs, agent logs, LLM responses as formatted Markdown.
+
+- `react-markdown`: JSX-based markdown rendering.
+- `remark-gfm`: GitHub-flavored markdown (tables, strikethrough, tasklists).
+- `rehype-raw`: Embed raw HTML (diffs, code blocks).
+- `rehype-highlight`: Syntax highlighting (with `highlight.js` backend).
+
+### Geist Fonts + github-markdown-css
+
+**Why**: Consistent, modern design. Geist (Vercel's font) is licensed for use, CSS normalizes markdown rendering.
+
+### Vite (`7.0.4`)
+
+**Why**: Lightning-fast dev server. Native ES modules, < 1s rebuild on file save.
+
+**Config**: Port 1420 (fixed for Tauri), watch ignores `src-tauri/` (Rust changes don't rebuild frontend).
+
+---
+
+## 9. File Layout
+
+```
+tempest-git/
+├── src/                          # React frontend
+│   ├── App.tsx                   # Root component; routes to WorkspaceView
+│   ├── main.tsx                  # Entry; loads runtime state, renders app
+│   ├── components/
+│   │   ├── WorkspaceView.tsx      # Main UI (sidebar, editor, terminal, diff)
+│   │   ├── Terminal.tsx           # xterm.js wrapper
+│   │   ├── EditorPanel.tsx        # CodeMirror wrapper
+│   │   └── ...
+│   ├── store/                    # React state management
+│   │   ├── sessions.ts           # WorktreeSession CRUD over runtime state
+│   │   ├── workState.ts          # "idle" | "working" | "done" badges
+│   │   ├── openProjects.ts       # Workspace list
+│   │   ├── appSettings.ts        # Theme, font size, keybindings
+│   │   ├── messageQueue.ts       # Rate-limit pending API calls
+│   │   └── ...
+│   ├── lib/
+│   │   ├── runtimeState.ts       # RuntimeState interface, load/save
+│   │   ├── worktree.ts           # createWorktree(), gitInit() wrappers
+│   │   └── ...
+│   ├── themes/
+│   │   ├── ThemeContext.tsx      # CSS var provider
+│   │   └── ...
+│   ├── App.css                   # Global styles
+│   └── fonts.css                 # Geist font imports
+│
+├── src-tauri/                    # Rust backend
+│   ├── src/
+│   │   └── lib.rs                # All Tauri commands (1770 lines)
+│   │       ├── create_workspace()
+│   │       ├── create_terminal_worktree()
+│   │       ├── create_pty_session()
+│   │       ├── git_*() commands
+│   │       ├── start_atlas_index()
+│   │       ├── write_atlas_mcp_config()
+│   │       └── ... (50+ commands)
+│   ├── Cargo.toml                # Rust deps: tauri, portable-pty, dashmap, serde, url, etc.
+│   ├── tauri.conf.json           # App config, bundle settings, updater
+│   └── resources/
+│       └── atlas/                # Atlas dist/ bundled here at build time
+│           └── dist/
+│               └── mcp/
+│                   └── server-entry.js
+│
+├── packages/
+│   └── atlas/                    # Semantic code intelligence
+│       ├── src/
+│       │   ├── extraction/       # Language-specific parsers (tree-sitter)
+│       │   │   ├── languages/    # JS, Python, Rust, Go, etc.
+│       │   │   ├── tree-sitter.ts
+│       │   │   ├── parse-pool.ts # Worker thread pool
+│       │   │   └── wasm/         # Tree-sitter WASM binaries
+│       │   ├── db/               # SQLite schema & queries
+│       │   │   ├── schema.sql
+│       │   │   └── index.ts
+│       │   ├── graph/            # Code graph traversal
+│       │   ├── mcp/              # MCP server implementation
+│       │   │   ├── server-entry.ts  # CLI entry point
+│       │   │   ├── engine.ts     # Main server loop
+│       │   │   ├── tools.ts      # MCP tool definitions
+│       │   │   └── ...
+│       │   ├── resolution/       # Framework-specific symbol resolution
+│       │   │   └── frameworks/   # Astro, Express, Cargo, etc.
+│       │   └── index.ts          # Main export (Atlas class)
+│       ├── package.json          # @tempest/atlas, Node >=20 <25
+│       └── dist/                 # Built output (tsc)
+│
+├── vite.config.ts                # Frontend build config
+├── tsconfig.json                 # TS options (strict: true)
+├── package.json                  # Root workspace: Tauri, Vite, React, CodeMirror
+└── ...
+```
+
+### Directory Purpose Summary
+
+| Directory | Purpose | Persisted? |
+|-----------|---------|-----------|
+| `src/` | React frontend logic and UI | No (rebuilt) |
+| `src-tauri/src/` | Tauri backend; all OS-level ops | No (compiled) |
+| `.tempest/` (in project) | Worktree directories (symlinks/junctions + copies) | Yes (git-ignored) |
+| `.atlas/` (in project) | Atlas database and index metadata | Yes (git-ignored) |
+| `.mcp.json`, `.cursor/mcp.json` | MCP server config (agent-readable) | Yes (git-ignored) |
+| `~/.local/share/tempest/` (Linux) or `%APPDATA%\tempest\` (Windows) | App data dir (runtime-state.json) | Yes |
+
+---
+
+## 10. Threading and Concurrency Model
+
+### Main Thread (Tauri App Thread)
+
+- Runs the Tauri event loop.
+- Executes async commands (but command bodies run on worker threads).
+- Emits events to connected clients.
+
+### Worker Thread Pool (Tauri)
+
+- Bounded pool (default: 8 threads).
+- Blocks on git subprocesses, file I/O (slow).
+- Commands decorated with `async` run here via `spawn_blocking()`.
+
+**Why blocking pool?** Creating a worktree can be slow (100s of files to copy, git operations). If synchronous, it would block the Tauri event loop and freeze the app.
+
+### PTY Reader Threads
+
+- One per active PTY session.
+- Reads from the PTY master, sends chunks via `on_event`.
+- Runs indefinitely until EOF (process exit).
+
+### React Task Scheduling
+
+- React 19's auto-batching groups state updates in a microtask.
+- Tauri commands return via JS microtask scheduler.
+- No explicit thread management needed in React (all on web worker/main thread).
+
+### Concurrency Guarantees
+
+- **PtyState**: Lock-free (DashMap). No contention on session adds/removes.
+- **WorktreeSession**: Copied and re-saved to JSON atomically (no partial updates).
+- **Git operations**: Subprocess-based (git's own locking prevents conflicts).
+- **Database**: SQLite serializes writes (WAL mode optional, not currently used).
+
+---
+
+## 11. Worktree Persistence and Recovery
+
+### On Graceful Shutdown
+
+1. React store saves `sessions: Record<string, WorktreeSession>` to `runtime-state.json`.
+2. PTY sessions are **killed** (no graceful shutdown of agent CLI).
+3. Worktree directories remain (git-ignored).
+
+### On App Restart
+
+1. **Load Runtime State**: `loadRuntimeState()` restores all `WorktreeSession` records from JSON.
+2. **Restore UI**: For each session, create a tab + PTY connection.
+3. **Restore PTY Processes**:
+   - Read `.tempest/<name>/.tempest-pid` file.
+   - If agent process is still running, reattach its PTY (not yet implemented; currently treated as new).
+   - If process is dead, the PID file persists but references a non-existent process (safe).
+4. **Cleanup**: Periodically prune orphaned sessions (missing on-disk paths).
+
+### Orphaned Processes
+
+If the app crashes (or user force-kills it):
+
+1. PTY processes continue running in the background (still holding worktree dir lock on Windows).
+2. User relaunches app, runtime state restores.
+3. On worktree deletion, `kill_persisted_pid()` reads `.tempest-pid` and force-kills the orphaned process.
+
+This design avoids dangling processes and locked directories.
+
+---
+
+## 12. Error Handling Patterns
+
+### Tauri Commands
+
+Commands return `Result<T, String>`. Errors serialize as JSON strings:
+
+```rust
+#[tauri::command]
+fn git_status(path: String) -> Result<Vec<GitStatusEntry>, String> {
+    let output = run_git(&path, &["status", "--short"])
+        .map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    // ...
+}
+```
+
+React catches errors as strings:
+
+```typescript
+try {
+  const entries = await invoke<GitStatusEntry[]>("git_status", { path });
+} catch (e) {
+  console.error("Git status failed:", e);
+  // Display to user
+}
+```
+
+### PTY Session Errors
+
+PTY creation failures (e.g., shell not found) are returned to React via the command's `Result<(), String>`.
+
+PTY runtime errors (read failures, write failures) are **silent** — the reader thread closes and the session is marked closed.
+
+### Atlas Indexing
+
+Index failures are **fire-and-forget** in the backend (logged to stderr). The UI shows "indexing in progress..." and if it hangs, the user can retry or skip.
+
+---
+
+## 13. Future Extensibility
+
+Tempest's architecture is designed for expansion:
+
+### Adding New Tauri Commands
+
+1. Add a `#[tauri::command]` function in `src-tauri/src/lib.rs`.
+2. Register in `generate_handler![...]` at the bottom.
+3. Call from React via `invoke()`.
+
+### Adding New React Components
+
+1. Create in `src/components/`.
+2. Use existing stores (sessions, appSettings, etc.) or create new via `useSyncExternalStore`.
+3. Subscribe to Tauri events via `listen()` if needed.
+
+### Extending Atlas
+
+1. Add new language parsers in `packages/atlas/src/extraction/languages/`.
+2. Add new query types in `packages/atlas/src/mcp/tools.ts`.
+3. Rebuild and redeploy.
+
+### Multi-Window Support
+
+Tauri supports multiple windows. Tempest currently uses "zen" windows (full-screen worktree view) and could expand to split panes, floating panels, etc.
+
+---
+
+## Summary
+
+Tempest is a **tightly-integrated Tauri + React system** where:
+
+- **Rust backend** handles OS complexity (PTY, git, filesystem, process cleanup).
+- **React frontend** orchestrates the UI and calls Rust commands.
+- **Git worktrees** isolate agent work with shared objects and linked dependencies.
+- **Atlas** provides semantic code intelligence via MCP.
+- **Persistent JSON** survives app restarts; **in-memory stores** handle ephemeral state.
+- **Blocking thread pool** prevents UI freezes on slow operations.
+- **Force-kill by PID** ensures clean worktree cleanup even after crashes.
+
+The result is a **lightweight, cross-platform agent IDE** that can spawn and manage multiple AI agents in parallel without conflicts.
