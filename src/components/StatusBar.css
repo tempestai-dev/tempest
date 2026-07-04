@@ -1,0 +1,91 @@
+.status-bar {
+  height: 22px;
+  flex-shrink: 0;
+  background: var(--tempest-bg-editor);
+  border-top: 1px solid var(--tempest-border-default);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  gap: 4px;
+  font-family: var(--tempest-font-mono, "Geist Mono", monospace);
+  font-size: 10.5px;
+  line-height: 1;
+  overflow: hidden;
+}
+
+.status-bar-left,
+.status-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.status-bar-right {
+  flex-shrink: 0;
+}
+
+/* ── Chip ──────────────────────────────────────────────────────────────────── */
+
+.status-bar-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 5px;
+  height: 16px;
+  border-radius: 3px;
+  color: var(--tempest-fg-muted);
+  white-space: nowrap;
+  min-width: 0;
+  transition: color 0.2s ease;
+}
+
+.status-bar-chip-icon {
+  flex-shrink: 0;
+}
+
+.status-bar-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+
+/* ── Indexing state ──────────────────────────────────────────────────────── */
+
+.status-bar-chip--indexing {
+  color: var(--tempest-fg-default);
+}
+
+@keyframes status-bar-spin {
+  to { transform: rotate(360deg); }
+}
+
+.status-bar-chip-icon--spin {
+  animation: status-bar-spin 1.4s linear infinite;
+}
+
+/* ── Done state ──────────────────────────────────────────────────────────── */
+
+.status-bar-chip--done {
+  color: var(--tempest-accent-green);
+}
+
+.status-bar-chip--done .status-bar-chip-icon {
+  opacity: 1;
+}
+
+/* ── Shield (isolation) ──────────────────────────────────────────────────── */
+
+.status-bar-chip--shield {
+  color: var(--tempest-fg-muted);
+  cursor: default;
+  transition: color 0.15s ease;
+}
+
+/* Active/isolated state — applied programmatically when Hephaestus is wired */
+.status-bar-chip--shield.status-bar-chip--isolated {
+  color: var(--tempest-accent-green);
+  opacity: 1;
+}

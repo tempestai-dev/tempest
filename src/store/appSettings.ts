@@ -12,6 +12,7 @@ export interface AppSettings {
   commitMessageTemplate: string;
   atlasEnabled: boolean;
   atlasAutoIndex: boolean;
+  isolateAgents: boolean;
 }
 
 export const SETTINGS_DEFAULTS: AppSettings = {
@@ -25,6 +26,7 @@ export const SETTINGS_DEFAULTS: AppSettings = {
   commitMessageTemplate: "Agent work",
   atlasEnabled: false,
   atlasAutoIndex: false,
+  isolateAgents: false,
 };
 
 export const FONT_FAMILY_OPTIONS: { label: string; value: string }[] = [

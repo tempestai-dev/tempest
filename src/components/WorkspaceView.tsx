@@ -64,9 +64,9 @@ import { dequeue, useQueue } from "../store/messageQueue";
 import { getPrompts, type PromptEntry } from "../store/prompts";
 import { useTheme, builtinThemes } from "../themes/ThemeContext";
 import { Mark } from "../assets/Mark";
-import { AtlasIndexToast } from "./AtlasIndexToast";
+import { StatusBar } from "./StatusBar";
 import { NexusPage } from "./NexusPage";
-import "./AtlasIndexToast.css";
+import "./StatusBar.css";
 import "./WorkspaceView.css";
 
 interface Props {
@@ -88,6 +88,7 @@ interface Session {
   createdAt: string; // ISO timestamp
   isRootSession?: boolean; // true when session runs in the project root (no worktree)
   noGit?: boolean; // true when user skipped git init for this root session
+  sandboxed?: boolean; // true when session is running inside a Hephaestus isolation sandbox
   parentSessionId?: string; // set when this session was spawned via a split from another
   storeKey?: string; // the sessions.ts key this session was saved under; undefined = not persisted
   metadata: {
@@ -274,6 +275,8 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const [projects, setProjects] = useState<Project[]>(() =>
     zen ? [] : getOpenProjects().map((p) => ({ ...p, worktrees: [] }))
   );
+  const projectsRef = useRef<Project[]>([]);
+  projectsRef.current = projects;
   const [pendingProjectId, setPendingProjectId] = useState<string | null>(null);
   const [pendingAgent, setPendingAgent] = useState<AgentConfig | null>(null);
 
@@ -673,10 +676,15 @@ export function WorkspaceView({ zen, name, path }: Props) {
     });
     setSessions((prev) => prev.filter((s) => s.projectId !== projectId));
     if (projectSessions.some((s) => s.id === activeSessionId)) setActiveSessionId(null);
+    const removedProject = projects.find((p) => p.id === projectId);
     setProjects((prev) => prev.filter((p) => p.id !== projectId));
     // Remove persisted non-terminal tabs for this project.
     const st = getRuntimeState();
     setRuntimeState({ tabs: st.tabs.filter((t) => t.projectId !== projectId) });
+    // Stop the atlas file-watcher daemon for this project if one is running.
+    if (removedProject) {
+      invoke("stop_atlas_daemon", { projectPath: removedProject.path }).catch(() => {});
+    }
     setCtxMenu(null);
   }
 
@@ -868,6 +876,29 @@ export function WorkspaceView({ zen, name, path }: Props) {
 
       const channel = new Channel<{ session_id: string; data: string }>();
 
+      // Build isolation spec for agent sessions when the user has enabled isolation.
+      const shouldIsolate = !!agent && getSettings().isolateAgents;
+      const sandboxParam = shouldIsolate ? {
+        mode: "enforce",
+        // Hosts AI agents commonly need — enforced on Linux/macOS via proxy;
+        // on Windows Job Objects don't filter network (process confinement only).
+        allowed_hosts: [
+          "*.anthropic.com",
+          "*.openai.com",
+          "*.google.com",
+          "*.googleapis.com",
+          "github.com",
+          "*.github.com",
+          "*.githubusercontent.com",
+          "registry.npmjs.org",
+          "*.npmjs.org",
+          "pypi.org",
+          "*.pypi.org",
+        ],
+        rw_paths: [cwd],
+        ro_paths: [],
+      } : null;
+
       await invoke<void>("create_pty_session", {
         sessionId,
         cwd,
@@ -875,6 +906,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
         cols: 80,
         command: agent ?? null,
         args,
+        sandbox: sandboxParam,
         onEvent: channel,
       });
 
@@ -907,6 +939,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
         instanceId,
         isRootSession,
         noGit,
+        sandboxed: shouldIsolate ? true : false,
         parentSessionId,
         storeKey,
         createdAt: new Date().toISOString(),
@@ -1315,6 +1348,21 @@ export function WorkspaceView({ zen, name, path }: Props) {
   // Re-check sidebar scroll fades after layout settles (rAF ensures DOM is measured post-paint)
   useEffect(() => { requestAnimationFrame(checkSidebarScroll); }, [projects, sessions]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Atlas daemon heartbeat — ping every 3 minutes. If a daemon exited (e.g. idle
+  // self-reap or OOM) the Rust command restarts it, keeping the file watcher alive.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!getSettings().atlasEnabled) return;
+      const atlasProjects = getRuntimeState().atlasProjects ?? {};
+      for (const project of projectsRef.current) {
+        if (atlasProjects[project.path] === true) {
+          invoke("start_atlas_daemon", { projectPath: project.path }).catch(() => {});
+        }
+      }
+    }, 3 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   function worktreeLabel(cwd: string): string {
     return cwd.split(/[/\\]/).filter(Boolean).pop() ?? cwd;
   }
@@ -1372,10 +1420,15 @@ export function WorkspaceView({ zen, name, path }: Props) {
     const atlasSettings = getSettings();
     if (atlasSettings.atlasEnabled) {
       const decided = getRuntimeState().atlasProjects ?? {};
-      if (atlasSettings.atlasAutoIndex) {
+      if (decided[selected] === true) {
+        // Project already indexed — start the file-watcher daemon immediately.
+        invoke("start_atlas_daemon", { projectPath: selected }).catch(() => {});
+      } else if (atlasSettings.atlasAutoIndex) {
         if (decided[selected] === undefined) {
           setRuntimeState({ atlasProjects: { ...decided, [selected]: true } });
-          invoke("start_atlas_index", { projectPath: selected }).catch((e) => console.error("[Atlas] start_atlas_index failed:", e));
+          invoke("start_atlas_index", { projectPath: selected })
+            .then(() => invoke("start_atlas_daemon", { projectPath: selected }).catch(() => {}))
+            .catch((e) => console.error("[Atlas] start_atlas_index failed:", e));
           setAtlasIndexingPaths((prev) => prev.includes(selected) ? prev : [...prev, selected]);
         }
       } else if (decided[selected] === undefined) {
@@ -2191,6 +2244,12 @@ export function WorkspaceView({ zen, name, path }: Props) {
               </div>
             )}
           </div>
+
+          <StatusBar
+            indexingPaths={atlasIndexingPaths.map((p) => ({ path: p, name: folderName(p) }))}
+            sandboxed={activeSession?.sandboxed}
+            onIndexComplete={(p) => setAtlasIndexingPaths((prev) => prev.filter((x) => x !== p))}
+          />
         </main>
 
         {activeSession && (
@@ -2285,6 +2344,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
                   const decided = getRuntimeState().atlasProjects ?? {};
                   setRuntimeState({ atlasProjects: { ...decided, [ctxMenu.projectPath]: true } });
                   invoke("start_atlas_index", { projectPath: ctxMenu.projectPath })
+                    .then(() => invoke("start_atlas_daemon", { projectPath: ctxMenu.projectPath }).catch(() => {}))
                     .catch((e) => console.error("[Atlas] start_atlas_index failed:", e));
                   setAtlasIndexingPaths((prev) =>
                     prev.includes(ctxMenu.projectPath) ? prev : [...prev, ctxMenu.projectPath]
@@ -2595,7 +2655,9 @@ export function WorkspaceView({ zen, name, path }: Props) {
                   if (atlasAutoIndexLocal) {
                     updateSetting("atlasAutoIndex", true);
                   }
-                  invoke("start_atlas_index", { projectPath: atlasPromptPath }).catch((e) => console.error("[Atlas] start_atlas_index failed:", e));
+                  invoke("start_atlas_index", { projectPath: atlasPromptPath })
+                    .then(() => invoke("start_atlas_daemon", { projectPath: atlasPromptPath }).catch(() => {}))
+                    .catch((e) => console.error("[Atlas] start_atlas_index failed:", e));
                   setAtlasIndexingPaths((prev) => prev.includes(atlasPromptPath) ? prev : [...prev, atlasPromptPath]);
                   setAtlasPromptPath(null);
                 }}
@@ -2626,19 +2688,6 @@ export function WorkspaceView({ zen, name, path }: Props) {
         );
       })()}
 
-      {atlasIndexingPaths.length > 0 && createPortal(
-        <div className="atlas-toast-container">
-          {atlasIndexingPaths.map((p) => (
-            <AtlasIndexToast
-              key={p}
-              projectPath={p}
-              projectName={folderName(p)}
-              onDismiss={() => setAtlasIndexingPaths((prev) => prev.filter((x) => x !== p))}
-            />
-          ))}
-        </div>,
-        document.body
-      )}
 
     </div>
   );

@@ -12,9 +12,9 @@
   <a href="https://github.com/gsvprharsha/tempest/releases">
     <img src="https://img.shields.io/github/v/release/gsvprharsha/tempest" alt="Version" />
   </a>
-  <a href="https://github.com/gsvprharsha/tempest">
-    <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Platform" />
-  </a>
+  <img src="https://img.shields.io/badge/macOS-Supported-grey?logo=apple&logoColor=white&labelColor=000000" alt="macOS" />
+  <img src="https://custom-icon-badges.demolab.com/badge/Windows-Supported-grey?logo=windows11&logoColor=white&labelColor=0078D6" alt="Windows" />
+  <img src="https://img.shields.io/badge/Linux-Supported-grey?logo=linux&logoColor=black&labelColor=FCC624" alt="Linux" />
   <a href="https://tauri.app/">
     <img src="https://img.shields.io/badge/built%20with-Tauri%202-orange" alt="Tauri" />
   </a>

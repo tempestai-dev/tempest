@@ -4,6 +4,11 @@ use std::sync::{Arc, Mutex};
 use dashmap::DashMap;
 use tauri::ipc::Channel;
 use tauri::Emitter;
+use hephaestus::Isolate;
+
+/// Process-global isolation backend (Job Objects on Windows). Provisioned lazily
+/// the first time a sandboxed PTY session is created.
+static ISOLATE: std::sync::OnceLock<Arc<dyn Isolate>> = std::sync::OnceLock::new();
 
 
 #[tauri::command]
@@ -236,6 +241,65 @@ fn check_atlas_db(project_path: String) -> bool {
         .join("atlas")
         .join("atlas.db")
         .exists()
+}
+
+/// Start the atlas daemon for a project (MCP server / file-watcher mode).
+/// If the daemon is already running for this path the call is a no-op.
+/// If it exited, it is restarted so the file watcher resumes.
+#[tauri::command]
+fn start_atlas_daemon(
+    app: tauri::AppHandle,
+    state: tauri::State<DaemonState>,
+    project_path: String,
+) -> Result<(), String> {
+    let mut map = state.0.lock().unwrap();
+
+    // Check whether the existing child is still alive before spawning another.
+    if let Some(child) = map.get_mut(&project_path) {
+        match child.try_wait() {
+            Ok(None) => return Ok(()), // still running — nothing to do
+            _ => {}                    // exited or error — fall through and restart
+        }
+    }
+
+    let entry = atlas_resource_dir(&app)?
+        .join("dist")
+        .join("mcp")
+        .join("server-entry.js");
+
+    if !entry.exists() {
+        return Err(format!("Atlas not bundled — entry not found at: {}", entry.display()));
+    }
+
+    let child = new_command("node")
+        .arg("--liftoff-only")
+        .arg(&entry)
+        .arg("--path")
+        .arg(&project_path)
+        .current_dir(&project_path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn Atlas daemon: {e}"))?;
+
+    map.insert(project_path, child);
+    Ok(())
+}
+
+/// Kill the atlas daemon for a project. Called when the user removes the project
+/// from Tempest or the app is exiting.
+#[tauri::command]
+fn stop_atlas_daemon(
+    state: tauri::State<DaemonState>,
+    project_path: String,
+) -> Result<(), String> {
+    let mut map = state.0.lock().unwrap();
+    if let Some(mut child) = map.remove(&project_path) {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1148,6 +1212,22 @@ struct PtyOutputPayload {
     data: String,
 }
 
+/// Optional isolation request attached to a PTY session by the frontend.
+///
+/// When `mode != "off"` the session's process (and its whole subtree, on
+/// Windows via a Job Object) is confined by Hephaestus using these bounds.
+#[derive(serde::Deserialize)]
+struct SandboxSpec {
+    /// "off" | "monitor" | "enforce".
+    mode: String,
+    /// Hostname patterns the process may reach (e.g. `**.github.com`).
+    allowed_hosts: Vec<String>,
+    /// Paths mounted read-write inside the sandbox.
+    rw_paths: Vec<String>,
+    /// Paths mounted read-only inside the sandbox.
+    ro_paths: Vec<String>,
+}
+
 struct PtySession {
     writer: Mutex<Box<dyn Write + Send>>,
     master: Mutex<Box<dyn portable_pty::MasterPty + Send>>,
@@ -1156,6 +1236,17 @@ struct PtySession {
     /// Working directory (worktree path) this session was spawned in. Used to
     /// locate the `.tempest-pid` sidecar file on close so it can be cleaned up.
     cwd: String,
+    /// Isolation handle when this session was created inside a Hephaestus
+    /// sandbox. `None` for unsandboxed sessions. Taken and destroyed on close.
+    isolate_handle: Mutex<Option<hephaestus::IsolateHandle>>,
+    /// Always-on lifecycle Job Object — present for every PTY session that is
+    /// NOT covered by the full Hephaestus sandbox (which already provides its
+    /// own `KILL_ON_JOB_CLOSE` job). Dropping this handle kills the shell and
+    /// its entire process tree atomically, including children reparented via
+    /// `Start-Process` / ShellExecute that `taskkill /T` cannot reach.
+    /// `None` when the session is running inside the Hephaestus sandbox, when
+    /// `process_id()` returned `None` at spawn time, or on non-Windows.
+    lifecycle_job: Mutex<Option<hephaestus::LifecycleJob>>,
 }
 
 /// Path of the per-worktree PID sidecar file. We persist the PTY's OS PID here
@@ -1183,24 +1274,21 @@ fn kill_pid_tree(pid: u32) {
     }
 }
 
-/// Read `<worktree_path>/.tempest-pid`, and if it contains a valid PID, kill
-/// that process tree. Waits ~500ms afterward so the OS releases the directory
-/// handle before any removal attempt. No-op (silent) if the file is missing or
-/// the process is already dead. Handles the orphaned-process case after restart.
-fn kill_persisted_pid(worktree_path: &str) {
-    let pid_path = pid_file_path(worktree_path);
-    let Ok(contents) = std::fs::read_to_string(&pid_path) else {
-        return;
-    };
-    if let Ok(pid) = contents.trim().parse::<u32>() {
-        kill_pid_tree(pid);
-        std::thread::sleep(std::time::Duration::from_millis(500));
-    }
+/// Read the PID persisted in `<worktree_path>/.tempest-pid`, if the file exists
+/// and holds a valid integer. Used as a fallback source of the PTY child's PID
+/// when `Child::process_id()` returns `None` (ConPTY can report `None`) or when
+/// `PtyState` no longer tracks the session (e.g. after an app restart).
+fn read_pid_file(worktree_path: &str) -> Option<u32> {
+    std::fs::read_to_string(pid_file_path(worktree_path))
+        .ok()
+        .and_then(|contents| contents.trim().parse::<u32>().ok())
 }
 
 pub struct PtyState(pub(crate) Arc<DashMap<String, Arc<PtySession>>>);
 
 pub struct ZenState(pub Mutex<std::collections::HashMap<String, (String, String)>>);
+
+pub struct DaemonState(pub Mutex<std::collections::HashMap<String, std::process::Child>>);
 
 #[tauri::command]
 fn open_zen_window(
@@ -1273,6 +1361,7 @@ async fn create_pty_session(
     cols: u16,
     command: Option<String>,
     args: Option<Vec<String>>,
+    sandbox: Option<SandboxSpec>,
     on_event: Channel<PtyOutputPayload>,
     state: tauri::State<'_, PtyState>,
 ) -> Result<(), String> {
@@ -1280,10 +1369,16 @@ async fn create_pty_session(
     // call performs the ~100–200ms probe so no individual session pays for it twice.
     SHELL.get_or_init(resolve_shell);
 
+    // The environment ID must equal the session ID so isolation state and the
+    // PTY session share one key. Cloned because `session_id` is used again after
+    // the blocking closure returns.
+    let env_id = session_id.clone();
+
     // The blocking part — opening the PTY and spawning the shell/agent process —
     // runs on a dedicated blocking thread so it never starves Tauri's bounded IPC
     // worker pool. `tauri::State` is not `Send`, so the registry insert happens
     // back on the async side *after* this completes. All owned params move in.
+    let session_id_log = session_id.clone();
     let (session, reader) = tauri::async_runtime::spawn_blocking(move || {
         let pty_system = native_pty_system();
         let size = PtySize {
@@ -1294,7 +1389,10 @@ async fn create_pty_session(
         };
         let pair = pty_system.openpty(size).map_err(|e| e.to_string())?;
 
-        let cmd = if let Some(ref agent_exe) = command {
+        // Resolve the base program + argument list for the shell invocation.
+        // The sandbox (if any) transforms these before the command is built.
+        let shell = SHELL.get_or_init(resolve_shell).clone();
+        let (program, cmd_args): (String, Vec<String>) = if let Some(ref agent_exe) = command {
             // Agent session: build the full agent invocation as a string, then run it inside
             // an interactive shell with -NoExit / exec so the terminal stays alive after exit.
             // All session/resume flags and the prompt are pre-assembled by the frontend and
@@ -1312,30 +1410,84 @@ async fn create_pty_session(
             }
             let agent_invocation = parts.join(" ");
 
-            let shell = SHELL.get_or_init(resolve_shell).clone();
-
             #[cfg(windows)]
             {
-                let mut c = CommandBuilder::new(&shell);
-                c.cwd(&cwd);
-                c.arg("-NoLogo");
-                c.arg("-NoExit");
-                c.arg("-Command");
-                c.arg(agent_invocation);
-                c
+                (shell.clone(), vec![
+                    "-NoLogo".into(),
+                    "-NoExit".into(),
+                    "-Command".into(),
+                    agent_invocation,
+                ])
             }
             #[cfg(not(windows))]
             {
-                let mut c = CommandBuilder::new(&shell);
-                c.cwd(&cwd);
-                c.arg("-c");
-                c.arg(format!("{}; exec $SHELL -i", agent_invocation));
-                c
+                (shell.clone(), vec![
+                    "-c".into(),
+                    format!("{}; exec $SHELL -i", agent_invocation),
+                ])
             }
         } else {
             // Bare shell session
-            let shell = SHELL.get_or_init(resolve_shell).clone();
-            let mut c = CommandBuilder::new(&shell);
+            (shell.clone(), Vec::new())
+        };
+
+        // Optionally provision a Hephaestus isolation environment and rewrite the
+        // command through it. `mode == "off"` (or no sandbox at all) keeps the
+        // original unsandboxed path. Yields the handle to store for teardown plus
+        // the sandbox-transformed command to spawn.
+        let sandboxed: Option<(hephaestus::IsolateHandle, hephaestus::SandboxedCommand)> =
+            match sandbox {
+                Some(ref sb) if sb.mode != "off" => {
+                    let isolate = ISOLATE.get_or_init(hephaestus::platform);
+                    let mode = match sb.mode.as_str() {
+                        "monitor" => hephaestus::SandboxMode::Monitor,
+                        _ => hephaestus::SandboxMode::Enforce,
+                    };
+                    let mut builder =
+                        hephaestus::EnvironmentSpec::builder(env_id.as_str(), &cwd).mode(mode);
+                    for host in &sb.allowed_hosts {
+                        builder = builder.allow_host(host.as_str());
+                    }
+                    for p in &sb.rw_paths {
+                        builder = builder.mount(hephaestus::PathMount::rw(p));
+                    }
+                    for p in &sb.ro_paths {
+                        builder = builder.mount(hephaestus::PathMount::ro(p));
+                    }
+                    let spec = builder.build().map_err(|e| e.to_string())?;
+                    let handle = isolate.create(spec).map_err(|e| e.to_string())?;
+
+                    let prog_os = std::ffi::OsString::from(&program);
+                    let args_os: Vec<std::ffi::OsString> =
+                        cmd_args.iter().map(std::ffi::OsString::from).collect();
+                    let prepared = isolate
+                        .prepare(&handle, prog_os.as_os_str(), &args_os)
+                        .map_err(|e| e.to_string())?;
+                    Some((handle, prepared))
+                }
+                _ => None,
+            };
+
+        // Build the CommandBuilder from either the sandbox-transformed command or
+        // the plain base command.
+        let cmd = if let Some((_, ref prepared)) = sandboxed {
+            let mut c = CommandBuilder::new(&prepared.program);
+            for a in &prepared.args {
+                c.arg(a);
+            }
+            for (k, v) in &prepared.env {
+                c.env(k, v);
+            }
+            match prepared.working_dir {
+                Some(ref wd) => c.cwd(wd),
+                None => c.cwd(&cwd),
+            }
+            c
+        } else {
+            let mut c = CommandBuilder::new(&program);
+            for a in &cmd_args {
+                c.arg(a);
+            }
             c.cwd(&cwd);
             c
         };
@@ -1347,10 +1499,56 @@ async fn create_pty_session(
         // Fail silently — a missing PID file must never break PTY creation.
         if let Some(pid) = child.process_id() {
             let _ = std::fs::write(pid_file_path(&cwd), pid.to_string());
+
+            // Assign the freshly-spawned process to its Job Object. On Windows
+            // this must happen after spawn (Job Objects have no spawn-time hook);
+            // on other platforms `post_spawn` is a no-op.
+            if let Some((ref handle, _)) = sandboxed {
+                let isolate = ISOLATE.get_or_init(hephaestus::platform);
+                isolate.post_spawn(handle, pid).map_err(|e| e.to_string())?;
+            }
         }
 
         let reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
         let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
+
+        let isolate_handle = sandboxed.map(|(handle, _)| handle);
+
+        // Provision a lifecycle-only kill-on-close Job Object for sessions that
+        // are NOT already covered by the Hephaestus sandbox (which creates its
+        // own `KILL_ON_JOB_CLOSE` job). This ensures the shell and its entire
+        // `CreateProcess` subtree are killed atomically when the session closes
+        // or the app exits — even on a crash — without relying on `taskkill /T`
+        // tree-walking, which misses processes reparented via `Start-Process` /
+        // ShellExecute brokering (e.g. bare `notepad` typed in the terminal).
+        //
+        // Failure is best-effort: if the OS refuses assignment (rare — e.g. a
+        // restricted launcher already placed the process in an incompatible job),
+        // we log to stderr and continue. `taskkill /F /T` remains a fallback.
+        let lifecycle_job: Option<hephaestus::LifecycleJob> = if isolate_handle.is_none() {
+            match child.process_id() {
+                None => {
+                    eprintln!("[tempest] lifecycle_job: child.process_id() returned None — no job attached");
+                    None
+                }
+                Some(pid) => {
+                    eprintln!("[tempest] lifecycle_job: attaching job for session={session_id_log} pid={pid}");
+                    match hephaestus::lifecycle_job(pid) {
+                        Ok(job) => {
+                            eprintln!("[tempest] lifecycle_job: attached ok for session={session_id_log} pid={pid}");
+                            Some(job)
+                        }
+                        Err(e) => {
+                            eprintln!("[tempest] lifecycle_job: FAILED for session={session_id_log} pid={pid}: {e}");
+                            None
+                        }
+                    }
+                }
+            }
+        } else {
+            eprintln!("[tempest] lifecycle_job: session={session_id_log} has sandbox — skipping lifecycle job");
+            None // sandbox already has its own KILL_ON_JOB_CLOSE job
+        };
 
         Ok::<_, String>((
             PtySession {
@@ -1359,6 +1557,8 @@ async fn create_pty_session(
                 _slave: Mutex::new(pair.slave),
                 child:  Mutex::new(child),
                 cwd,
+                isolate_handle: Mutex::new(isolate_handle),
+                lifecycle_job: Mutex::new(lifecycle_job),
             },
             reader,
         ))
@@ -1429,9 +1629,42 @@ fn close_pty_session(
     // Atomically remove the session from the map and operate through its Arc.
     let removed = state.0.remove(&session_id).map(|(_, arc)| arc);
     if let Some(session) = removed {
-        // Kill the child process. On Windows portable-pty kills the whole job
-        // object (the shell *and* its descendants — e.g. the agent CLI), which
-        // is exactly what holds the CWD lock.
+        // Capture the child PID before any killing. Fall back to the persisted
+        // sidecar PID if `process_id()` returns `None` (ConPTY can report `None`),
+        // so we always have a target for the process-tree kill.
+        let child_pid = session
+            .child
+            .lock()
+            .unwrap()
+            .process_id()
+            .or_else(|| read_pid_file(&session.cwd));
+
+        // Drop the lifecycle job first: closing the Job Object handle fires
+        // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE and terminates the tree atomically.
+        // This reaches children that `taskkill /T` cannot (e.g. processes
+        // reparented via Start-Process / ShellExecute brokering).
+        let had_job = session.lifecycle_job.lock().unwrap().take().is_some();
+        eprintln!("[tempest] close_pty_session: session={session_id} lifecycle_job present={had_job}");
+
+        // Destroy the Hephaestus isolation environment so its Job Object handle
+        // is also closed (triggering KILL_ON_JOB_CLOSE for sandboxed sessions).
+        // IsolateHandle::drop is a no-op; destroy() is the only path that closes
+        // the Win32 handle and fires the process-tree kill.
+        if let Some(handle) = session.isolate_handle.lock().unwrap().take() {
+            let isolate = ISOLATE.get_or_init(hephaestus::platform);
+            let _ = isolate.destroy(handle);
+        }
+
+        // Secondary sweep via taskkill /F /T — catches any processes that never
+        // joined the Job Object (e.g. spawned before post_spawn ran, or escaped
+        // via CREATE_BREAKAWAY_FROM_JOB). `taskkill /T` walks the live
+        // parent→child chain, so we run it before killing the PTY child itself;
+        // killing the shell first would reparent descendants and let them escape.
+        if let Some(pid) = child_pid {
+            kill_pid_tree(pid);
+        }
+
+        // Kill the PTY child itself.
         let _ = session.child.lock().unwrap().kill();
 
         // Wait for exit (bounded loop) — without this the command returns while
@@ -1468,7 +1701,41 @@ fn close_and_remove_worktree(
     //      If the session isn't in the map (already closed), skip straight to
     //      directory removal.
     let removed = state.0.remove(&session_id).map(|(_, arc)| arc);
-    if let Some(session) = removed {
+
+    // Resolve the child PID to kill: prefer the live session's, fall back to the
+    // persisted sidecar (works even after an app restart wiped `PtyState`, and
+    // when `process_id()` returns `None`).
+    let child_pid = removed
+        .as_ref()
+        .and_then(|s| s.child.lock().unwrap().process_id())
+        .or_else(|| read_pid_file(&worktree_path));
+
+    if let Some(ref session) = removed {
+        // Drop the lifecycle job FIRST: closing the Job Object handle fires
+        // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE and terminates the process tree
+        // atomically — including processes reparented via Start-Process /
+        // ShellExecute that `taskkill /T` cannot reach.
+        let had_job = session.lifecycle_job.lock().unwrap().take().is_some();
+        eprintln!("[tempest] close_and_remove_worktree: session={session_id} lifecycle_job present={had_job}");
+
+        // Then destroy the Hephaestus isolation environment (sandboxed sessions).
+        // IsolateHandle::drop is a no-op; destroy() is the only path that closes
+        // the Win32 handle and fires the kill for sandboxed sessions.
+        if let Some(handle) = session.isolate_handle.lock().unwrap().take() {
+            let isolate = ISOLATE.get_or_init(hephaestus::platform);
+            let _ = isolate.destroy(handle);
+        }
+    }
+
+    // Secondary sweep via taskkill /F /T — catches processes that never joined
+    // the Job Object. Run before killing the PTY child so descendants are still
+    // reachable via the live parent→child chain. No sleep needed — the child
+    // wait loop and directory-removal retry below absorb any handle-release lag.
+    if let Some(pid) = child_pid {
+        kill_pid_tree(pid);
+    }
+
+    if let Some(ref session) = removed {
         // Kill the child. On Windows portable-pty kills the whole job object
         // (shell + descendants such as the agent CLI) — exactly what holds the
         // CWD lock on the worktree directory.
@@ -1484,14 +1751,6 @@ fn close_and_remove_worktree(
             }
         }
     }
-
-    // 5. Belt-and-suspenders: read the persisted PID sidecar and force-kill that
-    //    process tree via `taskkill /F /T` (Windows) / `kill -9` (Unix). This
-    //    handles the orphan case where the app was restarted and PtyState no
-    //    longer tracks the still-running shell that holds the directory handle.
-    //    Runs whether or not a tracked session was found above. Waits ~500ms so
-    //    the OS releases the dir handle. Silent if the file/process is gone.
-    kill_persisted_pid(&worktree_path);
     // The sidecar lives inside the worktree, so removing the directory below
     // also removes it — no explicit unlink needed here.
 
@@ -1714,6 +1973,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(PtyState(Arc::new(DashMap::new())))
         .manage(ZenState(Mutex::new(std::collections::HashMap::new())))
+        .manage(DaemonState(Mutex::new(std::collections::HashMap::new())))
         .setup(|app| {
             use tauri::Manager;
             if let Some(window) = app.get_webview_window("main") {
@@ -1764,7 +2024,57 @@ pub fn run() {
             write_runtime_state,
             start_atlas_index,
             check_atlas_db,
+            start_atlas_daemon,
+            stop_atlas_daemon,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                use tauri::Manager;
+
+                // Kill all atlas daemons cleanly on app exit.
+                let state = app_handle.state::<DaemonState>();
+                let mut map = state.0.lock().unwrap();
+                for (_, mut child) in map.drain() {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+                drop(map);
+
+                // Tear down every live PTY session so agent subprocesses (e.g.
+                // Notepad spawned via `Start-Process`) never outlive the app.
+                // Drop each lifecycle job FIRST: closing the Job Object handle
+                // fires KILL_ON_JOB_CLOSE and terminates the tree atomically —
+                // this works even on a crash because the OS closes all handles
+                // when the process dies. Then destroy Hephaestus isolation
+                // environments (for sandboxed sessions). Finally, run a
+                // `taskkill /F /T` secondary sweep for processes that escaped
+                // the job.
+                let pty_state = app_handle.state::<PtyState>();
+                for entry in pty_state.0.iter() {
+                    let sid = entry.key().clone();
+                    let session = entry.value();
+                    let child_pid = session
+                        .child
+                        .lock()
+                        .unwrap()
+                        .process_id()
+                        .or_else(|| read_pid_file(&session.cwd));
+                    eprintln!("[tempest] RunEvent::Exit: cleaning session={sid} child_pid={child_pid:?}");
+                    // 1. Lifecycle job (always-on, unsandboxed sessions).
+                    let had_job = session.lifecycle_job.lock().unwrap().take().is_some();
+                    eprintln!("[tempest] RunEvent::Exit: session={sid} lifecycle_job present={had_job}");
+                    // 2. Hephaestus sandbox job (sandboxed sessions).
+                    if let Some(handle) = session.isolate_handle.lock().unwrap().take() {
+                        let isolate = ISOLATE.get_or_init(hephaestus::platform);
+                        let _ = isolate.destroy(handle);
+                    }
+                    // 3. Secondary taskkill sweep for escaped processes.
+                    if let Some(pid) = child_pid {
+                        kill_pid_tree(pid);
+                    }
+                }
+            }
+        });
 }

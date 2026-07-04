@@ -11,13 +11,13 @@
   "scripts": {
     "dev": "tauri dev",
     "dev:frontend": "vite",
-    "dev:web": "npm run dev --workspace=origin-web",
+    "dev:web": "npm run dev --workspace=tempest-web",
     "dev:docs": "npm run dev --workspace=tempest-docs",
     "setup": "npm run build:atlas",
     "build": "tauri build && node scripts/collect-artifacts.mjs",
     "build:atlas": "npm run build --workspace=@tempest/atlas && node scripts/bundle-atlas.mjs",
     "build:frontend": "tsc && vite build",
-    "build:web": "npm run build --workspace=origin-web",
+    "build:web": "npm run build --workspace=tempest-web",
     "build:docs": "npm run build --workspace=tempest-docs",
     "preview": "vite preview",
     "tauri": "tauri"

@@ -1,0 +1,43 @@
+# Hephaestus kernel driver.
+#
+# This crate is a **separate build artifact** (a `.sys` kernel-mode binary) and
+# is intentionally NOT a member of the `tempest` workspace: a workspace cannot
+# mix a kernel `cdylib` with the user-mode staticlib/cdylib that Tauri links.
+# It is listed under `exclude` in `../../Cargo.toml`. Build it on its own with
+# a WDK toolchain installed — see README.md.
+[package]
+name = "hephaestus-driver"
+version = "0.1.0"
+edition = "2021"
+description = "Hephaestus process-isolation kernel driver (PsSetCreateProcessNotifyRoutineEx + Job Object assignment)"
+publish = false
+
+# Marks this as a WDM (Windows Driver Model) kernel driver for wdk-build.
+[package.metadata.wdk.driver-model]
+driver-type = "WDM"
+
+[lib]
+# A kernel driver links as a cdylib; wdk-build rewrites the subsystem to
+# `native` and the entry point to `DriverEntry` via linker flags.
+crate-type = ["cdylib"]
+
+# windows-drivers-rs crates. Versions are the current crates.io releases and are
+# designed to be used together (wdk 0.4.x pulls wdk-sys/wdk-build 0.5.x).
+[dependencies]
+wdk = "0.4.1"
+wdk-sys = "0.5.1"
+wdk-alloc = "0.4.1"
+wdk-panic = "0.4.1"
+
+[build-dependencies]
+wdk-build = "0.5.1"
+
+# Kernel drivers must not unwind and are size-sensitive.
+[profile.dev]
+panic = "abort"
+lto = true
+
+[profile.release]
+panic = "abort"
+lto = true
+opt-level = "z"

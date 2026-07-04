@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { X, Palette, Keyboard, Info, RotateCcw, GitCommitHorizontal, Terminal as TerminalIcon, GitBranch, BookOpen, GripVertical, Pencil, Copy, Trash2, Plus, Cpu } from "lucide-react";
+import { X, Palette, Keyboard, Info, RotateCcw, GitCommitHorizontal, Terminal as TerminalIcon, GitBranch, BookOpen, GripVertical, Pencil, Copy, Trash2, Plus, Cpu, Shield } from "lucide-react";
 import { useTheme } from "../themes/ThemeContext";
 import type { Theme } from "../themes/types";
 import {
@@ -30,7 +30,7 @@ import {
 } from "../store/prompts";
 import "./SettingsPanel.css";
 
-type Section = "appearance" | "terminal" | "git" | "intelligence" | "prompts" | "keyboard" | "attribution" | "about";
+type Section = "appearance" | "terminal" | "git" | "intelligence" | "security" | "prompts" | "keyboard" | "attribution" | "about";
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -93,6 +93,13 @@ export function SettingsPanel({ onClose, onAttributionToggle, initialSection }: 
               Token Intelligence
             </button>
             <button
+              className={`sp-nav-item${activeSection === "security" ? " sp-nav-item--active" : ""}`}
+              onClick={() => setActiveSection("security")}
+            >
+              <Shield size={14} />
+              Security
+            </button>
+            <button
               className={`sp-nav-item${activeSection === "prompts" ? " sp-nav-item--active" : ""}`}
               onClick={() => setActiveSection("prompts")}
             >
@@ -130,6 +137,7 @@ export function SettingsPanel({ onClose, onAttributionToggle, initialSection }: 
             {activeSection === "terminal" && <TerminalSection />}
             {activeSection === "git" && <GitSection />}
             {activeSection === "intelligence" && <TokenIntelligenceSection />}
+            {activeSection === "security" && <SecuritySection />}
             {activeSection === "prompts" && <PromptsSection />}
             {activeSection === "keyboard" && <KeyboardSection />}
             {activeSection === "attribution" && <AttributionSection onToggle={onAttributionToggle} />}
@@ -356,6 +364,42 @@ function GitSection() {
 }
 
 /* ── Token Intelligence ──────────────────────────────────────────────────── */
+
+/* ── Security ────────────────────────────────────────────────────────────── */
+
+function SecuritySection() {
+  const s = useSettings();
+  return (
+    <div className="sp-section">
+      <div className="sp-section-heading">Security</div>
+      <p className="sp-section-desc">
+        Isolate agent processes using Hephaestus — Tempest's built-in sandbox.
+        On Windows, each agent session runs inside a Job Object so its entire
+        process tree is confined and killed cleanly when the session closes.
+        Network isolation arrives with the Linux and macOS releases.
+      </p>
+
+      <div className="sp-rows">
+        <div className="sp-toggle-row" onClick={() => updateSetting("isolateAgents", !s.isolateAgents)}>
+          <div className="sp-toggle-text">
+            <span className="sp-toggle-label">Isolate agent sessions</span>
+            <span className="sp-toggle-desc">Wrap every new agent in a Hephaestus sandbox. Applies to sessions started after this is enabled.</span>
+          </div>
+          <button
+            className={`sp-toggle${s.isolateAgents ? " sp-toggle--on" : ""}`}
+            onClick={(e) => { e.stopPropagation(); updateSetting("isolateAgents", !s.isolateAgents); }}
+            role="switch"
+            aria-checked={s.isolateAgents}
+          >
+            <span className="sp-toggle-thumb" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Token Intelligence ───────────────────────────────────────────────────── */
 
 function TokenIntelligenceSection() {
   const s = useSettings();

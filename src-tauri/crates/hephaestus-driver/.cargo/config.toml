@@ -1,0 +1,11 @@
+# The kernel driver only builds for the MSVC x64 target. Pinning it here means a
+# bare `cargo build` in this directory targets the kernel ABI without repeating
+# `--target` on every invocation.
+[build]
+target = "x86_64-pc-windows-msvc"
+
+# windows-drivers-rs requires the standard library facade to be rebuilt for the
+# kernel; the WDK metadata drives most of this through build.rs, but the alloc
+# error handler must be the stable one.
+[unstable]
+build-std = ["core", "alloc"]
