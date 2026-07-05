@@ -6,6 +6,8 @@
   background: var(--tempest-bg-editor);
 }
 
+/* ── Toolbar ──────────────────────────────────────────────────────────────── */
+
 .kb-toolbar {
   display: flex;
   align-items: center;
@@ -32,13 +34,8 @@
   background-position: right 8px center;
   min-width: 160px;
 }
-.kb-project-select:hover {
-  border-color: var(--tempest-accent-blue);
-}
-.kb-project-select:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
+.kb-project-select:hover { border-color: var(--tempest-accent-blue); }
+.kb-project-select:disabled { opacity: 0.5; cursor: default; }
 
 .kb-toolbar-divider {
   width: 1px;
@@ -63,10 +60,9 @@
   border-color: var(--tempest-accent-blue);
   color: var(--tempest-fg-default);
 }
-.kb-tool-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
+.kb-tool-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* ── Canvas area ──────────────────────────────────────────────────────────── */
 
 .kb-canvas-wrap {
   position: relative;
@@ -74,109 +70,35 @@
   overflow: hidden;
 }
 
-.kb-flow {
+/* Main D3 force canvas — fills the container, grab cursor by default */
+.kb-canvas {
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-/* Promote the React Flow viewport to its own GPU compositing layer so pan and
-   zoom become GPU-composited transforms instead of CPU repaints. */
-.kb-flow .react-flow__viewport {
-  will-change: transform;
-  transform: translateZ(0);
-}
-
-/* Canvas edge overlay for large graphs — drawn on top of the flow, but
-   transparent to pointer events so nodes stay clickable. */
-.kb-edge-canvas {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 4;
-}
-
-/* Non-blocking progress strip shown while nodes stream into React Flow. */
-.kb-stream-strip {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--tempest-bg-active);
-  z-index: 5;
-  pointer-events: none;
-}
-.kb-stream-strip-fill {
-  height: 100%;
-  background: var(--tempest-accent-blue);
-  transition: width 0.12s linear;
-}
-
-/* Level-of-detail: hide labels and shrink dots when zoomed far out. The class
-   is toggled on the canvas container (an ancestor of every node). */
-.kb-flow--zoomed-out .kb-node-label {
-  display: none;
-}
-.kb-flow--zoomed-out .kb-node-dot {
-  width: 6px;
-  height: 6px;
-}
-
-/* --- React Flow theming --- */
-.react-flow__renderer { background: var(--tempest-bg-editor); }
-.react-flow__background { background: var(--tempest-bg-editor); }
-/* Hide connection handles on symbol nodes */
-.react-flow__node-symbol .react-flow__handle { opacity: 0; pointer-events: none; }
-/* Reset default node box */
-.react-flow__node-symbol { background: transparent; border: none; padding: 0; }
-/* Edge color override */
-.react-flow__edge-path { stroke: var(--tempest-border-subtle); }
-/* Controls panel — theme it */
-.react-flow__controls {
-  background: var(--tempest-bg-panel);
-  border: 1px solid var(--tempest-border-default);
-  border-radius: 6px;
-}
-.react-flow__controls-button {
-  background: transparent;
-  border-color: var(--tempest-border-subtle);
-  color: var(--tempest-fg-muted);
-}
-.react-flow__controls-button:hover { background: var(--tempest-bg-active); }
-
-/* --- Custom symbol node --- */
-.kb-node {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
+  display: block;
+  cursor: grab;
   user-select: none;
+  /* Tell the browser not to handle touch/pinch gestures itself so pointer
+     events reach our pinch-to-zoom handler (critical on Tauri/WebView2). */
+  touch-action: none;
 }
-.kb-node-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
+
+/* ── Minimap ──────────────────────────────────────────────────────────────── */
+
+.kb-minimap {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  width: 180px;
+  height: 120px;
+  border-radius: 6px;
+  border: 1px solid var(--tempest-border-default);
+  background: var(--tempest-bg-panel);
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
 }
-.react-flow__node-symbol.selected .kb-node-dot {
-  box-shadow: 0 0 0 2px var(--tempest-accent-blue);
-}
-.kb-node-label {
-  font-size: 6px;
-  line-height: 1;
-  font-family: 'Geist', sans-serif;
-  color: var(--tempest-fg-muted);
-  white-space: nowrap;
-}
-.kb-node-handle {
-  width: 1px;
-  height: 1px;
-  min-width: 0;
-  min-height: 0;
-  border: none;
-  background: transparent;
-}
+
+/* ── Loading / empty states ───────────────────────────────────────────────── */
 
 .kb-empty {
   position: absolute;
@@ -251,9 +173,10 @@
   text-align: center;
   min-height: 16px;
 }
-@keyframes kb-spin {
-  to { transform: rotate(360deg); }
-}
+
+@keyframes kb-spin { to { transform: rotate(360deg); } }
+
+/* ── Detail panel ─────────────────────────────────────────────────────────── */
 
 .kb-detail {
   position: absolute;
@@ -263,23 +186,34 @@
   background: var(--tempest-bg-panel);
   border: 1px solid var(--tempest-border-default);
   border-radius: 8px;
-  padding: 12px 14px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  padding: 14px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
   font-family: 'Geist', sans-serif;
 }
 .kb-detail-close {
   position: absolute;
-  top: 6px;
-  right: 8px;
+  top: 8px;
+  right: 10px;
   background: none;
   border: none;
   color: var(--tempest-fg-subtle);
-  font-size: 16px;
+  font-size: 17px;
   cursor: pointer;
   line-height: 1;
+  padding: 0;
 }
-.kb-detail-close:hover {
-  color: var(--tempest-fg-default);
+.kb-detail-close:hover { color: var(--tempest-fg-default); }
+
+.kb-detail-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 6px;
 }
 .kb-detail-name {
   font-size: 13px;
@@ -287,17 +221,10 @@
   color: var(--tempest-fg-default);
   word-break: break-all;
   padding-right: 16px;
-}
-.kb-detail-kind {
-  display: inline-block;
-  margin-top: 4px;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--tempest-accent-blue);
+  margin-bottom: 10px;
 }
 .kb-detail-row {
-  margin-top: 8px;
+  margin-top: 6px;
   font-size: 11px;
   color: var(--tempest-fg-muted);
   word-break: break-all;
@@ -306,7 +233,7 @@
   display: block;
   font-size: 9px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   color: var(--tempest-fg-subtle);
   margin-bottom: 1px;
 }

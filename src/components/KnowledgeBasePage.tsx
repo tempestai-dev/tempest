@@ -2,407 +2,686 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Loader, ZoomIn, ZoomOut, Maximize2, RotateCcw } from "lucide-react";
 import {
-  ReactFlow,
-  ReactFlowProvider,
-  useReactFlow,
-  useNodesState,
-  useEdgesState,
-  Handle,
-  Position,
-  type Node as RFNode,
-  type Edge as RFEdge,
-  type NodeProps,
-} from "@xyflow/react";
-import cytoscape from "cytoscape";
-import fcose from "cytoscape-fcose";
+  forceSimulation,
+  forceManyBody,
+  forceLink as forceLinks,
+  forceCenter,
+  forceCollide,
+  type SimulationNodeDatum,
+  type SimulationLinkDatum,
+  type Simulation,
+} from "d3-force";
 import { getOpenProjects } from "../store/openProjects";
-import "@xyflow/react/dist/style.css";
 import "./KnowledgeBasePage.css";
 
-cytoscape.use(fcose);
+// ── Types ──────────────────────────────────────────────────────────────────
 
-interface IndexedProject {
-  id: string;
-  name: string;
-  path: string;
+interface IndexedProject { id: string; name: string; path: string }
+
+interface SymbolNodeRaw {
+  id: string; name: string; kind: string; file_path: string;
+  start_line: number; end_line: number; language: string;
+}
+interface SymbolEdgeRaw { source: string; target: string; kind: string }
+interface GraphData { nodes: SymbolNodeRaw[]; edges: SymbolEdgeRaw[] }
+
+type LoadState = "idle" | "loading" | "ready" | "error";
+
+// D3 augments nodes with index; we provide x/y/vx/vy up-front
+interface GNode extends SimulationNodeDatum {
+  id: string; label: string; kind: string; color: string; radius: number;
+  file_path: string; start_line: number; language: string;
+  x: number; y: number; vx: number; vy: number;
+  fx?: number | null; fy?: number | null;
 }
 
-interface SymbolNode {
-  id: string;
-  name: string;
-  kind: string;
-  file_path: string;
-  start_line: number;
-  end_line: number;
-  language: string;
+// Links are pre-resolved to GNode objects; d3 uses them directly
+interface GLink extends SimulationLinkDatum<GNode> {
+  source: GNode; target: GNode; kind: string;
 }
 
-interface SymbolEdge {
-  source: string;
-  target: string;
-  kind: string;
-}
-
-interface GraphData {
-  nodes: SymbolNode[];
-  edges: SymbolEdge[];
-}
-
-type LoadState = "idle" | "loading" | "streaming" | "ready" | "error";
-
-// Data carried on each React Flow node of type "symbol"
-interface SymbolNodeData {
-  label: string;
-  color: string;
-  [key: string]: unknown;
-}
-
-type SymbolRFNode = RFNode<SymbolNodeData, "symbol">;
-
-// Threshold above which we switch edges from SVG (React Flow) to a canvas overlay.
-const CANVAS_EDGE_THRESHOLD = 800;
-// Number of nodes committed to React Flow state per animation frame.
-const STREAM_BATCH_SIZE = 300;
-
-const PROGRESS: Record<string, number> = {
-  db:         10,
-  found:      20,
-  filtered:   28,
-  dispatched: 35,
-  init:       42,
-  simulation: 50,
-  transfer:   90,
-  assemble:   96,
-};
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 function resolveKindColors(): Record<string, string> {
   const s = getComputedStyle(document.documentElement);
   const v = (n: string) => s.getPropertyValue(`--tempest-${n}`).trim();
   return {
-    function:  v("accent-blue"),
-    method:    v("accent-blue"),
-    class:     v("accent-yellow"),
-    interface: v("accent-green"),
-    type:      "#9b59b6",
-    variable:  v("fg-muted"),
-    constant:  v("fg-muted"),
-    _default:  v("fg-subtle"),
+    function:  v("accent-blue"),   method:    v("accent-blue"),
+    class:     v("accent-yellow"), interface: v("accent-green"),
+    type:      "#9b59b6",          variable:  v("fg-muted"),
+    constant:  v("fg-muted"),      _default:  v("fg-subtle"),
   };
 }
 
-function gridPositions(ids: string[]): Map<string, { x: number; y: number }> {
-  const cols = Math.max(1, Math.ceil(Math.sqrt(ids.length)));
-  const gap = 60;
-  const m = new Map<string, { x: number; y: number }>();
-  ids.forEach((id, i) => {
-    m.set(id, { x: (i % cols) * gap, y: Math.floor(i / cols) * gap });
-  });
-  return m;
+function nodeRadius(deg: number): number {
+  return 4 + Math.sqrt(deg) * 1.5;
 }
 
-// --- Parallel layout helpers -------------------------------------------------
+// Minimap dimensions (CSS px)
+const MINIMAP_W = 180;
+const MINIMAP_H = 120;
 
-// Round-robin assignment by index — simple, no graph library needed. An edge is
-// kept in a partition only when BOTH endpoints land in that same partition;
-// cross-partition edges become dangling and are laid out independently.
-function partitionNodes(
-  nodes: { id: string }[],
-  edges: { source: string; target: string }[],
-  numPartitions: number
-): Array<{ nodes: { id: string }[]; edges: { source: string; target: string }[] }> {
-  const partitions = Array.from({ length: numPartitions }, () => ({
-    nodes: [] as { id: string }[],
-    edges: [] as { source: string; target: string }[],
-  }));
-  nodes.forEach((n, i) => partitions[i % numPartitions].nodes.push(n));
-  const nodePart = new Map(nodes.map((n, i) => [n.id, i % numPartitions]));
-  edges.forEach((e) => {
-    const sp = nodePart.get(e.source);
-    const tp = nodePart.get(e.target);
-    if (sp !== undefined && sp === tp) partitions[sp].edges.push(e);
-  });
-  return partitions;
-}
+// ── Component ──────────────────────────────────────────────────────────────
 
-// Arrange each partition's laid-out positions into a non-overlapping grid of
-// bounding boxes with fixed padding between cells.
-function mergePartitionPositions(
-  partitionResults: Array<{ positions: { id: string; x: number; y: number }[] }>
-): Map<string, { x: number; y: number }> {
-  const PADDING = 200;
-  const cols = Math.ceil(Math.sqrt(partitionResults.length));
-  const merged = new Map<string, { x: number; y: number }>();
+export function KnowledgeBasePage() {
+  const canvasRef        = useRef<HTMLCanvasElement>(null);
+  const containerRef     = useRef<HTMLDivElement>(null);
+  const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  let cellW = 0, cellH = 0;
-  const boxes = partitionResults.map(({ positions }) => {
-    if (positions.length === 0) return { minX: 0, minY: 0, w: 0, h: 0 };
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const p of positions) {
-      if (p.x < minX) minX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y > maxY) maxY = p.y;
-    }
-    const w = maxX - minX, h = maxY - minY;
-    cellW = Math.max(cellW, w);
-    cellH = Math.max(cellH, h);
-    return { minX, minY, w, h };
-  });
-
-  partitionResults.forEach(({ positions }, pi) => {
-    const col = pi % cols, row = Math.floor(pi / cols);
-    const offsetX = col * (cellW + PADDING) - (boxes[pi]?.minX ?? 0);
-    const offsetY = row * (cellH + PADDING) - (boxes[pi]?.minY ?? 0);
-    for (const p of positions) {
-      merged.set(p.id, { x: p.x + offsetX, y: p.y + offsetY });
-    }
-  });
-  return merged;
-}
-
-// Commit nodes to React Flow state in batches across animation frames so a huge
-// graph appears progressively instead of freezing the UI thread on one giant
-// synchronous reconciliation.
-function streamNodesToReactFlow(
-  allNodes: SymbolRFNode[],
-  allEdges: RFEdge[],
-  setNodes: (nodes: SymbolRFNode[]) => void,
-  setEdges: (edges: RFEdge[]) => void,
-  setLoadState: (s: LoadState) => void,
-  setStreamPct: (p: number) => void,
-  rafRef: { current: number | null },
-  batchSize = STREAM_BATCH_SIZE
-) {
-  // Edges go in first (they may reference not-yet-rendered nodes — RF tolerates
-  // this). For large graphs the caller passes [] here and uses the canvas overlay.
-  setEdges(allEdges);
-
-  const total = allNodes.length;
-  let idx = 0;
-  // Show the canvas immediately; keep a small non-blocking strip until done.
-  setLoadState(total > 0 ? "streaming" : "ready");
-  setStreamPct(0);
-
-  const tick = () => {
-    idx += batchSize;
-    setNodes(allNodes.slice(0, idx));
-    if (idx < total) {
-      setStreamPct(Math.min(99, Math.round((idx / total) * 100)));
-      rafRef.current = requestAnimationFrame(tick);
-    } else {
-      setStreamPct(100);
-      setLoadState("ready");
-      rafRef.current = null;
-    }
-  };
-  rafRef.current = requestAnimationFrame(tick);
-}
-
-// Custom React Flow node — a small colored dot with a label below it.
-function SymbolFlowNode({ data }: NodeProps<SymbolRFNode>) {
-  return (
-    <div className="kb-node">
-      <Handle
-        type="target"
-        position={Position.Top}
-        isConnectable={false}
-        className="kb-node-handle"
-      />
-      <div className="kb-node-dot" style={{ background: data.color }} />
-      <div className="kb-node-label">{data.label}</div>
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        isConnectable={false}
-        className="kb-node-handle"
-      />
-    </div>
-  );
-}
-
-const nodeTypes = { symbol: SymbolFlowNode };
-
-function buildRFNodes(
-  graphNodes: SymbolNode[],
-  posMap: Map<string, { x: number; y: number }>
-): SymbolRFNode[] {
-  const colors = resolveKindColors();
-  return graphNodes.map((n) => {
-    const p = posMap.get(n.id);
-    return {
-      id: n.id,
-      type: "symbol",
-      position: p ? { x: p.x, y: p.y } : { x: 0, y: 0 },
-      data: { label: n.name, color: colors[n.kind] ?? colors._default },
-    };
-  });
-}
-
-function buildRFEdges(validEdges: SymbolEdge[]): RFEdge[] {
-  const s = getComputedStyle(document.documentElement);
-  const edgeColor = s.getPropertyValue("--tempest-border-subtle").trim();
-  return validEdges.map((e, i) => ({
-    id: `e${i}`,
-    source: e.source,
-    target: e.target,
-    type: "straight",
-    style: { stroke: edgeColor, strokeWidth: 0.5, opacity: 0.4 },
-  }));
-}
-
-function KnowledgeBaseInner() {
-  const reactFlowInstance = useReactFlow();
-
-  const [indexedProjects, setIndexedProjects] = useState<IndexedProject[]>([]);
+  // UI state (drives React renders)
+  const [indexedProjects,  setIndexedProjects]  = useState<IndexedProject[]>([]);
   const [projectsResolved, setProjectsResolved] = useState(false);
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
-  const [loadState, setLoadState] = useState<LoadState>("idle");
-  const [errorMsg, setErrorMsg] = useState("");
-  const [nodes, setNodes, onNodesChange] = useNodesState<SymbolRFNode>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<RFEdge>([]);
-  const [selectedNode, setSelectedNode] = useState<SymbolNode | null>(null);
-  const [logLine, setLogLine] = useState("");
-  const [progress, setProgress] = useState(0);
-  const [streamPct, setStreamPct] = useState(0);
-  const [useCanvasEdges, setUseCanvasEdges] = useState(false);
+  const [selectedPath,     setSelectedPath]     = useState<string | null>(null);
+  const [loadState,        setLoadState]        = useState<LoadState>("idle");
+  const [errorMsg,         setErrorMsg]         = useState("");
+  const [logLine,          setLogLine]          = useState("");
+  const [progress,         setProgress]         = useState(0);
+  const [detailNode,       setDetailNode]       = useState<GNode | null>(null);
 
-  const nodeMapRef = useRef<Map<string, SymbolNode>>(new Map());
-  const simTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Ref mirror of detail node so the render fn can read it without re-rendering
+  const detailNodeRef = useRef<GNode | null>(null);
 
-  // Parallel-layout bookkeeping
-  const activeWorkersRef = useRef<Worker[]>([]);
-  const workerFractionsRef = useRef<number[]>([]);
-  const streamRafRef = useRef<number | null>(null);
+  // Graph / simulation
+  const simRef   = useRef<Simulation<GNode, GLink> | null>(null);
+  const nodesRef = useRef<GNode[]>([]);
+  const linksRef = useRef<GLink[]>([]);
 
-  // Canvas edge overlay bookkeeping
-  const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const canvasRafRef = useRef<number | null>(null);
-  const nodePosRef = useRef<Map<string, { x: number; y: number }>>(new Map());
-  const edgesForCanvasRef = useRef<{ source: string; target: string }[]>([]);
+  // Camera — world→screen:  screen = world * zoom + (x, y)
+  const camRef = useRef({ x: 0, y: 0, zoom: 1 });
 
-  const clearSimTimer = () => {
-    if (simTimerRef.current !== null) {
-      clearInterval(simTimerRef.current);
-      simTimerRef.current = null;
-    }
-  };
+  // Hover state
+  const hoverNodeRef   = useRef<GNode | null>(null);
+  const neighborIdsRef = useRef<Set<string>>(new Set());
+  const connLinksRef   = useRef<Set<GLink>>(new Set());
 
-  const clearWatchdog = () => {
-    if (watchdogRef.current !== null) {
-      clearTimeout(watchdogRef.current);
-      watchdogRef.current = null;
-    }
-  };
+  // Selection neighborhood — persists after hover moves away from the selected node
+  const selNeighborIdsRef = useRef<Set<string>>(new Set());
+  const selConnLinksRef   = useRef<Set<GLink>>(new Set());
 
-  const terminateWorkers = () => {
-    activeWorkersRef.current.forEach((w) => w.terminate());
-    activeWorkersRef.current = [];
-  };
+  // Drag / pan
+  const dragNodeRef = useRef<GNode | null>(null);
+  const panStartRef = useRef<{ mx: number; my: number; tx: number; ty: number } | null>(null);
+  const didMoveRef  = useRef(false);
 
-  const cancelStreamRaf = () => {
-    if (streamRafRef.current !== null) {
-      cancelAnimationFrame(streamRafRef.current);
-      streamRafRef.current = null;
-    }
-  };
+  // Pinch-to-zoom (multi-pointer). Tracks active touch pointers by id.
+  const pinchRef        = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const lastPinchDistRef = useRef<number | null>(null);
 
-  // --- Canvas edge rendering -------------------------------------------------
+  // Minimap world→minimap transform, updated each frame by renderMinimap()
+  const minimapTfRef = useRef<{ scale: number; ox: number; oy: number } | null>(null);
 
-  const drawEdges = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const { x: ox, y: oy, zoom } = reactFlowInstance.getViewport();
-    const dpr = window.devicePixelRatio || 1;
+  // RAF
+  const rafRef    = useRef<number | null>(null);
+  const renderRef = useRef<() => void>(() => {});
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.save();
-    ctx.scale(dpr, dpr);
-    ctx.translate(ox, oy);
-    ctx.scale(zoom, zoom);
+  // ── Render fn (set once; reads refs only, never re-created) ───────────────
 
-    const edgeColor = getComputedStyle(document.documentElement)
-      .getPropertyValue("--tempest-border-subtle")
-      .trim();
-    ctx.strokeStyle = edgeColor || "#444";
-    ctx.lineWidth = 0.5 / zoom; // stay 0.5px regardless of zoom
-    ctx.globalAlpha = 0.4;
-    ctx.beginPath();
-
-    const posMap = nodePosRef.current;
-    for (const edge of edgesForCanvasRef.current) {
-      const s = posMap.get(edge.source);
-      const t = posMap.get(edge.target);
-      if (!s || !t) continue;
-      ctx.moveTo(s.x, s.y);
-      ctx.lineTo(t.x, t.y);
-    }
-    ctx.stroke();
-    ctx.restore();
-  }, [reactFlowInstance]);
-
-  const scheduleDraw = useCallback(() => {
-    if (canvasRafRef.current !== null) cancelAnimationFrame(canvasRafRef.current);
-    canvasRafRef.current = requestAnimationFrame(() => {
-      canvasRafRef.current = null;
-      drawEdges();
-    });
-  }, [drawEdges]);
-
-  // Keep nodeId → center-position lookup fresh as nodes stream in. Symbol nodes
-  // are ~10px dots, so the center is offset +5px on each axis from the RF
-  // top-left position.
   useEffect(() => {
-    nodePosRef.current = new Map(
-      nodes.map((n) => [n.id, { x: n.position.x + 5, y: n.position.y + 5 }])
-    );
-    if (useCanvasEdges) scheduleDraw();
-  }, [nodes, useCanvasEdges, scheduleDraw]);
+    // Renders the whole graph, plus the current viewport rect, into the
+    // small minimap canvas. Reads refs only; called at the end of the main
+    // render fn so it stays in sync with the primary canvas.
+    const renderMinimap = () => {
+      const mm = minimapCanvasRef.current;
+      if (!mm) return;
+      const ctx = mm.getContext("2d");
+      if (!ctx) return;
 
-  // Size the canvas to its container (HiDPI-aware) and redraw on resize.
-  useEffect(() => {
-    if (!useCanvasEdges) return;
-    const container = containerRef.current;
-    const canvas = canvasRef.current;
-    if (!container || !canvas) return;
-
-    const resize = () => {
       const dpr = window.devicePixelRatio || 1;
-      const rect = container.getBoundingClientRect();
-      canvas.width = Math.round(rect.width * dpr);
-      canvas.height = Math.round(rect.height * dpr);
-      canvas.style.width = `${rect.width}px`;
-      canvas.style.height = `${rect.height}px`;
-      scheduleDraw();
+      const W = MINIMAP_W, H = MINIMAP_H;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+
+      const nodes = nodesRef.current;
+      const links = linksRef.current;
+      if (nodes.length === 0) { minimapTfRef.current = null; return; }
+
+      // Bounding box of all nodes (same logic as fitView)
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const n of nodes) {
+        x0 = Math.min(x0, n.x - n.radius); y0 = Math.min(y0, n.y - n.radius);
+        x1 = Math.max(x1, n.x + n.radius); y1 = Math.max(y1, n.y + n.radius);
+      }
+      const pad = 8;
+      const bw = Math.max(1, x1 - x0), bh = Math.max(1, y1 - y0);
+      const scale = Math.min((W - pad * 2) / bw, (H - pad * 2) / bh);
+      const ox = (W - bw * scale) / 2 - x0 * scale;
+      const oy = (H - bh * scale) / 2 - y0 * scale;
+      minimapTfRef.current = { scale, ox, oy };
+      const wx2 = (wx: number) => wx * scale + ox;
+      const wy2 = (wy: number) => wy * scale + oy;
+
+      const mmStyle = getComputedStyle(document.documentElement);
+      const edgeCol = mmStyle.getPropertyValue("--tempest-border-subtle").trim() || "#2a2a2a";
+
+      // Edges — 1px lines at ~15% opacity
+      ctx.strokeStyle = edgeCol;
+      ctx.globalAlpha = 0.15;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (const l of links) {
+        ctx.moveTo(wx2(l.source.x), wy2(l.source.y));
+        ctx.lineTo(wx2(l.target.x), wy2(l.target.y));
+      }
+      ctx.stroke();
+
+      // Nodes — 1.5px filled circles in their kind color
+      ctx.globalAlpha = 1;
+      for (const n of nodes) {
+        ctx.beginPath();
+        ctx.arc(wx2(n.x), wy2(n.y), 1.5, 0, Math.PI * 2);
+        ctx.fillStyle = n.color;
+        ctx.fill();
+      }
+
+      // Viewport rectangle — map the 4 corners of the main viewport to minimap
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const cw = canvas.width / dpr, ch = canvas.height / dpr;
+        const { x: tx, y: ty, zoom } = camRef.current;
+        const vwx0 = -tx / zoom,        vwy0 = -ty / zoom;
+        const vwx1 = (cw - tx) / zoom,  vwy1 = (ch - ty) / zoom;
+        const rx = wx2(vwx0), ry = wy2(vwy0);
+        const rw = (vwx1 - vwx0) * scale, rh = (vwy1 - vwy0) * scale;
+        ctx.fillStyle   = "rgba(255,255,255,0.25)";
+        ctx.strokeStyle = "rgba(255,255,255,0.55)";
+        ctx.lineWidth   = 1;
+        ctx.fillRect(rx, ry, rw, rh);
+        ctx.strokeRect(rx, ry, rw, rh);
+      }
     };
 
+    renderRef.current = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const dpr  = window.devicePixelRatio || 1;
+      const cw   = canvas.width  / dpr;
+      const ch   = canvas.height / dpr;
+      const { x: tx, y: ty, zoom } = camRef.current;
+      const nodes    = nodesRef.current;
+      const links    = linksRef.current;
+      const hovered  = hoverNodeRef.current;
+      const selected = detailNodeRef.current;
+      const hasHover     = hovered  !== null;
+      const hasSel       = selected !== null;
+      const hasHighlight = hasHover || hasSel;
+      // Hover takes priority for neighborhood; fall back to selection when not hovering
+      const activeNode     = hovered ?? selected;
+      const activeNeibIds  = hasHover ? neighborIdsRef.current  : selNeighborIdsRef.current;
+      const activeConnLnks = hasHover ? connLinksRef.current    : selConnLinksRef.current;
+      const showLabels = zoom > 0.55;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.scale(dpr, dpr);
+
+      // Background
+      const style = getComputedStyle(document.documentElement);
+      ctx.fillStyle = style.getPropertyValue("--tempest-bg-editor").trim() || "#0f0f0f";
+      ctx.fillRect(0, 0, cw, ch);
+
+      ctx.translate(tx, ty);
+      ctx.scale(zoom, zoom);
+
+      const edgeBase = style.getPropertyValue("--tempest-border-subtle").trim() || "#2a2a2a";
+
+      // ── Edges ───────────────────────────────────────────────────────────
+      if (!hasHighlight) {
+        ctx.beginPath();
+        ctx.strokeStyle = edgeBase;
+        ctx.lineWidth   = 0.8 / zoom;
+        ctx.globalAlpha = 0.28;
+        for (const l of links) {
+          ctx.moveTo(l.source.x, l.source.y);
+          ctx.lineTo(l.target.x, l.target.y);
+        }
+        ctx.stroke();
+      } else {
+        // Dim unconnected edges
+        ctx.beginPath();
+        ctx.strokeStyle = edgeBase;
+        ctx.lineWidth   = 0.6 / zoom;
+        ctx.globalAlpha = 0.05;
+        for (const l of links) {
+          if (!activeConnLnks.has(l)) {
+            ctx.moveTo(l.source.x, l.source.y);
+            ctx.lineTo(l.target.x, l.target.y);
+          }
+        }
+        ctx.stroke();
+
+        // Highlight connected edges in the active node's color
+        if (activeNode) {
+          ctx.beginPath();
+          ctx.strokeStyle = activeNode.color;
+          ctx.lineWidth   = 1.2 / zoom;
+          ctx.globalAlpha = 0.7;
+          for (const l of activeConnLnks) {
+            ctx.moveTo(l.source.x, l.source.y);
+            ctx.lineTo(l.target.x, l.target.y);
+          }
+          ctx.stroke();
+        }
+      }
+
+      // ── Nodes ───────────────────────────────────────────────────────────
+      // Viewport bounds for label culling
+      const marg = 60 / zoom;
+      const vx0 = (-tx / zoom) - marg, vx1 = ((cw - tx) / zoom) + marg;
+      const vy0 = (-ty / zoom) - marg, vy1 = ((ch - ty) / zoom) + marg;
+
+      for (const n of nodes) {
+        const isHov  = n === hovered;
+        const isSel  = n === selected;
+        const isNeib = hasHighlight && activeNeibIds.has(n.id);
+        const focus  = isHov || isSel;
+        const alpha  = (hasHighlight && !focus && !isNeib) ? 0.1 : 1;
+        const r      = n.radius;
+
+        ctx.globalAlpha = alpha;
+
+        // Glow for focused / neighbor nodes
+        if (focus || isNeib) {
+          const gr   = r * (focus ? 4 : 2.5);
+          const grad = ctx.createRadialGradient(n.x, n.y, r * 0.2, n.x, n.y, gr);
+          grad.addColorStop(0, n.color + (focus ? "70" : "50"));
+          grad.addColorStop(1, n.color + "00");
+          ctx.fillStyle   = grad;
+          ctx.globalAlpha = alpha;
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, gr, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = alpha;
+        }
+
+        // Circle fill
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+        ctx.fillStyle = n.color;
+        ctx.fill();
+
+        // Selection ring
+        if (isSel) {
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, r + 4 / zoom, 0, Math.PI * 2);
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth   = 1.5 / zoom;
+          ctx.globalAlpha = 0.9;
+          ctx.stroke();
+        } else if (isHov) {
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, r + 3 / zoom, 0, Math.PI * 2);
+          ctx.strokeStyle = n.color;
+          ctx.lineWidth   = 1.5 / zoom;
+          ctx.globalAlpha = 0.55;
+          ctx.stroke();
+        }
+
+        // Labels — viewport-culled; shown for focus/neighbors or when zoomed in
+        if (showLabels) {
+          const inVP  = n.x > vx0 && n.x < vx1 && n.y > vy0 && n.y < vy1;
+          const show  = inVP && (focus || isNeib || zoom > 1.1);
+          if (show) {
+            const fs = Math.max(8, Math.min(13, 11 / zoom));
+            ctx.font        = `${fs}px "Geist Mono", monospace`;
+            ctx.textAlign   = "center";
+            ctx.fillStyle   = focus ? "#ffffff" : "#909090";
+            ctx.globalAlpha = focus ? 1 : 0.75 * alpha;
+            ctx.fillText(n.label, n.x, n.y + r + fs * 1.4);
+          }
+        }
+      }
+
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      renderMinimap();
+    };
+  }, []); // empty: reads refs only, never needs to update
+
+  // ── Single-frame render request ────────────────────────────────────────────
+
+  const requestRender = useCallback(() => {
+    if (rafRef.current !== null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      renderRef.current();
+    });
+  }, []);
+
+  // ── Hit test (world-space distance to each node) ───────────────────────────
+
+  const hitTest = useCallback((mx: number, my: number): GNode | null => {
+    const { x: tx, y: ty, zoom } = camRef.current;
+    const wx = (mx - tx) / zoom, wy = (my - ty) / zoom;
+    let best: GNode | null = null, bestD = 14 / zoom;
+    for (const n of nodesRef.current) {
+      const dx = wx - n.x, dy = wy - n.y;
+      const d  = Math.sqrt(dx * dx + dy * dy);
+      if (d < n.radius + bestD) { bestD = d - n.radius; best = n; }
+    }
+    return best;
+  }, []);
+
+  // ── Hover (neighbor sets) ──────────────────────────────────────────────────
+
+  const setHover = useCallback((node: GNode | null) => {
+    if (node === hoverNodeRef.current) return;
+    hoverNodeRef.current = node;
+    if (!node) {
+      neighborIdsRef.current = new Set();
+      connLinksRef.current   = new Set();
+    } else {
+      const ids = new Set<string>(), lks = new Set<GLink>();
+      for (const l of linksRef.current) {
+        if      (l.source === node) { ids.add(l.target.id); lks.add(l); }
+        else if (l.target === node) { ids.add(l.source.id); lks.add(l); }
+      }
+      neighborIdsRef.current = ids;
+      connLinksRef.current   = lks;
+    }
+    requestRender();
+  }, [requestRender]);
+
+  // ── Canvas event helpers ───────────────────────────────────────────────────
+
+  // getXY is inside handlers' closure; canvasRef is stable so this always reads
+  // the current bounding rect even though the fn is captured at effect-creation time.
+  const getXY = (e: MouseEvent) => {
+    const r = canvasRef.current!.getBoundingClientRect();
+    return { mx: e.clientX - r.left, my: e.clientY - r.top };
+  };
+
+  const handleMouseDown = useCallback((e: MouseEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const { mx, my } = getXY(e);
+    const node = hitTest(mx, my);
+    didMoveRef.current = false;
+    if (node) {
+      dragNodeRef.current = node;
+      node.fx = node.x; node.fy = node.y;
+    } else {
+      panStartRef.current = { mx, my, tx: camRef.current.x, ty: camRef.current.y };
+    }
+  }, [hitTest]);
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    const { mx, my } = getXY(e);
+    const canvas = canvasRef.current;
+
+    if (dragNodeRef.current) {
+      didMoveRef.current = true;
+      const { x: tx, y: ty, zoom } = camRef.current;
+      dragNodeRef.current.fx = (mx - tx) / zoom;
+      dragNodeRef.current.fy = (my - ty) / zoom;
+      // Reheat the simulation slightly so other nodes react
+      simRef.current?.alpha(0.3).restart();
+      requestRender();
+      if (canvas) canvas.style.cursor = "grabbing";
+    } else if (panStartRef.current) {
+      const s = panStartRef.current;
+      const dx = mx - s.mx, dy = my - s.my;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) didMoveRef.current = true;
+      camRef.current.x = s.tx + dx;
+      camRef.current.y = s.ty + dy;
+      requestRender();
+      if (canvas) canvas.style.cursor = "grabbing";
+    } else {
+      const node = hitTest(mx, my);
+      setHover(node);
+      if (canvas) canvas.style.cursor = node ? "pointer" : "grab";
+    }
+  }, [hitTest, setHover, requestRender]);
+
+  const handleMouseUp = useCallback((_e: MouseEvent) => {
+    const moved = didMoveRef.current;
+    const drag  = dragNodeRef.current;
+    const canvas = canvasRef.current;
+
+    if (drag) {
+      if (!moved) {
+        // Click on node → select / deselect
+        const next = (drag === detailNodeRef.current) ? null : drag;
+        detailNodeRef.current = next;
+        setDetailNode(next);
+        // Build persistent selection neighborhood so highlight survives hover moves
+        if (next) {
+          const ids = new Set<string>(), lks = new Set<GLink>();
+          for (const l of linksRef.current) {
+            if      (l.source === next) { ids.add(l.target.id); lks.add(l); }
+            else if (l.target === next) { ids.add(l.source.id); lks.add(l); }
+          }
+          selNeighborIdsRef.current = ids;
+          selConnLinksRef.current   = lks;
+        } else {
+          selNeighborIdsRef.current = new Set();
+          selConnLinksRef.current   = new Set();
+        }
+      }
+      drag.fx = null; drag.fy = null;
+      dragNodeRef.current = null;
+      simRef.current?.alpha(0.08).restart();
+      requestRender();
+    } else if (!moved && panStartRef.current) {
+      // Click on background → deselect
+      detailNodeRef.current = null;
+      setDetailNode(null);
+      selNeighborIdsRef.current = new Set();
+      selConnLinksRef.current   = new Set();
+      requestRender();
+    }
+
+    panStartRef.current = null;
+    didMoveRef.current  = false;
+    if (canvas) canvas.style.cursor = hoverNodeRef.current ? "pointer" : "grab";
+  }, [requestRender]);
+
+  const handleWheel = useCallback((e: WheelEvent) => {
+    e.preventDefault();
+    const { mx, my } = getXY(e);
+    const { x: tx, y: ty, zoom } = camRef.current;
+
+    // ctrlKey === true on all browsers/OSes for trackpad pinch gestures.
+    // Pinch deltaY is in pixels and small (1–5 per event), so use exponential
+    // scaling for smooth continuous zoom. Regular scroll wheel uses coarse steps.
+    const factor = e.ctrlKey
+      ? Math.pow(0.98, e.deltaY)      // pinch: proportional, smooth
+      : e.deltaY < 0 ? 1.1 : 1 / 1.1; // wheel: stepped
+
+    const nz = Math.min(6, Math.max(0.02, zoom * factor));
+    camRef.current = {
+      x: mx - (mx - tx) * (nz / zoom),
+      y: my - (my - ty) * (nz / zoom),
+      zoom: nz,
+    };
+    requestRender();
+  }, [requestRender]);
+
+  const handleMouseLeave = useCallback(() => {
+    setHover(null);
+    if (!dragNodeRef.current) panStartRef.current = null;
+  }, [setHover]);
+
+  // ── Pinch-to-zoom (Pointer Events) ───────────────────────────────────────────
+  // WebView2 on Windows intercepts touchpad pinch as ctrl+wheel (handled in
+  // handleWheel as a fallback), but touchscreen pinch never reaches wheel. We
+  // track two active touch pointers, measure the distance between them each
+  // frame, and zoom toward their midpoint. touch-action:none on .kb-canvas keeps
+  // the browser from handling the gesture itself. Single-pointer touch is left to
+  // the existing mouse-event drag/pan path (which fires via compat mouse events).
+
+  const handlePointerDown = useCallback((e: PointerEvent) => {
+    if (e.pointerType !== "touch") return;
+    pinchRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { canvasRef.current?.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    if (pinchRef.current.size === 2) {
+      // A second finger down → cancel any in-progress single-pointer drag/pan so
+      // it doesn't fight the pinch.
+      if (dragNodeRef.current) {
+        dragNodeRef.current.fx = null;
+        dragNodeRef.current.fy = null;
+        dragNodeRef.current = null;
+      }
+      panStartRef.current = null;
+      lastPinchDistRef.current = null;
+      e.preventDefault();
+    }
+  }, []);
+
+  const handlePointerMove = useCallback((e: PointerEvent) => {
+    if (e.pointerType !== "touch") return;
+    if (!pinchRef.current.has(e.pointerId)) return;
+    pinchRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinchRef.current.size !== 2) return;
+    e.preventDefault();
+
+    const pts = Array.from(pinchRef.current.values());
+    const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+    const last = lastPinchDistRef.current;
+    lastPinchDistRef.current = dist;
+    if (last === null || last === 0) return;
+
+    const factor = dist / last;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const mx = (pts[0].x + pts[1].x) / 2 - rect.left;
+    const my = (pts[0].y + pts[1].y) / 2 - rect.top;
+    const { x: tx, y: ty, zoom } = camRef.current;
+    const nz = Math.min(6, Math.max(0.02, zoom * factor));
+    camRef.current = {
+      x: mx - (mx - tx) * (nz / zoom),
+      y: my - (my - ty) * (nz / zoom),
+      zoom: nz,
+    };
+    requestRender();
+  }, [requestRender]);
+
+  const handlePointerUp = useCallback((e: PointerEvent) => {
+    if (e.pointerType !== "touch") return;
+    pinchRef.current.delete(e.pointerId);
+    try { canvasRef.current?.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+    // Reset baseline so remaining/next fingers re-establish distance cleanly.
+    lastPinchDistRef.current = null;
+  }, []);
+
+  // ── Minimap camera jump / drag ───────────────────────────────────────────────
+  // Converts a client-space point over the minimap into a world point and
+  // centers the main camera there (preserving current zoom).
+  const minimapPanTo = useCallback((clientX: number, clientY: number) => {
+    const mm = minimapCanvasRef.current;
+    const tf = minimapTfRef.current;
+    const canvas = canvasRef.current;
+    if (!mm || !tf || !canvas) return;
+    const rect = mm.getBoundingClientRect();
+    const px = clientX - rect.left;
+    const py = clientY - rect.top;
+    const wx = (px - tf.ox) / tf.scale;
+    const wy = (py - tf.oy) / tf.scale;
+    const dpr = window.devicePixelRatio || 1;
+    const cw = canvas.width / dpr, ch = canvas.height / dpr;
+    const zoom = camRef.current.zoom;
+    camRef.current = {
+      x: cw / 2 - wx * zoom,
+      y: ch / 2 - wy * zoom,
+      zoom,
+    };
+    requestRender();
+  }, [requestRender]);
+
+  // ── Canvas resize ──────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    const canvas = canvasRef.current, container = containerRef.current;
+    if (!canvas || !container) return;
+    const resize = () => {
+      const dpr  = window.devicePixelRatio || 1;
+      const rect = container.getBoundingClientRect();
+      canvas.width        = Math.round(rect.width  * dpr);
+      canvas.height       = Math.round(rect.height * dpr);
+      canvas.style.width  = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+      // Minimap has a fixed CSS size; size its backing store for the DPR once here.
+      const mm = minimapCanvasRef.current;
+      if (mm) {
+        mm.width  = Math.round(MINIMAP_W * dpr);
+        mm.height = Math.round(MINIMAP_H * dpr);
+      }
+      requestRender();
+    };
     resize();
     const ro = new ResizeObserver(resize);
     ro.observe(container);
     return () => ro.disconnect();
-  }, [useCanvasEdges, scheduleDraw]);
+  }, [requestRender]);
 
-  // React Flow viewport change: redraw canvas edges + toggle level-of-detail.
-  const handleMove = useCallback(
-    (_ev: MouseEvent | TouchEvent | null, vp: { x: number; y: number; zoom: number }) => {
-      if (containerRef.current) {
-        containerRef.current.classList.toggle("kb-flow--zoomed-out", vp.zoom < 0.4);
-      }
-      if (useCanvasEdges) scheduleDraw();
-    },
-    [useCanvasEdges, scheduleDraw]
-  );
+  // ── Wire canvas events ─────────────────────────────────────────────────────
 
-  // Discover indexed projects on mount
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.addEventListener("mousedown",  handleMouseDown);
+    canvas.addEventListener("mousemove",  handleMouseMove);
+    window.addEventListener("mouseup",    handleMouseUp);
+    canvas.addEventListener("wheel",      handleWheel, { passive: false });
+    canvas.addEventListener("mouseleave", handleMouseLeave);
+    // Pinch-to-zoom via pointer events (primary path on touchscreens).
+    canvas.addEventListener("pointerdown",   handlePointerDown, { passive: false });
+    canvas.addEventListener("pointermove",   handlePointerMove, { passive: false });
+    canvas.addEventListener("pointerup",     handlePointerUp);
+    canvas.addEventListener("pointercancel", handlePointerUp);
+    return () => {
+      canvas.removeEventListener("mousedown",  handleMouseDown);
+      canvas.removeEventListener("mousemove",  handleMouseMove);
+      window.removeEventListener("mouseup",    handleMouseUp);
+      canvas.removeEventListener("wheel",      handleWheel);
+      canvas.removeEventListener("mouseleave", handleMouseLeave);
+      canvas.removeEventListener("pointerdown",   handlePointerDown);
+      canvas.removeEventListener("pointermove",   handlePointerMove);
+      canvas.removeEventListener("pointerup",     handlePointerUp);
+      canvas.removeEventListener("pointercancel", handlePointerUp);
+    };
+  }, [handleMouseDown, handleMouseMove, handleMouseUp, handleWheel, handleMouseLeave,
+      handlePointerDown, handlePointerMove, handlePointerUp]);
+
+  // ── Wire minimap events (separate from main canvas handlers) ────────────────
+
+  useEffect(() => {
+    const mm = minimapCanvasRef.current;
+    if (!mm) return;
+    let dragging = false;
+    const down = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dragging = true;
+      minimapPanTo(e.clientX, e.clientY);
+    };
+    const move = (e: MouseEvent) => {
+      if (!dragging) return;
+      minimapPanTo(e.clientX, e.clientY);
+    };
+    const up = () => { dragging = false; };
+    mm.addEventListener("mousedown", down);
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+    return () => {
+      mm.removeEventListener("mousedown", down);
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+    };
+  }, [minimapPanTo]);
+
+  // ── Discover indexed projects on mount ─────────────────────────────────────
+
   useEffect(() => {
     const open = getOpenProjects();
     Promise.all(
       open.map((p) =>
         invoke<boolean>("check_atlas_db", { projectPath: p.path })
-          .then((ok) => (ok ? { id: p.id, name: p.name, path: p.path } : null))
+          .then((ok) => ok ? { id: p.id, name: p.name, path: p.path } : null)
           .catch(() => null)
       )
     ).then((results) => {
@@ -413,292 +692,219 @@ function KnowledgeBaseInner() {
     });
   }, []);
 
-  // Tear everything down on unmount
-  useEffect(() => {
-    return () => {
-      terminateWorkers();
-      cancelStreamRaf();
-      if (canvasRafRef.current !== null) cancelAnimationFrame(canvasRafRef.current);
-      clearSimTimer();
-      clearWatchdog();
-    };
+  // ── Unmount cleanup ────────────────────────────────────────────────────────
+
+  useEffect(() => () => {
+    simRef.current?.stop();
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
   }, []);
 
-  // Fetch + lay out graph when selectedPath changes
+  // ── Load + simulate graph ──────────────────────────────────────────────────
+
   useEffect(() => {
     if (!selectedPath) return;
     let cancelled = false;
 
-    terminateWorkers();
-    cancelStreamRaf();
-    clearSimTimer();
-    clearWatchdog();
+    // Tear down previous
+    simRef.current?.stop();
+    if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    nodesRef.current      = [];
+    linksRef.current      = [];
+    hoverNodeRef.current      = null;
+    neighborIdsRef.current    = new Set();
+    connLinksRef.current      = new Set();
+    selNeighborIdsRef.current = new Set();
+    selConnLinksRef.current   = new Set();
+    dragNodeRef.current       = null;
+    detailNodeRef.current     = null;
+    setDetailNode(null);
     setLoadState("loading");
-    setSelectedNode(null);
-    setNodes([]);
-    setEdges([]);
-    setUseCanvasEdges(false);
-    setStreamPct(0);
-    setProgress(PROGRESS.db);
+    setProgress(15);
     setLogLine("Querying symbol database…");
-
-    // Commit final positions: stream nodes into RF in frames, and pick edge
-    // rendering strategy (SVG vs canvas overlay) based on graph size.
-    const finishWithPositions = (
-      graphNodes: SymbolNode[],
-      validEdges: SymbolEdge[],
-      posMap: Map<string, { x: number; y: number }>
-    ) => {
-      clearSimTimer();
-      clearWatchdog();
-      setProgress(100);
-
-      const allNodes = buildRFNodes(graphNodes, posMap);
-      const canvasEdges = allNodes.length > CANVAS_EDGE_THRESHOLD;
-      setUseCanvasEdges(canvasEdges);
-
-      if (canvasEdges) {
-        // Edges rendered off-DOM on a canvas overlay; no RF edges at all.
-        edgesForCanvasRef.current = validEdges.map((e) => ({
-          source: e.source,
-          target: e.target,
-        }));
-        streamNodesToReactFlow(
-          allNodes,
-          [],
-          setNodes,
-          setEdges,
-          setLoadState,
-          setStreamPct,
-          streamRafRef
-        );
-      } else {
-        edgesForCanvasRef.current = [];
-        streamNodesToReactFlow(
-          allNodes,
-          buildRFEdges(validEdges),
-          setNodes,
-          setEdges,
-          setLoadState,
-          setStreamPct,
-          streamRafRef
-        );
-      }
-    };
 
     invoke<GraphData>("get_atlas_graph", { projectPath: selectedPath })
       .then((graph) => {
         if (cancelled) return;
+        setProgress(45);
+        setLogLine(`${graph.nodes.length} symbols · ${graph.edges.length} edges`);
 
-        setProgress(PROGRESS.found);
-        setLogLine(`Found ${graph.nodes.length} symbols, ${graph.edges.length} edges`);
-
-        const ids = new Set(graph.nodes.map((n) => n.id));
-        nodeMapRef.current = new Map(graph.nodes.map((n) => [n.id, n]));
-        const validEdges = graph.edges.filter(
-          (e) => ids.has(e.source) && ids.has(e.target)
+        const colors   = resolveKindColors();
+        const validIds = new Set(graph.nodes.map((n) => n.id));
+        const rawEdges = graph.edges.filter(
+          (e) => validIds.has(e.source) && validIds.has(e.target)
         );
 
-        const dropped = graph.edges.length - validEdges.length;
-        setProgress(PROGRESS.filtered);
-        if (dropped > 0) setLogLine(`Filtered ${dropped} dangling edges`);
-
-        // Small graphs: run layout on the main thread — no worker overhead
-        if (graph.nodes.length < 200) {
-          setProgress(PROGRESS.simulation);
-          setLogLine("Laying out on main thread…");
-          const tmp = cytoscape({
-            headless: true,
-            styleEnabled: false,
-            elements: {
-              nodes: graph.nodes.map((n) => ({ data: { id: n.id } })),
-              edges: validEdges.map((e, i) => ({
-                data: { id: `e${i}`, source: e.source, target: e.target },
-              })),
-            },
-          });
-          const lay = tmp.layout({
-            name: "fcose",
-            animate: false,
-            randomize: true,
-            fit: false,
-            nodeRepulsion: 4500,
-            idealEdgeLength: 80,
-            numIter: 2500,
-            tile: true,
-          } as any);
-          lay.one("layoutstop", () => {
-            const posMap = new Map(
-              tmp.nodes().map((n) => [n.id(), { x: n.position().x, y: n.position().y }])
-            );
-            tmp.destroy();
-            if (!cancelled) finishWithPositions(graph.nodes, validEdges, posMap);
-          });
-          lay.run();
-          return;
+        // Degree for node sizing
+        const deg = new Map<string, number>();
+        for (const n of graph.nodes) deg.set(n.id, 0);
+        for (const e of rawEdges) {
+          deg.set(e.source, (deg.get(e.source) ?? 0) + 1);
+          deg.set(e.target, (deg.get(e.target) ?? 0) + 1);
         }
 
-        // Large graphs: partition the graph and lay out each chunk in parallel
-        // across multiple workers, then merge the partition boxes into a grid.
-        const numPartitions = Math.min(
-          6,
-          Math.max(2, navigator.hardwareConcurrency || 2)
-        );
-        const simpleNodes = graph.nodes.map((n) => ({ id: n.id }));
-        const simpleEdges = validEdges.map((e) => ({
-          source: e.source,
-          target: e.target,
+        // Spread nodes proportional to count so they have room to settle
+        const spread = Math.max(200, Math.sqrt(graph.nodes.length) * 22);
+
+        const gNodes: GNode[] = graph.nodes.map((n) => ({
+          id: n.id, label: n.name, kind: n.kind,
+          color:  colors[n.kind] ?? colors._default,
+          radius: nodeRadius(deg.get(n.id) ?? 0),
+          file_path: n.file_path, start_line: n.start_line, language: n.language,
+          x: (Math.random() - 0.5) * spread,
+          y: (Math.random() - 0.5) * spread,
+          vx: 0, vy: 0, fx: null, fy: null,
         }));
-        const parts = partitionNodes(simpleNodes, simpleEdges, numPartitions);
 
-        setProgress(PROGRESS.dispatched);
-        setLogLine(
-          `Laying out ${graph.nodes.length} symbols across ${numPartitions} workers…`
-        );
+        const byId = new Map(gNodes.map((n) => [n.id, n]));
+        const gLinks: GLink[] = rawEdges
+          .map((e) => ({
+            source: byId.get(e.source)!,
+            target: byId.get(e.target)!,
+            kind: e.kind,
+          }))
+          .filter((l) => l.source && l.target);
 
-        const fractions = new Array(numPartitions).fill(0);
-        workerFractionsRef.current = fractions;
+        nodesRef.current = gNodes;
+        linksRef.current = gLinks;
 
-        const stageFraction = (msg: string): number =>
-          msg.startsWith("Initializing")
-            ? 0.15
-            : msg.startsWith("Running")
-            ? 0.4
-            : msg.startsWith("Transferring")
-            ? 0.9
-            : 0;
+        // Initial camera: zoom out far enough that the estimated final spread
+        // is fully visible from the start. "Does not matter if graph is small."
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const dpr = window.devicePixelRatio || 1;
+          const cw  = canvas.width  / dpr;
+          const ch  = canvas.height / dpr;
+          // Rough estimate of final layout radius after repulsion settles
+          const estR     = Math.max(400, Math.sqrt(gNodes.length) * 55);
+          const initZoom = Math.min(0.9, (Math.min(cw, ch) * 0.88) / (estR * 2));
+          camRef.current = { x: cw / 2, y: ch / 2, zoom: initZoom };
+        }
 
-        // Smoothly creep the averaged progress during the long "Running" phase.
-        simTimerRef.current = setInterval(() => {
-          const f = workerFractionsRef.current;
-          for (let i = 0; i < f.length; i++) {
-            if (f[i] >= 0.4 && f[i] < 0.85) f[i] = Math.min(0.85, f[i] + 0.02);
+        setProgress(70);
+        setLogLine("Simulating…");
+
+        // Auto-fit helper: reads live node positions and adjusts camera
+        const doAutoFit = () => {
+          const c = canvasRef.current;
+          if (!c || nodesRef.current.length === 0) return;
+          const dpr2 = window.devicePixelRatio || 1;
+          const cw2  = c.width  / dpr2, ch2 = c.height / dpr2;
+          let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+          for (const n of nodesRef.current) {
+            x0 = Math.min(x0, n.x - n.radius); y0 = Math.min(y0, n.y - n.radius);
+            x1 = Math.max(x1, n.x + n.radius); y1 = Math.max(y1, n.y + n.radius);
           }
-          const avg = f.reduce((a, b) => a + b, 0) / (f.length || 1);
-          setProgress(
-            PROGRESS.dispatched + avg * (PROGRESS.transfer - PROGRESS.dispatched)
+          const pad = 56;
+          const z   = Math.min(3,
+            (cw2 - pad * 2) / Math.max(1, x1 - x0),
+            (ch2 - pad * 2) / Math.max(1, y1 - y0)
           );
-        }, 200);
+          camRef.current = {
+            x: cw2 / 2 - ((x0 + x1) / 2) * z,
+            y: ch2 / 2 - ((y0 + y1) / 2) * z,
+            zoom: z,
+          };
+        };
 
-        const workers: Worker[] = [];
-        activeWorkersRef.current = workers;
-
-        const runPartition = (
-          part: { nodes: { id: string }[]; edges: { source: string; target: string }[] },
-          i: number
-        ): Promise<{ id: string; x: number; y: number }[]> =>
-          new Promise((resolve, reject) => {
-            const w = new Worker(
-              new URL("../workers/graphLayout.worker.ts", import.meta.url),
-              { type: "module" }
-            );
-            workers.push(w);
-            w.onmessage = (
-              ev: MessageEvent<{
-                progress?: string;
-                error?: string;
-                positions?: { id: string; x: number; y: number }[];
-              }>
-            ) => {
-              const d = ev.data;
-              if (d.error) {
-                w.terminate();
-                reject(new Error(d.error));
-                return;
-              }
-              if (d.progress) {
-                const fr = stageFraction(d.progress);
-                if (fr > fractions[i]) fractions[i] = fr;
-                return;
-              }
-              if (d.positions) {
-                fractions[i] = 1;
-                w.terminate();
-                resolve(d.positions);
-              }
-            };
-            w.onerror = (e) => {
-              w.terminate();
-              reject(new Error(e.message || "Layout worker error"));
-            };
-            w.postMessage({ nodes: part.nodes, edges: part.edges });
+        // Build D3 force simulation
+        // - forceManyBody: strong repulsion keeps nodes apart (Obsidian feel)
+        // - forceLink: edges as springs — connected nodes stay nearby
+        // - forceCenter: very weak pull toward origin
+        // - forceCollide: prevents node overlap
+        // - slow alphaDecay: simulation runs long enough for nodes to spread wide
+        let autoFitted = false;
+        const sim = forceSimulation<GNode>(gNodes)
+          .force("charge",  forceManyBody<GNode>().strength(-220).distanceMax(700))
+          .force("link",    forceLinks<GNode, GLink>(gLinks).distance(90).strength(0.35))
+          .force("center",  forceCenter<GNode>(0, 0).strength(0.04))
+          .force("collide", forceCollide<GNode>((n) => (n as GNode).radius + 7).strength(0.9))
+          .alphaDecay(0.013)
+          .velocityDecay(0.4)
+          .on("tick", () => {
+            // Auto-fit once when simulation is ~60% settled (alpha < 0.15).
+            // By this point nodes have spread organically; fit gives a stable view.
+            if (!autoFitted && sim.alpha() < 0.15) {
+              autoFitted = true;
+              if (!cancelled) doAutoFit();
+            }
+            // Each simulation tick requests exactly one animation frame
+            if (rafRef.current === null) {
+              rafRef.current = requestAnimationFrame(() => {
+                rafRef.current = null;
+                renderRef.current();
+              });
+            }
           });
 
-        // 30s watchdog — fall back to grid if the workers never finish
-        watchdogRef.current = setTimeout(() => {
-          if (cancelled) return;
-          terminateWorkers();
-          clearSimTimer();
-          setLogLine("Layout timed out — using grid fallback");
-          finishWithPositions(
-            graph.nodes,
-            validEdges,
-            gridPositions(graph.nodes.map((n) => n.id))
-          );
-        }, 30_000);
-
-        Promise.all(parts.map((p, i) => runPartition(p, i)))
-          .then((results) => {
-            if (cancelled) return;
-            clearSimTimer();
-            clearWatchdog();
-            activeWorkersRef.current = [];
-            setProgress(PROGRESS.assemble);
-            setLogLine("Merging partition layouts…");
-            const merged = mergePartitionPositions(
-              results.map((positions) => ({ positions }))
-            );
-            finishWithPositions(graph.nodes, validEdges, merged);
-          })
-          .catch((err) => {
-            if (cancelled) return;
-            terminateWorkers();
-            clearSimTimer();
-            clearWatchdog();
-            setErrorMsg(err instanceof Error ? err.message : String(err));
-            setLoadState("error");
-          });
+        simRef.current = sim;
+        setProgress(100);
+        if (!cancelled) setLoadState("ready");
       })
       .catch((err) => {
         if (cancelled) return;
-        clearSimTimer();
-        clearWatchdog();
         setErrorMsg(String(err));
         setLoadState("error");
       });
 
     return () => {
       cancelled = true;
-      terminateWorkers();
-      cancelStreamRaf();
-      clearSimTimer();
-      clearWatchdog();
+      simRef.current?.stop();
+      if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPath]);
 
-  const onNodeClick = useCallback(
-    (_ev: React.MouseEvent, node: RFNode) => {
-      setSelectedNode(nodeMapRef.current.get(node.id) ?? null);
-    },
-    []
-  );
+  // ── Toolbar zoom controls ──────────────────────────────────────────────────
 
-  const onPaneClick = useCallback(() => setSelectedNode(null), []);
+  const zoomBy = useCallback((factor: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const cx = canvas.width / (2 * dpr), cy = canvas.height / (2 * dpr);
+    const { x: tx, y: ty, zoom } = camRef.current;
+    const nz = Math.min(6, Math.max(0.02, zoom * factor));
+    camRef.current = {
+      x: cx - (cx - tx) * (nz / zoom),
+      y: cy - (cy - ty) * (nz / zoom),
+      zoom: nz,
+    };
+    requestRender();
+  }, [requestRender]);
 
-  const zoomIn = useCallback(() => reactFlowInstance.zoomIn(), [reactFlowInstance]);
-  const zoomOut = useCallback(() => reactFlowInstance.zoomOut(), [reactFlowInstance]);
-  const fit = useCallback(
-    () => reactFlowInstance.fitView({ padding: 0.1 }),
-    [reactFlowInstance]
-  );
-  const resetZoom = useCallback(
-    () => reactFlowInstance.setViewport({ x: 0, y: 0, zoom: 1 }),
-    [reactFlowInstance]
-  );
+  const fitView = useCallback(() => {
+    const canvas = canvasRef.current;
+    const nodes  = nodesRef.current;
+    if (!canvas || nodes.length === 0) return;
+    const dpr = window.devicePixelRatio || 1;
+    const cw = canvas.width / dpr, ch = canvas.height / dpr;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of nodes) {
+      minX = Math.min(minX, n.x - n.radius); minY = Math.min(minY, n.y - n.radius);
+      maxX = Math.max(maxX, n.x + n.radius); maxY = Math.max(maxY, n.y + n.radius);
+    }
+    const pad  = 48;
+    const zoom = Math.min(4,
+      (cw - pad * 2) / Math.max(1, maxX - minX),
+      (ch - pad * 2) / Math.max(1, maxY - minY)
+    );
+    camRef.current = {
+      x: cw / 2 - ((minX + maxX) / 2) * zoom,
+      y: ch / 2 - ((minY + maxY) / 2) * zoom,
+      zoom,
+    };
+    requestRender();
+  }, [requestRender]);
 
-  const graphVisible = loadState === "ready" || loadState === "streaming";
-  const hasGraph = graphVisible && nodes.length > 0;
+  const resetView = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    camRef.current = { x: canvas.width / (2 * dpr), y: canvas.height / (2 * dpr), zoom: 1 };
+    requestRender();
+  }, [requestRender]);
+
+  const hasGraph = loadState === "ready" && nodesRef.current.length > 0;
+
+  // ── JSX ────────────────────────────────────────────────────────────────────
 
   return (
     <div className="kb-root">
@@ -713,47 +919,17 @@ function KnowledgeBaseInner() {
             <option value="">No indexed projects</option>
           ) : (
             indexedProjects.map((p) => (
-              <option key={p.id} value={p.path}>
-                {p.name}
-              </option>
+              <option key={p.id} value={p.path}>{p.name}</option>
             ))
           )}
         </select>
 
         <div className="kb-toolbar-divider" />
 
-        <button
-          className="kb-tool-btn"
-          title="Zoom in"
-          onClick={zoomIn}
-          disabled={!hasGraph}
-        >
-          <ZoomIn size={14} />
-        </button>
-        <button
-          className="kb-tool-btn"
-          title="Zoom out"
-          onClick={zoomOut}
-          disabled={!hasGraph}
-        >
-          <ZoomOut size={14} />
-        </button>
-        <button
-          className="kb-tool-btn"
-          title="Fit to screen"
-          onClick={fit}
-          disabled={!hasGraph}
-        >
-          <Maximize2 size={14} />
-        </button>
-        <button
-          className="kb-tool-btn"
-          title="Reset zoom"
-          onClick={resetZoom}
-          disabled={!hasGraph}
-        >
-          <RotateCcw size={14} />
-        </button>
+        <button className="kb-tool-btn" title="Zoom in"      onClick={() => zoomBy(1.25)} disabled={!hasGraph}><ZoomIn    size={14} /></button>
+        <button className="kb-tool-btn" title="Zoom out"     onClick={() => zoomBy(0.8)}  disabled={!hasGraph}><ZoomOut   size={14} /></button>
+        <button className="kb-tool-btn" title="Fit to screen" onClick={fitView}            disabled={!hasGraph}><Maximize2 size={14} /></button>
+        <button className="kb-tool-btn" title="Reset view"   onClick={resetView}           disabled={!hasGraph}><RotateCcw size={14} /></button>
       </div>
 
       <div className="kb-canvas-wrap" ref={containerRef}>
@@ -761,7 +937,7 @@ function KnowledgeBaseInner() {
           <div className="kb-empty">
             <span className="kb-empty-title">No indexed projects</span>
             <span className="kb-empty-desc">
-              Index a project with Atlas to see its code graph.
+              Index a project with Atlas to see its knowledge graph.
             </span>
           </div>
         )}
@@ -774,10 +950,7 @@ function KnowledgeBaseInner() {
               <span className="kb-loader-pct">{Math.round(progress)}%</span>
             </div>
             <div className="kb-progress-track">
-              <div
-                className="kb-progress-fill"
-                style={{ width: `${progress}%` }}
-              />
+              <div className="kb-progress-fill" style={{ width: `${progress}%` }} />
             </div>
             <span className="kb-log-line">{logLine}</span>
           </div>
@@ -790,71 +963,52 @@ function KnowledgeBaseInner() {
           </div>
         )}
 
-        {graphVisible && (
-          <>
-            <ReactFlow
-              className="kb-flow"
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              nodeTypes={nodeTypes}
-              onNodeClick={onNodeClick}
-              onPaneClick={onPaneClick}
-              onMove={handleMove}
-              fitView
-              onlyRenderVisibleElements
-              minZoom={0.05}
-              maxZoom={3}
-              proOptions={{ hideAttribution: true }}
-            />
-            {useCanvasEdges && (
-              <canvas ref={canvasRef} className="kb-edge-canvas" />
-            )}
-            {loadState === "streaming" && (
-              <div className="kb-stream-strip" title="Rendering nodes…">
-                <div
-                  className="kb-stream-strip-fill"
-                  style={{ width: `${streamPct}%` }}
-                />
-              </div>
-            )}
-          </>
-        )}
+        <canvas
+          ref={canvasRef}
+          className="kb-canvas"
+          style={{ display: loadState === "ready" ? "block" : "none" }}
+        />
 
-        {selectedNode && (
+        <canvas
+          ref={minimapCanvasRef}
+          className="kb-minimap"
+          style={{ display: hasGraph ? "block" : "none" }}
+        />
+
+        {detailNode && (
           <div className="kb-detail">
             <button
               className="kb-detail-close"
-              onClick={() => setSelectedNode(null)}
+              onClick={() => {
+                detailNodeRef.current     = null;
+                setDetailNode(null);
+                selNeighborIdsRef.current = new Set();
+                selConnLinksRef.current   = new Set();
+                requestRender();
+              }}
+            >×</button>
+            <div
+              className="kb-detail-badge"
+              style={{ background: detailNode.color + "22", color: detailNode.color }}
             >
-              ×
-            </button>
-            <div className="kb-detail-name">{selectedNode.name}</div>
-            <div className="kb-detail-kind">{selectedNode.kind}</div>
+              {detailNode.kind}
+            </div>
+            <div className="kb-detail-name">{detailNode.label}</div>
             <div className="kb-detail-row">
               <span>File</span>
-              {selectedNode.file_path}
+              {detailNode.file_path.split(/[/\\]/).slice(-2).join("/")}
             </div>
             <div className="kb-detail-row">
               <span>Line</span>
-              {selectedNode.start_line}
+              {detailNode.start_line}
             </div>
             <div className="kb-detail-row">
-              <span>Lang</span>
-              {selectedNode.language}
+              <span>Language</span>
+              {detailNode.language}
             </div>
           </div>
         )}
       </div>
     </div>
-  );
-}
-
-export function KnowledgeBasePage() {
-  return (
-    <ReactFlowProvider>
-      <KnowledgeBaseInner />
-    </ReactFlowProvider>
   );
 }
