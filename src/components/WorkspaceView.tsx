@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, memo, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { invoke, Channel } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { sessionManager } from "../store/sessionManager";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -65,7 +64,8 @@ import { getPrompts, type PromptEntry } from "../store/prompts";
 import { useTheme, builtinThemes } from "../themes/ThemeContext";
 import { Mark } from "../assets/Mark";
 import { StatusBar } from "./StatusBar";
-import { NexusPage } from "./NexusPage";
+import { AtlasIndexModal } from "./AtlasIndexModal";
+import { KnowledgeBasePage } from "./KnowledgeBasePage";
 import "./StatusBar.css";
 import "./WorkspaceView.css";
 
@@ -110,7 +110,7 @@ interface Project {
   worktrees: Worktree[];
 }
 
-type NavSection = "overview" | "nexus";
+type NavSection = "overview" | "knowledge-base";
 
 // Directories under .tempest/ that are internal to Tempest and must never be
 // treated as git worktrees in the sidebar.
@@ -246,6 +246,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const [recentsVersion, setRecentsVersion] = useState(0);
   const [atlasAutoIndexLocal, setAtlasAutoIndexLocal] = useState(false);
   const [atlasIndexingPaths, setAtlasIndexingPaths] = useState<string[]>([]);
+  const [atlasDebugModal, setAtlasDebugModal] = useState(false);
   const [queueOpenSessionId, setQueueOpenSessionId] = useState<string | null>(null);
   const [promptPickerOpen, setPromptPickerOpen] = useState(false);
   const [promptPickerItems, setPromptPickerItems] = useState<PromptEntry[]>([]);
@@ -316,13 +317,6 @@ export function WorkspaceView({ zen, name, path }: Props) {
     error: string | null;
   } | null>(null);
 
-  // Stream Atlas indexer output to the browser DevTools console
-  useEffect(() => {
-    const p = listen<{ path: string; line: string }>("atlas:log", (e) => {
-      console.log(`[Atlas] ${e.payload.line}`);
-    });
-    return () => { p.then((fn) => fn()); };
-  }, []);
 
   // Persist projects list to localStorage whenever it changes
   useEffect(() => {
@@ -568,6 +562,8 @@ export function WorkspaceView({ zen, name, path }: Props) {
         openSessionMenu({ currentTarget: document.body } as unknown as React.MouseEvent<HTMLElement>, projId, "below");
       } else if (matchesEvent(keybinds.broadcast, e)) {
         e.preventDefault(); setBroadcastOpen(true);
+      } else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === "m") {
+        e.preventDefault(); setAtlasDebugModal((v) => !v);
       } else if (matchesEvent(keybinds.closeTab, e)) {
         e.preventDefault(); if (activeSessionId) closeSession(activeSessionId);
       } else if (matchesEvent(keybinds.nextTab, e)) {
@@ -1569,9 +1565,9 @@ export function WorkspaceView({ zen, name, path }: Props) {
             <LayoutGrid size={16} />
             <span>Overview</span>
           </button>
-          <button className={navBtn("nexus")} onClick={() => goTo("nexus")}>
+          <button className={navBtn("knowledge-base")} onClick={() => goTo("knowledge-base")}>
             <Network size={16} />
-            <span>Nexus</span>
+            <span>Knowledge Base</span>
           </button>
 
           {/* Scrollable middle */}
@@ -2135,8 +2131,8 @@ export function WorkspaceView({ zen, name, path }: Props) {
                 />
               );
             })}
-            {!activeSessionId && activeSection === "nexus" && (
-              <NexusPage />
+            {!activeSessionId && activeSection === "knowledge-base" && (
+              <KnowledgeBasePage />
             )}
             {!activeSessionId && activeSection === "overview" && (
               <div className="overview-page">
@@ -2245,11 +2241,31 @@ export function WorkspaceView({ zen, name, path }: Props) {
             )}
           </div>
 
-          <StatusBar
-            indexingPaths={atlasIndexingPaths.map((p) => ({ path: p, name: folderName(p) }))}
-            sandboxed={activeSession?.sandboxed}
-            onIndexComplete={(p) => setAtlasIndexingPaths((prev) => prev.filter((x) => x !== p))}
-          />
+          <StatusBar sandboxed={activeSession?.sandboxed} />
+
+          {atlasIndexingPaths.length > 0 && (() => {
+            const activePath = atlasIndexingPaths[0];
+            const dismiss = () => setAtlasIndexingPaths((prev) => prev.filter((x) => x !== activePath));
+            return (
+              <AtlasIndexModal
+                path={activePath}
+                onCancel={dismiss}
+                onComplete={dismiss}
+              />
+            );
+          })()}
+
+          {atlasDebugModal && (() => {
+            const debugPath = projects[0]?.path ?? "debug";
+            return (
+              <AtlasIndexModal
+                path={debugPath}
+                onCancel={() => setAtlasDebugModal(false)}
+                onComplete={() => setAtlasDebugModal(false)}
+                persistent
+              />
+            );
+          })()}
         </main>
 
         {activeSession && (
@@ -2356,6 +2372,24 @@ export function WorkspaceView({ zen, name, path }: Props) {
                 {(getRuntimeState().atlasProjects ?? {})[ctxMenu.projectPath] === true
                   ? "Re-index project"
                   : "Index project"}
+              </button>
+            )}
+            {ctxMenu.isProjectHeader && getSettings().atlasEnabled &&
+              (getRuntimeState().atlasProjects ?? {})[ctxMenu.projectPath] === true && (
+              <button
+                className="ctx-item ctx-item--danger"
+                onClick={() => {
+                  invoke("remove_atlas_index", { projectPath: ctxMenu.projectPath })
+                    .catch((e) => console.error("[Atlas] remove_atlas_index failed:", e));
+                  const decided = getRuntimeState().atlasProjects ?? {};
+                  const updated = { ...decided };
+                  delete updated[ctxMenu.projectPath];
+                  setRuntimeState({ atlasProjects: updated });
+                  setCtxMenu(null);
+                }}
+              >
+                <Database size={13} />
+                Remove index
               </button>
             )}
             {ctxMenu.isProjectHeader && (

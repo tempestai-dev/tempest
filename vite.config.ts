@@ -8,6 +8,15 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react()],
 
+  // Force Vite to pre-bundle the UMD/CJS cytoscape layout plugins into ESM
+  // so they load correctly inside type:"module" workers.
+  worker: {
+    format: "es",
+  },
+  optimizeDeps: {
+    include: ["cytoscape", "cytoscape-fcose"],
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

@@ -5,6 +5,7 @@ import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { CookieBanner } from "@/components/cookie-banner";
 import { ProgressiveBlur } from "@/components/global/progressive-blur";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -69,6 +70,7 @@ export default function RootLayout({
           </div> */}
         </Providers>
         <CookieBanner />
+        <Analytics />
       </body>
     </html>
   );

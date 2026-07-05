@@ -234,6 +234,86 @@ fn ensure_atlas_mcp_gitignore(project_path: &str) {
     let _ = std::fs::write(&gitignore, format!("{}{}{}\n", existing, suffix, addition));
 }
 
+#[derive(serde::Serialize)]
+struct SymbolNode {
+    id: String,
+    name: String,
+    kind: String,
+    file_path: String,
+    start_line: i64,
+    end_line: i64,
+    language: String,
+}
+
+#[derive(serde::Serialize)]
+struct SymbolEdge {
+    source: String,
+    target: String,
+    kind: String,
+}
+
+#[derive(serde::Serialize)]
+struct GraphData {
+    nodes: Vec<SymbolNode>,
+    edges: Vec<SymbolEdge>,
+}
+
+#[tauri::command]
+fn get_atlas_graph(project_path: String) -> Result<GraphData, String> {
+    let db_path = std::path::Path::new(&project_path)
+        .join(".tempest")
+        .join("atlas")
+        .join("atlas.db");
+
+    if !db_path.exists() {
+        return Err(format!("Atlas database not found at {}", db_path.display()));
+    }
+
+    let conn = rusqlite::Connection::open_with_flags(
+        &db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
+    )
+    .map_err(|e| format!("Failed to open atlas db: {e}"))?;
+
+    let mut node_stmt = conn
+        .prepare("SELECT id, name, kind, file_path, start_line, end_line, language FROM nodes")
+        .map_err(|e| format!("Failed to prepare nodes query: {e}"))?;
+
+    let nodes = node_stmt
+        .query_map([], |row| {
+            Ok(SymbolNode {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                kind: row.get(2)?,
+                file_path: row.get(3)?,
+                start_line: row.get(4)?,
+                end_line: row.get(5)?,
+                language: row.get(6)?,
+            })
+        })
+        .map_err(|e| format!("Failed to query nodes: {e}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to read nodes: {e}"))?;
+
+    let mut edge_stmt = conn
+        .prepare("SELECT source, target, kind FROM edges")
+        .map_err(|e| format!("Failed to prepare edges query: {e}"))?;
+
+    let edges = edge_stmt
+        .query_map([], |row| {
+            Ok(SymbolEdge {
+                source: row.get(0)?,
+                target: row.get(1)?,
+                kind: row.get(2)?,
+            })
+        })
+        .map_err(|e| format!("Failed to query edges: {e}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to read edges: {e}"))?;
+
+    Ok(GraphData { nodes, edges })
+}
+
 #[tauri::command]
 fn check_atlas_db(project_path: String) -> bool {
     std::path::Path::new(&project_path)
@@ -241,6 +321,16 @@ fn check_atlas_db(project_path: String) -> bool {
         .join("atlas")
         .join("atlas.db")
         .exists()
+}
+
+#[tauri::command]
+fn remove_atlas_index(project_path: String) -> Result<(), String> {
+    let atlas_dir = std::path::Path::new(&project_path).join(".tempest").join("atlas");
+    if atlas_dir.exists() {
+        std::fs::remove_dir_all(&atlas_dir)
+            .map_err(|e| format!("Failed to remove atlas index: {e}"))?;
+    }
+    Ok(())
 }
 
 /// Start the atlas daemon for a project (MCP server / file-watcher mode).
@@ -2023,7 +2113,9 @@ pub fn run() {
             read_runtime_state,
             write_runtime_state,
             start_atlas_index,
+            get_atlas_graph,
             check_atlas_db,
+            remove_atlas_index,
             start_atlas_daemon,
             stop_atlas_daemon,
         ])

@@ -1,0 +1,312 @@
+.kb-root {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--tempest-bg-editor);
+}
+
+.kb-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--tempest-border-subtle);
+  background: var(--tempest-bg-panel);
+  flex: 0 0 auto;
+}
+
+.kb-project-select {
+  appearance: none;
+  background: var(--tempest-bg-active);
+  color: var(--tempest-fg-default);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 6px;
+  padding: 5px 28px 5px 10px;
+  font-size: 12px;
+  font-family: 'Geist', sans-serif;
+  cursor: pointer;
+  outline: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%238a8a8a' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  min-width: 160px;
+}
+.kb-project-select:hover {
+  border-color: var(--tempest-accent-blue);
+}
+.kb-project-select:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.kb-toolbar-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--tempest-border-subtle);
+}
+
+.kb-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--tempest-bg-active);
+  color: var(--tempest-fg-muted);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 6px;
+  padding: 5px 7px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+.kb-tool-btn:hover:not(:disabled) {
+  border-color: var(--tempest-accent-blue);
+  color: var(--tempest-fg-default);
+}
+.kb-tool-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.kb-canvas-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.kb-flow {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Promote the React Flow viewport to its own GPU compositing layer so pan and
+   zoom become GPU-composited transforms instead of CPU repaints. */
+.kb-flow .react-flow__viewport {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* Canvas edge overlay for large graphs — drawn on top of the flow, but
+   transparent to pointer events so nodes stay clickable. */
+.kb-edge-canvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+
+/* Non-blocking progress strip shown while nodes stream into React Flow. */
+.kb-stream-strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--tempest-bg-active);
+  z-index: 5;
+  pointer-events: none;
+}
+.kb-stream-strip-fill {
+  height: 100%;
+  background: var(--tempest-accent-blue);
+  transition: width 0.12s linear;
+}
+
+/* Level-of-detail: hide labels and shrink dots when zoomed far out. The class
+   is toggled on the canvas container (an ancestor of every node). */
+.kb-flow--zoomed-out .kb-node-label {
+  display: none;
+}
+.kb-flow--zoomed-out .kb-node-dot {
+  width: 6px;
+  height: 6px;
+}
+
+/* --- React Flow theming --- */
+.react-flow__renderer { background: var(--tempest-bg-editor); }
+.react-flow__background { background: var(--tempest-bg-editor); }
+/* Hide connection handles on symbol nodes */
+.react-flow__node-symbol .react-flow__handle { opacity: 0; pointer-events: none; }
+/* Reset default node box */
+.react-flow__node-symbol { background: transparent; border: none; padding: 0; }
+/* Edge color override */
+.react-flow__edge-path { stroke: var(--tempest-border-subtle); }
+/* Controls panel — theme it */
+.react-flow__controls {
+  background: var(--tempest-bg-panel);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 6px;
+}
+.react-flow__controls-button {
+  background: transparent;
+  border-color: var(--tempest-border-subtle);
+  color: var(--tempest-fg-muted);
+}
+.react-flow__controls-button:hover { background: var(--tempest-bg-active); }
+
+/* --- Custom symbol node --- */
+.kb-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  user-select: none;
+}
+.kb-node-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.react-flow__node-symbol.selected .kb-node-dot {
+  box-shadow: 0 0 0 2px var(--tempest-accent-blue);
+}
+.kb-node-label {
+  font-size: 6px;
+  line-height: 1;
+  font-family: 'Geist', sans-serif;
+  color: var(--tempest-fg-muted);
+  white-space: nowrap;
+}
+.kb-node-handle {
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  min-height: 0;
+  border: none;
+  background: transparent;
+}
+
+.kb-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  user-select: none;
+}
+.kb-empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--tempest-fg-muted);
+}
+.kb-empty-desc {
+  font-size: 12px;
+  color: var(--tempest-fg-subtle);
+  max-width: 320px;
+  text-align: center;
+}
+
+.kb-loader {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.kb-loader-spin {
+  color: var(--tempest-accent-blue);
+  animation: kb-spin 0.9s linear infinite;
+}
+.kb-loader-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.kb-loader-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--tempest-fg-muted);
+}
+.kb-loader-pct {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'Geist Mono', monospace;
+  color: var(--tempest-accent-blue);
+  min-width: 36px;
+}
+.kb-progress-track {
+  width: 280px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--tempest-bg-active);
+  overflow: hidden;
+}
+.kb-progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--tempest-accent-blue);
+  transition: width 0.22s ease-out;
+}
+.kb-log-line {
+  font-size: 11px;
+  color: var(--tempest-fg-subtle);
+  font-family: 'Geist Mono', monospace;
+  max-width: 320px;
+  text-align: center;
+  min-height: 16px;
+}
+@keyframes kb-spin {
+  to { transform: rotate(360deg); }
+}
+
+.kb-detail {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 260px;
+  background: var(--tempest-bg-panel);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 8px;
+  padding: 12px 14px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  font-family: 'Geist', sans-serif;
+}
+.kb-detail-close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--tempest-fg-subtle);
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+}
+.kb-detail-close:hover {
+  color: var(--tempest-fg-default);
+}
+.kb-detail-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tempest-fg-default);
+  word-break: break-all;
+  padding-right: 16px;
+}
+.kb-detail-kind {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--tempest-accent-blue);
+}
+.kb-detail-row {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--tempest-fg-muted);
+  word-break: break-all;
+}
+.kb-detail-row span {
+  display: block;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--tempest-fg-subtle);
+  margin-bottom: 1px;
+}

@@ -1,0 +1,174 @@
+/* ── Overlay ─────────────────────────────────────────────── */
+.aim-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9000;
+  animation: aim-overlay-in 120ms ease both;
+}
+
+@keyframes aim-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Dialog ──────────────────────────────────────────────── */
+.aim-dialog {
+  background: var(--tempest-bg-panel);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 8px;
+  width: 380px;
+  max-width: calc(100vw - 48px);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+  animation: aim-dialog-in 140ms ease both;
+}
+
+@keyframes aim-dialog-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Header (icon + title on one row) ────────────────────── */
+.aim-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--tempest-border-subtle);
+}
+
+/* ── Icon ────────────────────────────────────────────────── */
+.aim-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+}
+
+/* Thin spinner ring — one arc coloured, rotating */
+.aim-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--tempest-border-subtle);
+  border-top-color: var(--tempest-accent-blue);
+  animation: aim-spin 0.7s linear infinite;
+}
+
+@keyframes aim-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Static checkmark on done */
+.aim-check {
+  width: 18px;
+  height: 18px;
+  stroke: var(--tempest-accent-green);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ── Text ────────────────────────────────────────────────── */
+.aim-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--tempest-fg-default);
+  margin: 0;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.aim-line {
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--tempest-fg-muted);
+  margin: 0;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 15px;
+}
+
+/* ── Progress bar ────────────────────────────────────────── */
+.aim-progress {
+  position: relative;
+  width: 100%;
+  height: 4px;
+  background: var(--tempest-bg-active);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+@keyframes aim-slide {
+  0%   { left: -40%; }
+  100% { left: 100%; }
+}
+
+.aim-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  border-radius: 2px;
+  background: var(--tempest-accent-blue);
+  animation: aim-slide 1.2s linear infinite;
+}
+
+.aim-bar--done {
+  animation: none;
+  left: 0;
+  width: 100%;
+  background: var(--tempest-accent-green);
+}
+
+/* ── Actions ─────────────────────────────────────────────── */
+.aim-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* shadcn "outline" variant */
+.aim-cancel-btn {
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--tempest-border-default);
+  background: transparent;
+  color: var(--tempest-fg-default);
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms, opacity 120ms;
+}
+
+.aim-cancel-btn:hover:not(:disabled) {
+  background: var(--tempest-bg-hover);
+  border-color: var(--tempest-border-default);
+}
+
+.aim-cancel-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Reduced motion ──────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .aim-overlay,
+  .aim-dialog,
+  .aim-spinner,
+  .aim-bar {
+    animation-duration: 0.001ms;
+    animation-iteration-count: 1;
+  }
+}
