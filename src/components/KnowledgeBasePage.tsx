@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Loader, ZoomIn, ZoomOut, Maximize2, RotateCcw } from "lucide-react";
+import { Loader, ZoomIn, ZoomOut, Maximize2, RotateCcw, ChevronDown } from "lucide-react";
 import {
   forceSimulation,
   forceManyBody,
@@ -77,6 +77,9 @@ export function KnowledgeBasePage() {
   const [logLine,          setLogLine]          = useState("");
   const [progress,         setProgress]         = useState(0);
   const [detailNode,       setDetailNode]       = useState<GNode | null>(null);
+  const [dropOpen,         setDropOpen]         = useState(false);
+
+  const dropRef = useRef<HTMLDivElement>(null);
 
   // Ref mirror of detail node so the render fn can read it without re-rendering
   const detailNodeRef = useRef<GNode | null>(null);
@@ -674,6 +677,19 @@ export function KnowledgeBasePage() {
     };
   }, [minimapPanTo]);
 
+  // ── Close project dropdown on outside click ────────────────────────────────
+
+  useEffect(() => {
+    if (!dropOpen) return;
+    function onOutside(e: MouseEvent) {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) {
+        setDropOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onOutside);
+    return () => document.removeEventListener("mousedown", onOutside);
+  }, [dropOpen]);
+
   // ── Discover indexed projects on mount ─────────────────────────────────────
 
   useEffect(() => {
@@ -909,20 +925,31 @@ export function KnowledgeBasePage() {
   return (
     <div className="kb-root">
       <div className="kb-toolbar">
-        <select
-          className="kb-project-select"
-          value={selectedPath ?? ""}
-          onChange={(e) => setSelectedPath(e.target.value)}
-          disabled={indexedProjects.length === 0}
-        >
-          {indexedProjects.length === 0 ? (
-            <option value="">No indexed projects</option>
-          ) : (
-            indexedProjects.map((p) => (
-              <option key={p.id} value={p.path}>{p.name}</option>
-            ))
+        <div className="kb-project-drop" ref={dropRef}>
+          <button
+            className={`kb-project-drop-btn${dropOpen ? " kb-project-drop-btn--open" : ""}`}
+            onClick={() => setDropOpen((v) => !v)}
+            disabled={indexedProjects.length === 0}
+          >
+            <span className="kb-project-drop-label">
+              {indexedProjects.find((p) => p.path === selectedPath)?.name ?? "No indexed projects"}
+            </span>
+            <ChevronDown size={12} className="kb-project-drop-chevron" />
+          </button>
+          {dropOpen && indexedProjects.length > 0 && (
+            <div className="kb-project-drop-menu">
+              {indexedProjects.map((p) => (
+                <button
+                  key={p.id}
+                  className={`kb-project-drop-item${p.path === selectedPath ? " kb-project-drop-item--active" : ""}`}
+                  onClick={() => { setSelectedPath(p.path); setDropOpen(false); }}
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
           )}
-        </select>
+        </div>
 
         <div className="kb-toolbar-divider" />
 

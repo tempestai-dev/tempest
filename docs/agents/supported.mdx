@@ -20,6 +20,7 @@ Each agent in Tempest is defined by an `AgentConfig` object with the following p
 | `resumeArgs` | Flags passed when reopening to resume a conversation (e.g., `["--resume", "{UUID}"]`) |
 | `capturePattern` | Optional regex to extract session ID from PTY output (for agents that mint their own ID) |
 | `captureResumeArgs` | Optional flags for resuming with a captured ID (e.g., `["-s", "{UUID}"]`) |
+| `autoApproveArgs` | Optional flags appended when **Auto-approve agent tool calls** is enabled — skips all in-session permission prompts |
 
 The `{UUID}` placeholder is replaced by Tempest with the actual session or conversation UUID.
 
@@ -73,6 +74,7 @@ claude config --model claude-3-5-sonnet-20241022
   - Fallback: Quiet timer (5 seconds no output)
 - **MCP Support**: Enabled by default if Token Intelligence is configured
 - **Tab Badge**: Shows "✳ Claude Code" title when idle
+- **Auto-approve flag**: `--dangerously-skip-permissions` — appended by default; disables all tool-call confirmation prompts
 
 ### Troubleshooting
 
@@ -137,6 +139,7 @@ gemini config --model gemini-pro
   - Fallback: Quiet timer (5 seconds no output)
 - **MCP Support**: Enabled if Token Intelligence is configured (writes to `.gemini/settings.json`)
 - **Tab Badge**: Shows title with busy/idle indicators
+- **Auto-approve flag**: `--yolo` — appended by default; puts Gemini CLI into full auto-approval mode
 
 ### Troubleshooting
 
@@ -397,17 +400,85 @@ If Goose doesn't launch:
 
 ---
 
+## Antigravity
+
+**Display Name**: Antigravity
+**CLI Command**: `agy`
+**Resumable**: No (stateless — resumes last session via `--continue`)
+
+### Launch Command
+
+**First spawn:**
+```bash
+agy
+```
+
+**Resuming (continues last session in CWD):**
+```bash
+agy --continue
+```
+
+### Tempest Integration
+
+- **Session ID**: Not persisted (no externally addressable session ID)
+- **Resumption**: `--continue` resumes the most recent session in the current directory
+- **Work-Done Detection**: Uses signal detection and heuristics
+- **Auto-approve flag**: `--dangerously-skip-permissions` — appended by default
+
+### Troubleshooting
+
+If Antigravity doesn't launch:
+1. Ensure `agy` is installed and on your PATH
+2. Test in a terminal: `agy --help`
+
+---
+
+## Codex CLI
+
+**Display Name**: Codex CLI
+**CLI Command**: `codex`
+**Resumable**: Yes (resumes last session in CWD via subcommand)
+
+### Launch Command
+
+**First spawn:**
+```bash
+codex
+```
+
+**Resuming (most recent session in CWD):**
+```bash
+codex resume --last
+```
+
+### Tempest Integration
+
+- **Session ID**: Not persisted (no externally addressable session ID; resume is CWD-based)
+- **Resumption**: `codex resume --last` picks up the most recent Codex session in the working directory
+- **Work-Done Detection**: Uses signal detection and heuristics
+- **Auto-approve flag**: `--dangerously-bypass-approvals-and-sandbox` — appended by default
+
+### Troubleshooting
+
+If Codex CLI doesn't launch:
+1. Ensure `codex` is installed: `which codex` (macOS/Linux) or `gcm codex` (Windows)
+2. Test in a terminal: `codex --help`
+
+---
+
 ## Comparison Table
 
-| Agent | Resume | Session ID | Config Location | API Key Required |
-|-------|--------|------------|-----------------|-----------------|
-| Claude Code | Yes | `--session-id` / `--resume` | `~/.claude` | Yes (Anthropic) |
-| Gemini CLI | Yes | `--session-id` / `--resume` | `~/.gemini` | Yes (Google) |
-| Opencode | Yes | Captured from output | `opencode.json` | Varies |
-| Copilot CLI | No | N/A | `~/.config/gh` | GitHub token |
-| Cline | No | N/A | `~/.cline` | Yes (Anthropic) |
-| Cursor Agent | No | N/A | Cursor IDE config | Varies |
-| Goose | No | N/A | `~/.goose` | Varies |
+| Agent | Resume | Auto-approve flag | Config Location | API Key Required |
+|-------|--------|-------------------|-----------------|-----------------|
+| Claude Code | Yes (`--resume`) | `--dangerously-skip-permissions` | `~/.claude` | Yes (Anthropic) |
+| Gemini CLI | Yes (`--resume`) | `--yolo` | `~/.gemini` | Yes (Google) |
+| Codex CLI | Yes (`resume --last`) | `--dangerously-bypass-approvals-and-sandbox` | `~/.codex` | Yes (OpenAI) |
+| Antigravity | Yes (`--continue`) | `--dangerously-skip-permissions` | `~/.agy` | Yes |
+| Opencode | Yes (captured ID) | — | `opencode.json` | Varies |
+| Copilot CLI | No | — | `~/.config/gh` | GitHub token |
+| Cline | No | — | `~/.cline` | Yes (Anthropic) |
+| Cursor Agent | No | — | Cursor IDE config | Varies |
+| Goose | No | — | `~/.goose` | Varies |
 
 ## Adding a New Agent
 
@@ -423,6 +494,7 @@ To add support for a new agent to Tempest:
      resumeArgs: ["--resume", "{UUID}"],           // or null
      capturePattern: /pattern/,  // optional
      captureResumeArgs: ["-s", "{UUID}"],  // optional
+     autoApproveArgs: ["--my-skip-flag"],  // optional — appended when auto-approve is enabled
    }
    ```
 

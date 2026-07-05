@@ -68,17 +68,57 @@ Arguments are pre-assembled on the frontend in `buildAgentArgs()` before being s
 - **Session ID args**: Passed on first spawn (e.g., `--session-id <UUID>`)
 - **Resume args**: Passed when reopening a saved session (e.g., `--resume <UUID>`)
 - **Capture resume args**: For agents like Opencode that print their ID (e.g., `-s <captured-id>`)
-- **User prompt**: Optional text the user wants the agent to start with
+- **Auto-approve args**: The agent's skip-permissions flag, appended when **Auto-approve agent tool calls** is enabled (see below)
+- **User prompt**: Optional text the user wants the agent to start with, always appended last
 
-Example command for Claude Code on first spawn:
+Example command for Claude Code on first spawn with auto-approve on:
 ```bash
-claude --session-id 550e8400-e29b-41d4-a716-446655440000
+claude --session-id 550e8400-e29b-41d4-a716-446655440000 --dangerously-skip-permissions
 ```
 
 Example command when resuming:
 ```bash
-claude --resume 550e8400-e29b-41d4-a716-446655440000
+claude --resume 550e8400-e29b-41d4-a716-446655440000 --dangerously-skip-permissions
 ```
+
+## Auto-Approve & Process Isolation
+
+### Auto-Approve (Permissionless Mode)
+
+By default, Tempest spawns every agent with its skip-permissions flag so it never pauses mid-task to ask for confirmation. The setting is in **Settings → Security → Auto-approve agent tool calls**.
+
+Each agent has its own flag defined in `autoApproveArgs` on its `AgentConfig`:
+
+| Agent | Auto-approve flag |
+|-------|------------------|
+| Claude Code | `--dangerously-skip-permissions` |
+| Gemini CLI | `--yolo` |
+| Codex CLI | `--dangerously-bypass-approvals-and-sandbox` |
+| Antigravity | `--dangerously-skip-permissions` |
+| Cline, Cursor Agent | IDE-embedded — no terminal flag applies |
+| Copilot CLI, Goose, Opencode | No published skip-permissions flag |
+
+The flag is appended in `buildAgentArgs()` just before the user prompt, so the ordering is always:
+
+```
+<agent> [session/resume flags] [auto-approve flag] [prompt]
+```
+
+Turning the setting off removes the flag from all sessions started after that point. Existing live sessions are unaffected.
+
+### Process Isolation (Hephaestus)
+
+Every agent session also runs inside **Hephaestus**, Tempest's built-in process isolation layer. The setting is in **Settings → Security → Isolate agent sessions** (on by default).
+
+| Platform | Mechanism | Effect |
+|----------|-----------|--------|
+| Windows | Job Objects (`KILL_ON_JOB_CLOSE`) | Entire process tree — including all subprocesses spawned by the agent — is killed atomically when the session tab is closed |
+| macOS | Seatbelt SBPL (`sandbox-exec`) | Deny-default filesystem sandbox; only the workspace directory and system paths are readable/writable |
+| Linux | bubblewrap (`bwrap`) | `--unshare-pid --die-with-parent --unshare-net` user namespaces; agent cannot see the network or other processes |
+
+On Windows, an in-process ETW watcher (`ProcessWatcher`) tracks all `CreateProcess` descendants transitively and assigns them to the Job Object before they run — covering grandchildren spawned by npm, git, compilers, and similar tools. A kernel driver scaffold (`hephaestus-driver`) is included for a future release that will also capture ShellExecute-brokered processes.
+
+Hephaestus is implemented in the `src-tauri/crates/hephaestus/` Rust crate. The isolation backend is selected at compile time per platform and lazily initialised the first time a sandboxed session is spawned.
 
 ## Work-Done Detection
 

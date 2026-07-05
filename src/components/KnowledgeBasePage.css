@@ -18,24 +18,80 @@
   flex: 0 0 auto;
 }
 
-.kb-project-select {
-  appearance: none;
+.kb-project-drop {
+  position: relative;
+}
+
+.kb-project-drop-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: var(--tempest-bg-active);
   color: var(--tempest-fg-default);
   border: 1px solid var(--tempest-border-default);
   border-radius: 6px;
-  padding: 5px 28px 5px 10px;
+  padding: 5px 10px;
   font-size: 12px;
   font-family: 'Geist', sans-serif;
   cursor: pointer;
   outline: none;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%238a8a8a' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>");
-  background-repeat: no-repeat;
-  background-position: right 8px center;
   min-width: 160px;
+  transition: border-color 0.12s ease;
 }
-.kb-project-select:hover { border-color: var(--tempest-accent-blue); }
-.kb-project-select:disabled { opacity: 0.5; cursor: default; }
+.kb-project-drop-btn:hover:not(:disabled) { border-color: var(--tempest-accent-blue); }
+.kb-project-drop-btn--open { border-color: var(--tempest-accent-blue); }
+.kb-project-drop-btn:disabled { opacity: 0.5; cursor: default; }
+
+.kb-project-drop-label {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kb-project-drop-chevron {
+  flex-shrink: 0;
+  color: var(--tempest-fg-subtle);
+  transition: transform 0.15s ease;
+}
+.kb-project-drop-btn--open .kb-project-drop-chevron {
+  transform: rotate(180deg);
+}
+
+.kb-project-drop-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 100%;
+  background: var(--tempest-bg-sidebar);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  z-index: 200;
+}
+
+.kb-project-drop-item {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  font-size: 12px;
+  font-family: 'Geist', sans-serif;
+  color: var(--tempest-fg-default);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s;
+}
+.kb-project-drop-item:hover { background: var(--tempest-bg-hover); }
+.kb-project-drop-item--active {
+  color: var(--tempest-accent-blue);
+  background: var(--tempest-bg-active);
+}
 
 .kb-toolbar-divider {
   width: 1px;

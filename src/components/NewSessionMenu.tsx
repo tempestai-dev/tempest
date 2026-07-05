@@ -8,6 +8,8 @@ import opencodeSrc from "../assets/agent-icons/opencode.svg";
 import clineSrc from "../assets/agent-icons/cline.svg";
 import cursorSrc from "../assets/agent-icons/cursor.svg";
 import gooseSrc from "../assets/agent-icons/goose.svg";
+import codexSrc from "../assets/agent-icons/codex.svg";
+import antigravitySrc from "../assets/agent-icons/antigravity.svg";
 import "./NewSessionMenu.css";
 
 export interface AgentConfig {
@@ -28,9 +30,21 @@ export interface AgentConfig {
   capturePattern?: RegExp;
   captureResumeArgs?: string[] | null;
   mcpSupported?: boolean; // unused — MCP injection now via .mcp.json written at index time
+  // CLI flags appended when the "Auto-approve agent tool calls" setting is on.
+  // Absent (undefined) means the agent has no known auto-approve flag.
+  autoApproveArgs?: string[];
 }
 
 export const AGENT_CONFIGS: AgentConfig[] = [
+  {
+    name: "Antigravity",
+    hint: "agy",
+    iconSrc: antigravitySrc,
+    mono: true,
+    sessionIdArgs: null,
+    resumeArgs: ["--continue"],
+    autoApproveArgs: ["--dangerously-skip-permissions"],
+  },
   {
     name: "Claude Code",
     hint: "claude",
@@ -38,6 +52,43 @@ export const AGENT_CONFIGS: AgentConfig[] = [
     sessionIdArgs: ["--session-id", "{UUID}"],
     resumeArgs: ["--resume", "{UUID}"],
     mcpSupported: true,
+    autoApproveArgs: ["--dangerously-skip-permissions"],
+  },
+  {
+    name: "Cline",
+    hint: "cline",
+    iconSrc: clineSrc,
+    mono: true,
+    sessionIdArgs: null,
+    resumeArgs: null,
+    // Cline is IDE-embedded — no terminal-level auto-approve flag.
+  },
+  {
+    name: "Codex CLI",
+    hint: "codex",
+    iconSrc: codexSrc,
+    mono: true,
+    sessionIdArgs: null,
+    // `codex resume --last` picks the most-recent session in CWD — subcommand form.
+    resumeArgs: ["resume", "--last"],
+    autoApproveArgs: ["--dangerously-bypass-approvals-and-sandbox"],
+  },
+  {
+    name: "Copilot CLI",
+    hint: "gh copilot",
+    iconSrc: githubCopilotSrc,
+    sessionIdArgs: null,
+    resumeArgs: null,
+    // No known terminal-level auto-approve flag for gh copilot.
+  },
+  {
+    name: "Cursor Agent",
+    hint: "cursor",
+    iconSrc: cursorSrc,
+    mono: true,
+    sessionIdArgs: null,
+    resumeArgs: null,
+    // Cursor Agent is IDE-embedded — no terminal-level auto-approve flag.
   },
   {
     name: "Gemini CLI",
@@ -45,6 +96,16 @@ export const AGENT_CONFIGS: AgentConfig[] = [
     iconSrc: geminiCliSrc,
     sessionIdArgs: ["--session-id", "{UUID}"],
     resumeArgs: ["--resume", "{UUID}"],
+    autoApproveArgs: ["--yolo"],
+  },
+  {
+    name: "Goose",
+    hint: "goose",
+    iconSrc: gooseSrc,
+    mono: true,
+    sessionIdArgs: null,
+    resumeArgs: null,
+    // No standardized terminal-level auto-approve flag for Goose.
   },
   {
     name: "Opencode",
@@ -55,40 +116,8 @@ export const AGENT_CONFIGS: AgentConfig[] = [
     resumeArgs: null,
     // Opencode prints its session ID to stdout on startup. The UUID is captured from
     // the raw PTY output and persisted so "-s <id>" can resume it on reopen.
-    // The regex may need tuning based on actual opencode output format.
     capturePattern: /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i,
     captureResumeArgs: ["-s", "{UUID}"],
-  },
-  {
-    name: "Copilot CLI",
-    hint: "gh copilot",
-    iconSrc: githubCopilotSrc,
-    sessionIdArgs: null,
-    resumeArgs: null,
-  },
-  {
-    name: "Cline",
-    hint: "cline",
-    iconSrc: clineSrc,
-    mono: true,
-    sessionIdArgs: null,
-    resumeArgs: null,
-  },
-  {
-    name: "Cursor Agent",
-    hint: "cursor",
-    iconSrc: cursorSrc,
-    mono: true,
-    sessionIdArgs: null,
-    resumeArgs: null,
-  },
-  {
-    name: "Goose",
-    hint: "goose",
-    iconSrc: gooseSrc,
-    mono: true,
-    sessionIdArgs: null,
-    resumeArgs: null,
   },
 ];
 

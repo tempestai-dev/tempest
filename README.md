@@ -49,6 +49,20 @@ A rogue agent run never touches your main branch or anyone else's work. **Blast 
 - **Full history per session** — close a tab, reopen it, the agent picks up exactly where it left off.
 - **Built-in diff and PR** — review each agent's changes, then stage, commit, push, and open a PR without leaving Tempest.
 
+## Process-isolated. Fully autonomous. Out of the box.
+
+Every agent session in Tempest runs inside **Hephaestus** — a first-party process isolation layer built into the app. No configuration required.
+
+| Platform | Isolation |
+|----------|-----------|
+| Windows | Job Objects — entire process tree confined and killed atomically on session close |
+| macOS | Seatbelt (SBPL) — deny-default sandbox via `sandbox-exec` |
+| Linux | bubblewrap — `--unshare-pid --die-with-parent --unshare-net` user namespaces |
+
+Agents also run **fully permissionless by default**. Tempest passes each agent's skip-permissions flag at spawn — no mid-run confirmation dialogs, no interruptions. Claude Code gets `--dangerously-skip-permissions`, Gemini CLI gets `--yolo`, Codex CLI gets `--dangerously-bypass-approvals-and-sandbox`.
+
+Both behaviours are toggles in **Settings → Security**. You stay in control.
+
 **Tempest is built using Tempest** — every feature in this repo was shipped by parallel agents running inside the app.
 
 

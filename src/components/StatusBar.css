@@ -76,6 +76,19 @@
   opacity: 1;
 }
 
+/* ── Atlas indexed ───────────────────────────────────────────────────────── */
+
+.status-bar-chip--atlas-indexed {
+  color: var(--tempest-accent-green);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.status-bar-chip--atlas-indexed:hover {
+  background: color-mix(in srgb, var(--tempest-accent-green) 12%, transparent);
+}
+
 /* ── Shield (isolation) ──────────────────────────────────────────────────── */
 
 .status-bar-chip--shield {

@@ -793,6 +793,14 @@ export function WorkspaceView({ zen, name, path }: Props) {
     // If all arg arrays are null (e.g. Aider, plain opencode first spawn),
     // no session flags are added and the agent starts fresh or uses CWD state.
 
+    // Auto-approve: append the agent's skip-permissions flag before the prompt
+    // so it's not parsed as task content by the CLI.
+    if (config?.autoApproveArgs && getSettings().autoApprove) {
+      for (const arg of config.autoApproveArgs) {
+        args.push(arg);
+      }
+    }
+
     if (prompt) args.push(prompt);
     return args;
   }
@@ -1316,6 +1324,14 @@ export function WorkspaceView({ zen, name, path }: Props) {
   }
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
+
+  const activeProjectPath = activeSession
+    ? projects.find((p) => p.id === activeSession.projectId)?.path
+    : undefined;
+  const isAtlasIndexing = !!activeProjectPath && atlasIndexingPaths.includes(activeProjectPath);
+  const isAtlasIndexed =
+    !!activeProjectPath &&
+    (getRuntimeState().atlasProjects ?? {})[activeProjectPath] === true;
 
   // Derived split-pane state. Recomputed every render — tree is tiny so no memo needed.
   const activeSplitIds = paneLayout ? new Set(paneSessionIds(paneLayout)) : null;
@@ -2241,7 +2257,21 @@ export function WorkspaceView({ zen, name, path }: Props) {
             )}
           </div>
 
-          <StatusBar sandboxed={activeSession?.sandboxed} />
+          <StatusBar
+            sandboxed={activeSession?.sandboxed}
+            atlasIndexed={atlasEnabled && isAtlasIndexed ? true : undefined}
+            atlasIndexing={atlasEnabled && isAtlasIndexing ? true : undefined}
+            onSyncAtlas={atlasEnabled && isAtlasIndexed && !isAtlasIndexing && activeProjectPath ? () => {
+              const decided = getRuntimeState().atlasProjects ?? {};
+              setRuntimeState({ atlasProjects: { ...decided, [activeProjectPath]: true } });
+              invoke("start_atlas_index", { projectPath: activeProjectPath })
+                .then(() => invoke("start_atlas_daemon", { projectPath: activeProjectPath }).catch(() => {}))
+                .catch((e) => console.error("[Atlas] sync failed:", e));
+              setAtlasIndexingPaths((prev) =>
+                prev.includes(activeProjectPath) ? prev : [...prev, activeProjectPath]
+              );
+            } : undefined}
+          />
 
           {atlasIndexingPaths.length > 0 && (() => {
             const activePath = atlasIndexingPaths[0];
