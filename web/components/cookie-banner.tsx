@@ -12,9 +12,9 @@ function loadGA() {
   script.async = true
   document.head.appendChild(script)
   ;(window as any).dataLayer = (window as any).dataLayer || []
-  function gtag(...args: any[]) { (window as any).dataLayer.push(args) }
-  gtag("js", new Date())
-  gtag("config", GA_ID)
+  ;(window as any).gtag = function() { (window as any).dataLayer.push(arguments) }
+  ;(window as any).gtag("js", new Date())
+  ;(window as any).gtag("config", GA_ID)
 }
 
 export function CookieBanner() {
