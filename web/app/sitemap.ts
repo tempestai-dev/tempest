@@ -1,11 +1,12 @@
 import type { MetadataRoute } from 'next'
 import { getAllPosts } from '@/lib/mdx'
 
+// canonical base URL for all sitemap entries
 const BASE = 'https://tempestai.dev'
 
 async function getReleaseTagsWithDates(): Promise<{ tag: string; date: string }[]> {
   try {
-    const res = await fetch('https://api.github.com/repos/gsvprharsha/tempest/releases', {
+    const res = await fetch('https://api.github.com/repos/tempestai-dev/tempest/releases', {
       headers: process.env.GITHUB_TOKEN
         ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` }
         : {},
