@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Loader, ZoomIn, ZoomOut, Maximize2, RotateCcw, ChevronDown } from "lucide-react";
+import { Tooltip } from "./Tooltip";
 import {
   forceSimulation,
   forceManyBody,
@@ -953,10 +954,18 @@ export function KnowledgeBasePage() {
 
         <div className="kb-toolbar-divider" />
 
-        <button className="kb-tool-btn" title="Zoom in"      onClick={() => zoomBy(1.25)} disabled={!hasGraph}><ZoomIn    size={14} /></button>
-        <button className="kb-tool-btn" title="Zoom out"     onClick={() => zoomBy(0.8)}  disabled={!hasGraph}><ZoomOut   size={14} /></button>
-        <button className="kb-tool-btn" title="Fit to screen" onClick={fitView}            disabled={!hasGraph}><Maximize2 size={14} /></button>
-        <button className="kb-tool-btn" title="Reset view"   onClick={resetView}           disabled={!hasGraph}><RotateCcw size={14} /></button>
+        <Tooltip content="Zoom in" placement="top">
+          <button className="kb-tool-btn" onClick={() => zoomBy(1.25)} disabled={!hasGraph}><ZoomIn    size={14} /></button>
+        </Tooltip>
+        <Tooltip content="Zoom out" placement="top">
+          <button className="kb-tool-btn" onClick={() => zoomBy(0.8)}  disabled={!hasGraph}><ZoomOut   size={14} /></button>
+        </Tooltip>
+        <Tooltip content="Fit to screen" placement="top">
+          <button className="kb-tool-btn" onClick={fitView}            disabled={!hasGraph}><Maximize2 size={14} /></button>
+        </Tooltip>
+        <Tooltip content="Reset view" placement="top">
+          <button className="kb-tool-btn" onClick={resetView}           disabled={!hasGraph}><RotateCcw size={14} /></button>
+        </Tooltip>
       </div>
 
       <div className="kb-canvas-wrap" ref={containerRef}>
@@ -1004,16 +1013,18 @@ export function KnowledgeBasePage() {
 
         {detailNode && (
           <div className="kb-detail">
-            <button
-              className="kb-detail-close"
-              onClick={() => {
-                detailNodeRef.current     = null;
-                setDetailNode(null);
-                selNeighborIdsRef.current = new Set();
-                selConnLinksRef.current   = new Set();
-                requestRender();
-              }}
-            >×</button>
+            <Tooltip content="Close" placement="top">
+              <button
+                className="kb-detail-close"
+                onClick={() => {
+                  detailNodeRef.current     = null;
+                  setDetailNode(null);
+                  selNeighborIdsRef.current = new Set();
+                  selConnLinksRef.current   = new Set();
+                  requestRender();
+                }}
+              >×</button>
+            </Tooltip>
             <div
               className="kb-detail-badge"
               style={{ background: detailNode.color + "22", color: detailNode.color }}

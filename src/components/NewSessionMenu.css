@@ -91,8 +91,23 @@
 .nsm-subitem {
   display: flex;
   align-items: center;
+  border-radius: 5px;
+  transition: background 0.1s;
+}
+
+.nsm-subitem:hover:not(.nsm-subitem--unavailable) {
+  background: var(--tempest-bg-hover);
+}
+
+.nsm-subitem--unavailable {
+  opacity: 0.42;
+}
+
+.nsm-subitem-main {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  width: 100%;
+  flex: 1;
   padding: 8px 10px;
   background: transparent;
   border: none;
@@ -100,11 +115,31 @@
   font-family: inherit;
   cursor: pointer;
   text-align: left;
-  transition: background 0.1s;
 }
 
-.nsm-subitem:hover {
+.nsm-subitem--unavailable .nsm-subitem-main {
+  cursor: not-allowed;
+}
+
+.nsm-subitem-dl {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-right: 4px;
+  background: transparent;
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 4px;
+  color: var(--tempest-fg-muted);
+  cursor: pointer;
+}
+
+.nsm-subitem-dl:hover {
   background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
+  opacity: 1;
 }
 
 .nsm-subitem-icon {

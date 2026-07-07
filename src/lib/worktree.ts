@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 export interface WorktreeOptions {
   projectPath: string;
   name: string;
+  existingBranch?: string;
 }
 
 export interface WorktreeResult {
@@ -16,11 +17,12 @@ export class NotAGitRepoError extends Error {
   }
 }
 
-export async function createWorktree({ projectPath, name }: WorktreeOptions): Promise<WorktreeResult> {
+export async function createWorktree({ projectPath, name, existingBranch }: WorktreeOptions): Promise<WorktreeResult> {
   try {
     const path = await invoke<string>("create_terminal_worktree", {
       projectPath,
       name: name.trim(),
+      existingBranch: existingBranch ?? null,
     });
     return { path };
   } catch (e) {

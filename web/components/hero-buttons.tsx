@@ -32,7 +32,7 @@ export function HeroButtons({ initialOS }: { initialOS?: string }) {
       </Link>
 
       <Link
-        href="https://github.com/gsvprharsha/tempest"
+        href="https://github.com/tempestai-dev/tempest"
         target="_blank"
         rel="noopener noreferrer"
         className="inline-flex items-center gap-2 h-[41px] px-5 rounded-full text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors duration-200"

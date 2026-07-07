@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Bot, TerminalSquare, MessageSquare, Globe, ChevronRight } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { Bot, TerminalSquare, MessageSquare, Globe, ChevronRight, Download } from "lucide-react";
 import claudeCodeSrc from "../assets/agent-icons/claude-color.svg";
 import geminiCliSrc from "../assets/agent-icons/geminicli-color.svg";
 import githubCopilotSrc from "../assets/agent-icons/githubcopilot-color.svg";
@@ -33,6 +35,8 @@ export interface AgentConfig {
   // CLI flags appended when the "Auto-approve agent tool calls" setting is on.
   // Absent (undefined) means the agent has no known auto-approve flag.
   autoApproveArgs?: string[];
+  // URL to download/install the agent if it isn't detected on PATH.
+  downloadUrl?: string;
 }
 
 export const AGENT_CONFIGS: AgentConfig[] = [
@@ -44,6 +48,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
     sessionIdArgs: null,
     resumeArgs: ["--continue"],
     autoApproveArgs: ["--dangerously-skip-permissions"],
+    downloadUrl: "https://antigravity.dev",
   },
   {
     name: "Claude Code",
@@ -53,6 +58,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
     resumeArgs: ["--resume", "{UUID}"],
     mcpSupported: true,
     autoApproveArgs: ["--dangerously-skip-permissions"],
+    downloadUrl: "https://docs.anthropic.com/en/docs/claude-code",
   },
   {
     name: "Cline",
@@ -61,7 +67,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
     mono: true,
     sessionIdArgs: null,
     resumeArgs: null,
-    // Cline is IDE-embedded — no terminal-level auto-approve flag.
+    downloadUrl: "https://cline.bot",
   },
   {
     name: "Codex CLI",
@@ -69,9 +75,9 @@ export const AGENT_CONFIGS: AgentConfig[] = [
     iconSrc: codexSrc,
     mono: true,
     sessionIdArgs: null,
-    // `codex resume --last` picks the most-recent session in CWD — subcommand form.
     resumeArgs: ["resume", "--last"],
     autoApproveArgs: ["--dangerously-bypass-approvals-and-sandbox"],
+    downloadUrl: "https://github.com/openai/codex",
   },
   {
     name: "Copilot CLI",
@@ -79,7 +85,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
     iconSrc: githubCopilotSrc,
     sessionIdArgs: null,
     resumeArgs: null,
-    // No known terminal-level auto-approve flag for gh copilot.
+    downloadUrl: "https://cli.github.com",
   },
   {
     name: "Cursor Agent",
@@ -88,7 +94,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
     mono: true,
     sessionIdArgs: null,
     resumeArgs: null,
-    // Cursor Agent is IDE-embedded — no terminal-level auto-approve flag.
+    downloadUrl: "https://cursor.sh",
   },
   {
     name: "Gemini CLI",
@@ -97,6 +103,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
     sessionIdArgs: ["--session-id", "{UUID}"],
     resumeArgs: ["--resume", "{UUID}"],
     autoApproveArgs: ["--yolo"],
+    downloadUrl: "https://github.com/google-gemini/gemini-cli",
   },
   {
     name: "Goose",
@@ -105,7 +112,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
     mono: true,
     sessionIdArgs: null,
     resumeArgs: null,
-    // No standardized terminal-level auto-approve flag for Goose.
+    downloadUrl: "https://block.github.io/goose",
   },
   {
     name: "Opencode",
@@ -114,10 +121,9 @@ export const AGENT_CONFIGS: AgentConfig[] = [
     mono: true,
     sessionIdArgs: null,
     resumeArgs: null,
-    // Opencode prints its session ID to stdout on startup. The UUID is captured from
-    // the raw PTY output and persisted so "-s <id>" can resume it on reopen.
     capturePattern: /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i,
     captureResumeArgs: ["-s", "{UUID}"],
+    downloadUrl: "https://opencode.ai",
   },
 ];
 
@@ -160,6 +166,7 @@ export function NewSessionMenu({
   onLivePreview,
 }: Props) {
   const [agentHovered, setAgentHovered] = useState(false);
+  const [available, setAvailable] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!open) { setAgentHovered(false); return; }
@@ -167,6 +174,13 @@ export function NewSessionMenu({
       if (e.key === "Escape") onClose();
     }
     window.addEventListener("keydown", onKey);
+    // Check each agent's CLI tool against PATH.
+    for (const a of AGENT_CONFIGS) {
+      const program = a.hint.split(" ")[0];
+      invoke<boolean>("check_program_available", { program })
+        .then((ok) => setAvailable((prev) => ({ ...prev, [a.hint]: ok })))
+        .catch(() => {});
+    }
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
@@ -205,24 +219,38 @@ export function NewSessionMenu({
           <ChevronRight size={12} className="nsm-item-chevron" />
           {agentHovered && (
             <div className="nsm-submenu">
-              {AGENT_CONFIGS.map((a) => (
-                <button
-                  key={a.name}
-                  className="nsm-subitem"
-                  onClick={() => { onClose(); onAgentSession(a); }}
-                >
-                  <img
-                    src={a.iconSrc}
-                    width={14}
-                    height={14}
-                    className={`nsm-subitem-icon${a.mono ? " agent-icon--mono" : ""}`}
-                    style={{ objectFit: "contain", flexShrink: 0 }}
-                    alt={a.name}
-                  />
-                  <span className="nsm-subitem-name">{a.name}</span>
-                  <span className="nsm-subitem-hint">{a.hint}</span>
-                </button>
-              ))}
+              {AGENT_CONFIGS.map((a) => {
+                const isAvailable = available[a.hint] !== false; // true until confirmed absent
+                return (
+                  <div key={a.name} className={`nsm-subitem${isAvailable ? "" : " nsm-subitem--unavailable"}`}>
+                    <button
+                      className="nsm-subitem-main"
+                      disabled={!isAvailable}
+                      onClick={() => { if (isAvailable) { onClose(); onAgentSession(a); } }}
+                    >
+                      <img
+                        src={a.iconSrc}
+                        width={14}
+                        height={14}
+                        className={`nsm-subitem-icon${a.mono ? " agent-icon--mono" : ""}`}
+                        style={{ objectFit: "contain", flexShrink: 0 }}
+                        alt={a.name}
+                      />
+                      <span className="nsm-subitem-name">{a.name}</span>
+                      <span className="nsm-subitem-hint">{a.hint}</span>
+                    </button>
+                    {!isAvailable && a.downloadUrl && (
+                      <button
+                        className="nsm-subitem-dl"
+                        title="Download"
+                        onClick={(e) => { e.stopPropagation(); openUrl(a.downloadUrl!).catch(() => {}); }}
+                      >
+                        <Download size={11} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

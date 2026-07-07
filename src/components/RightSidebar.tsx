@@ -9,6 +9,7 @@ import {
   ChevronRight,
   ChevronDown,
 } from "lucide-react";
+import { Tooltip } from "./Tooltip";
 import "./RightSidebar.css";
 
 type RightTab = "files" | "changes";
@@ -286,24 +287,26 @@ export function RightSidebar({ cwd, rootPath, open, gitRevision, noGit, onOpenDi
             )}
           </button>
         </div>
-        <button
-          className="rs-reload-btn"
-          title="Open diff viewer"
-          aria-label="Open diff viewer"
-          disabled={!onOpenDiff}
-          onClick={onOpenDiff}
-        >
-          <Eye size={13} />
-        </button>
-        <button
-          className={`rs-reload-btn${reloading ? " rs-reload-btn--spinning" : ""}`}
-          title="Reload"
-          aria-label="Reload"
-          disabled={reloading || (!cwd && !rootPath)}
-          onClick={() => { const fp = rootPath ?? cwd; if (fp) reload(fp, cwd ?? null); }}
-        >
-          <RefreshCw size={13} />
-        </button>
+        <Tooltip content="Open diff" placement="top">
+          <button
+            className="rs-reload-btn"
+            aria-label="Open diff viewer"
+            disabled={!onOpenDiff}
+            onClick={onOpenDiff}
+          >
+            <Eye size={13} />
+          </button>
+        </Tooltip>
+        <Tooltip content="Reload" placement="top">
+          <button
+            className={`rs-reload-btn${reloading ? " rs-reload-btn--spinning" : ""}`}
+            aria-label="Reload"
+            disabled={reloading || (!cwd && !rootPath)}
+            onClick={() => { const fp = rootPath ?? cwd; if (fp) reload(fp, cwd ?? null); }}
+          >
+            <RefreshCw size={13} />
+          </button>
+        </Tooltip>
       </div>
 
       <div className="rs-body">

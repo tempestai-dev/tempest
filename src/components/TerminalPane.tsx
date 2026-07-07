@@ -156,6 +156,12 @@ export const TerminalPane = memo(function TerminalPane({ sessionId, hidden = fal
     });
     observer.observe(el);
 
+    // Prevent the browser from also firing a paste event when Ctrl+V is pressed.
+    // Our custom key handler already pastes via readText() + term.paste(), so the
+    // browser's paste event would write the clipboard a second time.
+    const handlePaste = (ev: ClipboardEvent) => { ev.preventDefault(); ev.stopPropagation(); };
+    el.addEventListener("paste", handlePaste, { capture: true });
+
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== "keydown") return true;
 
@@ -209,6 +215,7 @@ export const TerminalPane = memo(function TerminalPane({ sessionId, hidden = fal
     });
 
     return () => {
+      el.removeEventListener("paste", handlePaste, { capture: true });
       if (resizeTimerRef.current !== null) clearTimeout(resizeTimerRef.current);
       sessionManager.detach(sessionId, onDataRef.current);
       webglPool.release(sessionId);

@@ -1,6 +1,7 @@
 import { Minus, Square, X, ExternalLink } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Mark } from "../assets/Mark";
+import { Tooltip } from "./Tooltip";
 import "./TopBar.css";
 
 const win = getCurrentWindow();
@@ -16,15 +17,21 @@ export function TopBar() {
         </button>
       </div>
       <div className="topbar-controls">
-        <button className="win-btn" onClick={() => win.minimize()}>
-          <Minus size={11} />
-        </button>
-        <button className="win-btn" onClick={() => win.toggleMaximize()}>
-          <Square size={10} />
-        </button>
-        <button className="win-btn win-btn--close" onClick={() => win.close()}>
-          <X size={12} />
-        </button>
+        <Tooltip content="Minimize" placement="bottom">
+          <button className="win-btn" onClick={() => win.minimize()}>
+            <Minus size={11} />
+          </button>
+        </Tooltip>
+        <Tooltip content="Maximize" placement="bottom">
+          <button className="win-btn" onClick={() => win.toggleMaximize()}>
+            <Square size={10} />
+          </button>
+        </Tooltip>
+        <Tooltip content="Close" placement="bottom">
+          <button className="win-btn win-btn--close" onClick={() => win.close()}>
+            <X size={12} />
+          </button>
+        </Tooltip>
       </div>
     </div>
   );

@@ -42,7 +42,7 @@ export function Header() {
             <ThemeToggle />
             <span className="mx-1 shrink-0 w-px h-4 bg-foreground/20" />
             <Link
-              href="https://github.com/gsvprharsha/tempest"
+              href="https://github.com/tempestai-dev/tempest"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="GitHub"

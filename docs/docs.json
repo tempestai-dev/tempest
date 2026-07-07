@@ -17,7 +17,7 @@
   "navbar": {
     "links": [
       {
-        "href": "https://github.com/gsvprharsha/tempest",
+        "href": "https://github.com/tempestai-dev/tempest",
         "label": "GitHub",
         "icon": "github"
       }
@@ -30,7 +30,7 @@
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/gsvprharsha/tempest"
+      "github": "https://github.com/tempestai-dev/tempest"
     }
   },
   "contextual": {

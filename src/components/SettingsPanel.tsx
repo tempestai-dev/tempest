@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { X, Palette, Keyboard, Info, RotateCcw, GitCommitHorizontal, Terminal as TerminalIcon, GitBranch, BookOpen, GripVertical, Pencil, Copy, Trash2, Plus, Cpu, Shield } from "lucide-react";
+import { X, Palette, Keyboard, Info, RotateCcw, GitCommitHorizontal, Terminal as TerminalIcon, GitBranch, BookOpen, GripVertical, Pencil, Copy, Trash2, Plus, Cpu, Shield, ChevronDown } from "lucide-react";
+import { Mark } from "../assets/Mark";
+import { Tooltip } from "./Tooltip";
 import { useTheme } from "../themes/ThemeContext";
 import type { Theme } from "../themes/types";
 import {
@@ -56,9 +58,11 @@ export function SettingsPanel({ onClose, onAttributionToggle, initialSection }: 
 
         <div className="sp-header">
           <span className="sp-title">Settings</span>
-          <button className="sp-close" onClick={onClose} aria-label="Close settings">
-            <X size={15} />
-          </button>
+          <Tooltip content="Close" placement="left">
+            <button className="sp-close" onClick={onClose}>
+              <X size={15} />
+            </button>
+          </Tooltip>
         </div>
 
         <div className="sp-body">
@@ -235,9 +239,13 @@ function SettingRow({ label, hint, children }: { label: string; hint?: string; c
 function Stepper({ value, min, max, onChange }: { value: number; min: number; max: number; onChange: (v: number) => void }) {
   return (
     <div className="sp-stepper">
-      <button className="sp-stepper-btn" disabled={value <= min} onClick={() => onChange(value - 1)}>−</button>
+      <Tooltip content="Decrease" placement="top">
+        <button className="sp-stepper-btn" disabled={value <= min} onClick={() => onChange(value - 1)}>−</button>
+      </Tooltip>
       <span className="sp-stepper-val">{value}</span>
-      <button className="sp-stepper-btn" disabled={value >= max} onClick={() => onChange(value + 1)}>+</button>
+      <Tooltip content="Increase" placement="top">
+        <button className="sp-stepper-btn" disabled={value >= max} onClick={() => onChange(value + 1)}>+</button>
+      </Tooltip>
     </div>
   );
 }
@@ -275,6 +283,52 @@ function ToggleSwitch({ on, onChange }: { on: boolean; onChange: (v: boolean) =>
   );
 }
 
+function SpSelect({ value, options, onChange }: {
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const label = options.find((o) => o.value === value)?.label ?? value;
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div className="sp-drop" ref={ref}>
+      <button
+        className={`sp-drop-btn${open ? " sp-drop-btn--open" : ""}`}
+        onClick={() => setOpen((v) => !v)}
+        type="button"
+      >
+        <span className="sp-drop-label">{label}</span>
+        <ChevronDown size={11} className="sp-drop-chevron" />
+      </button>
+      {open && (
+        <div className="sp-drop-menu">
+          {options.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              className={`sp-drop-item${o.value === value ? " sp-drop-item--active" : ""}`}
+              onClick={() => { onChange(o.value); setOpen(false); }}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Terminal ────────────────────────────────────────────────────────────── */
 
 function TerminalSection() {
@@ -289,15 +343,11 @@ function TerminalSection() {
             onChange={(v) => updateSetting("terminalFontSize", v)} />
         </SettingRow>
         <SettingRow label="Font family">
-          <select
-            className="sp-select"
+          <SpSelect
             value={s.terminalFontFamily}
-            onChange={(e) => updateSetting("terminalFontFamily", e.target.value)}
-          >
-            {FONT_FAMILY_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
+            options={FONT_FAMILY_OPTIONS}
+            onChange={(v) => updateSetting("terminalFontFamily", v)}
+          />
         </SettingRow>
         <SettingRow label="Cursor style">
           <Segmented
@@ -674,29 +724,35 @@ function PromptsSection() {
                     </span>
                   </div>
                   <div className="sp-prompt-actions">
-                    <button className="sp-prompt-action-btn" title="Edit" onClick={() => startEdit(p)}>
-                      <Pencil size={12} />
-                    </button>
-                    <button className="sp-prompt-action-btn" title="Clone" onClick={() => clonePrompt(p.id)}>
-                      <Copy size={12} />
-                    </button>
-                    {p.isBuiltin && modified && (
-                      <button
-                        className="sp-prompt-action-btn"
-                        title="Reset to default"
-                        onClick={() => resetPrompt(p.id)}
-                      >
-                        <RotateCcw size={12} />
+                    <Tooltip content="Edit" placement="top">
+                      <button className="sp-prompt-action-btn" onClick={() => startEdit(p)}>
+                        <Pencil size={12} />
                       </button>
+                    </Tooltip>
+                    <Tooltip content="Clone" placement="top">
+                      <button className="sp-prompt-action-btn" onClick={() => clonePrompt(p.id)}>
+                        <Copy size={12} />
+                      </button>
+                    </Tooltip>
+                    {p.isBuiltin && modified && (
+                      <Tooltip content="Reset to default" placement="top">
+                        <button
+                          className="sp-prompt-action-btn"
+                          onClick={() => resetPrompt(p.id)}
+                        >
+                          <RotateCcw size={12} />
+                        </button>
+                      </Tooltip>
                     )}
                     {!p.isBuiltin && (
-                      <button
-                        className="sp-prompt-action-btn sp-prompt-action-btn--danger"
-                        title="Delete"
-                        onClick={() => deletePrompt(p.id)}
-                      >
-                        <Trash2 size={12} />
-                      </button>
+                      <Tooltip content="Delete" placement="top">
+                        <button
+                          className="sp-prompt-action-btn sp-prompt-action-btn--danger"
+                          onClick={() => deletePrompt(p.id)}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </Tooltip>
                     )}
                   </div>
                 </div>
@@ -776,13 +832,14 @@ function KeyboardSection() {
                     }
                   </button>
                   {!isDefault && !isCapturing && (
-                    <button
-                      className="sp-kb-reset-btn"
-                      title="Reset to default"
-                      onClick={(e) => { e.stopPropagation(); resetBinding(def.id); }}
-                    >
-                      <RotateCcw size={11} />
-                    </button>
+                    <Tooltip content="Reset to default" placement="top">
+                      <button
+                        className="sp-kb-reset-btn"
+                        onClick={(e) => { e.stopPropagation(); resetBinding(def.id); }}
+                      >
+                        <RotateCcw size={11} />
+                      </button>
+                    </Tooltip>
                   )}
                 </div>
               </div>
@@ -865,6 +922,9 @@ export function AttributionSection({ onToggle }: AttributionSectionProps) {
 function AboutSection() {
   return (
     <div className="sp-section">
+      <div className="sp-about-logo">
+        <Mark size={40} />
+      </div>
       <div className="sp-section-heading">Tempest</div>
       <p className="sp-section-desc">A focused workspace for agentic development.</p>
       <div className="sp-about-rows">

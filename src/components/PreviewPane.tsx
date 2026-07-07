@@ -152,15 +152,19 @@ interface Props {
   hidden: boolean;
   previewUrl?: string;
   onUrlChange: (url: string) => void;
+  suppressPanel?: boolean;
 }
 
-export function PreviewPane({ sessionId, hidden, previewUrl, onUrlChange }: Props) {
+export function PreviewPane({ sessionId, hidden, previewUrl, onUrlChange, suppressPanel }: Props) {
   const panelId = `preview-${sessionId}`;
   const containerRef = useRef<HTMLDivElement>(null);
   const outerWrapperRef = useRef<HTMLDivElement>(null);
   const panelEmbedded = useRef(false);
   const urlBarFocusedRef = useRef(false);
   const expectedNavUrlRef = useRef<string | null>(null);
+  // Tracks the most recently committed display URL so onBlur reverts correctly
+  // even when state updates from navigation are still queued.
+  const currentDisplayUrlRef = useRef(previewUrl ?? "");
 
   const [history, setHistory] = useState<string[]>(previewUrl ? [previewUrl] : []);
   const [historyIdx, setHistoryIdx] = useState(previewUrl ? 0 : -1);
@@ -177,6 +181,7 @@ export function PreviewPane({ sessionId, hidden, previewUrl, onUrlChange }: Prop
 
   function pushEntry(to: string) {
     expectedNavUrlRef.current = to;
+    currentDisplayUrlRef.current = to;
     setHistory((prev) => [...prev.slice(0, historyIdx + 1), to]);
     setHistoryIdx(historyIdx + 1);
     setInputUrl(to);
@@ -185,6 +190,7 @@ export function PreviewPane({ sessionId, hidden, previewUrl, onUrlChange }: Prop
 
   function navigateFresh(to: string) {
     expectedNavUrlRef.current = to;
+    currentDisplayUrlRef.current = to;
     setLoading(true);
     setHistory([to]);
     setHistoryIdx(0);
@@ -196,6 +202,7 @@ export function PreviewPane({ sessionId, hidden, previewUrl, onUrlChange }: Prop
     const to = history[nextIdx];
     if (!to) return;
     expectedNavUrlRef.current = to;
+    currentDisplayUrlRef.current = to;
     setLoading(true);
     setHistoryIdx(nextIdx);
     setInputUrl(to);
@@ -299,6 +306,18 @@ export function PreviewPane({ sessionId, hidden, previewUrl, onUrlChange }: Prop
     syncBounds();
   }, [viewW, viewH, url, hidden, syncBounds]);
 
+  // Collapse/restore the native panel when a menu or modal overlays the window.
+  // Native WebView2 panels always render above DOM content, so we resize them to
+  // 0×0 to prevent them from intercepting clicks in the menu.
+  useEffect(() => {
+    if (!panelEmbedded.current) return;
+    if (suppressPanel) {
+      invoke("resize_ide_panel", { panelId, x: 0, y: 0, width: 0, height: 0 }).catch(() => {});
+    } else {
+      syncBounds();
+    }
+  }, [suppressPanel, syncBounds, panelId]);
+
   // Poll for in-webview navigation (SPA pushState). Only updates the URL bar —
   // never touches history/index so the webview isn't reloaded.
   useEffect(() => {
@@ -316,7 +335,10 @@ export function PreviewPane({ sessionId, hidden, previewUrl, onUrlChange }: Prop
         }
 
         // Don't overwrite text the user is actively typing.
-        if (!urlBarFocusedRef.current) setInputUrl(current);
+        if (!urlBarFocusedRef.current) {
+          setInputUrl(current);
+          currentDisplayUrlRef.current = current;
+        }
       } catch { /* panel not ready */ }
     };
 
@@ -369,7 +391,7 @@ export function PreviewPane({ sessionId, hidden, previewUrl, onUrlChange }: Prop
             value={inputUrl}
             onChange={(e) => setInputUrl(e.target.value)}
             onFocus={(e) => { urlBarFocusedRef.current = true; e.currentTarget.select(); }}
-            onBlur={() => { urlBarFocusedRef.current = false; setInputUrl(url); }}
+            onBlur={() => { urlBarFocusedRef.current = false; setInputUrl(currentDisplayUrlRef.current); }}
             onKeyDown={(e) => {
               if (e.key === "Enter") { handleUrlBarNavigate(inputUrl); (e.target as HTMLInputElement).blur(); }
               if (e.key === "Escape") { setInputUrl(url); (e.target as HTMLInputElement).blur(); }

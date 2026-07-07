@@ -62,7 +62,7 @@ function githubHeaders(): HeadersInit {
 
 export async function generateStaticParams() {
   try {
-    const res = await fetch('https://api.github.com/repos/gsvprharsha/tempest/releases', {
+    const res = await fetch('https://api.github.com/repos/tempestai-dev/tempest/releases', {
       headers: githubHeaders(),
     })
     if (!res.ok) return []
@@ -192,7 +192,7 @@ export default async function ReleaseNotesPostPage({
   let release: GitHubRelease | null = null
   try {
     const res = await fetch(
-      `https://api.github.com/repos/gsvprharsha/tempest/releases/tags/${encodeURIComponent(tag)}`,
+      `https://api.github.com/repos/tempestai-dev/tempest/releases/tags/${encodeURIComponent(tag)}`,
       { headers: githubHeaders() }
     )
     if (res.ok) release = await res.json()

@@ -24,7 +24,7 @@ tempest-git/
 
 ```bash
 # Clone the repo
-git clone https://github.com/gsvprharsha/tempest.git
+git clone https://github.com/tempestai-dev/tempest.git
 cd tempest
 
 # Install all workspace dependencies (app + web + docs)

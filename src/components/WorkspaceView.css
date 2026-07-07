@@ -566,6 +566,38 @@
   margin: 0 0 14px;
 }
 
+.naming-modal-branch-toggle {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+  background: var(--tempest-bg-editor);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 6px;
+  padding: 3px;
+}
+
+.naming-modal-branch-opt {
+  flex: 1;
+  padding: 4px 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--tempest-fg-muted);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.naming-modal-branch-opt.active {
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
+}
+
+.naming-modal-select {
+  appearance: none;
+  cursor: pointer;
+}
+
 .naming-modal-input {
   width: 100%;
   padding: 8px 10px;

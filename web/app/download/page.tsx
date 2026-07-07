@@ -36,7 +36,7 @@ type GitHubRelease = {
 async function getLatestRelease(): Promise<GitHubRelease | null> {
   try {
     const res = await fetch(
-      "https://api.github.com/repos/gsvprharsha/tempest/releases/latest",
+      "https://api.github.com/repos/tempestai-dev/tempest/releases/latest",
       { next: { revalidate: 3600 } }
     )
     if (!res.ok) return null

@@ -20,17 +20,17 @@
   align-items: center;
   gap: 4px;
   padding: 4px 8px;
-  background: var(--tempest-bg-elevated);
-  border-bottom: 1px solid var(--tempest-border-subtle);
+  background: var(--tempest-bg-panel);
+  border-bottom: 1px solid var(--tempest-border-default);
   flex-shrink: 0;
 }
 
 .terminal-search-input {
   flex: 1;
-  background: var(--tempest-bg-input);
-  border: 1px solid var(--tempest-border-subtle);
+  background: var(--tempest-bg-hover);
+  border: 1px solid var(--tempest-border-default);
   border-radius: 4px;
-  color: var(--tempest-text-primary);
+  color: var(--tempest-fg-default);
   font-family: "Geist Mono", monospace;
   font-size: 12px;
   padding: 3px 7px;
@@ -44,7 +44,7 @@
 .terminal-search-close {
   background: none;
   border: none;
-  color: var(--tempest-text-muted);
+  color: var(--tempest-fg-muted);
   cursor: pointer;
   font-size: 16px;
   line-height: 1;
@@ -52,7 +52,7 @@
 }
 
 .terminal-search-close:hover {
-  color: var(--tempest-text-primary);
+  color: var(--tempest-fg-default);
 }
 
 .terminal-pane .xterm {

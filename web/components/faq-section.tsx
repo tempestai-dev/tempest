@@ -44,7 +44,7 @@ export function FaqSection() {
           <p className="text-sm font-medium text-foreground">Still have questions?</p>
           <p className="text-sm text-muted-foreground">Open an issue on GitHub and we'll get back to you.</p>
           <a
-            href="https://github.com/gsvprharsha/tempest/issues"
+            href="https://github.com/tempestai-dev/tempest/issues"
             target="_blank"
             rel="noopener noreferrer"
             className="mt-2 text-sm text-foreground underline underline-offset-4 hover:text-muted-foreground transition-colors w-fit"

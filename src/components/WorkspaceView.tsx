@@ -11,7 +11,7 @@ import { getWorktreeSession, saveWorktreeSession, removeWorktreeSession, markWor
 import { getRuntimeState, setRuntimeState, type PersistedTab } from "../lib/runtimeState";
 import {
   LayoutGrid,
-  Network,
+  Brain,
   FolderPlus,
   FolderOpen,
   Bug,
@@ -56,6 +56,7 @@ import { CodeMirrorPane } from "./CodeMirrorPane";
 import { RightSidebar } from "./RightSidebar";
 import { NewSessionMenu, NewSessionPlacement, AgentConfig, AGENT_CONFIGS, AgentIcon } from "./NewSessionMenu";
 import { SettingsPanel } from "./SettingsPanel";
+import { Tooltip } from "./Tooltip";
 import { BroadcastDialog, BroadcastSession } from "./BroadcastDialog";
 import "./BroadcastDialog.css";
 import { QueuePanel } from "./QueuePanel";
@@ -223,6 +224,9 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const [rootRemoteUrl, setRootRemoteUrl] = useState("");
   const [rootGitInitializing, setRootGitInitializing] = useState(false);
   const [rootGitError, setRootGitError] = useState<string | null>(null);
+  const [useExistingBranch, setUseExistingBranch] = useState(false);
+  const [existingBranchName, setExistingBranchName] = useState("");
+  const [existingBranchList, setExistingBranchList] = useState<string[]>([]);
 
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -633,7 +637,21 @@ export function WorkspaceView({ zen, name, path }: Props) {
     setRootGitError(null);
     setPendingProjectId(null);
     setPendingAgent(null);
+    setUseExistingBranch(false);
+    setExistingBranchName("");
+    setExistingBranchList([]);
   }
+
+  // Fetch branches when the naming modal opens so the "use existing branch" toggle
+  // has a list ready without the user having to wait after clicking it.
+  useEffect(() => {
+    if (!showTerminalNaming) return;
+    const projectPath = projects.find((p) => p.id === pendingProjectId)?.path ?? (zen ? path ?? "" : "");
+    if (!projectPath) return;
+    invoke<{ name: string; is_current: boolean }[]>("git_list_branches", { repoPath: projectPath })
+      .then((branches) => setExistingBranchList(branches.map((b) => b.name)))
+      .catch(() => {});
+  }, [showTerminalNaming]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function openCtxMenu(
     e: React.MouseEvent,
@@ -880,12 +898,12 @@ export function WorkspaceView({ zen, name, path }: Props) {
 
       const channel = new Channel<{ session_id: string; data: string }>();
 
-      // Build isolation spec for agent sessions when the user has enabled isolation.
-      const shouldIsolate = !!agent && getSettings().isolateAgents;
-      const sandboxParam = shouldIsolate ? {
+      // Build isolation spec for ALL PTY sessions when isolation is enabled.
+      // Agent sessions: full sandbox (network filter on Linux/macOS, Job Object on Windows).
+      // Terminal sessions: lifecycle-only (Job Object on Windows, process group on Linux/macOS).
+      const shouldIsolate = getSettings().isolateAgents;
+      const sandboxParam = shouldIsolate ? (agent ? {
         mode: "enforce",
-        // Hosts AI agents commonly need — enforced on Linux/macOS via proxy;
-        // on Windows Job Objects don't filter network (process confinement only).
         allowed_hosts: [
           "*.anthropic.com",
           "*.openai.com",
@@ -900,8 +918,13 @@ export function WorkspaceView({ zen, name, path }: Props) {
           "*.pypi.org",
         ],
         rw_paths: [cwd],
-        ro_paths: [],
-      } : null;
+        ro_paths: [] as string[],
+      } : {
+        mode: "lifecycle",
+        allowed_hosts: [] as string[],
+        rw_paths: [] as string[],
+        ro_paths: [] as string[],
+      }) : null;
 
       await invoke<void>("create_pty_session", {
         sessionId,
@@ -1040,18 +1063,29 @@ export function WorkspaceView({ zen, name, path }: Props) {
   }
 
   async function launchTerminalWorktree() {
-    if (!terminalName.trim()) return;
-    setTerminalLaunching(true);
-    setTerminalError(null);
     const activePath = getActivePath();
     const workingProjectId = pendingProjectId;
     const agent = pendingAgent?.hint;
     const prompt = terminalPrompt.trim() || undefined;
-    const fullName = branchPrefix ? `${branchPrefix}${terminalName}` : terminalName;
-    const sessionName = fullName || (pendingAgent ? pendingAgent.name : "Terminal");
+
+    let branchName: string;
+    let existingBranch: string | undefined;
+    if (useExistingBranch) {
+      if (!existingBranchName.trim()) return;
+      branchName = existingBranchName.trim().replace(/\//g, "-");
+      existingBranch = existingBranchName.trim();
+    } else {
+      if (!terminalName.trim()) return;
+      const fullName = branchPrefix ? `${branchPrefix}${terminalName}` : terminalName;
+      branchName = fullName;
+    }
+    const sessionName = branchName || (pendingAgent ? pendingAgent.name : "Terminal");
+
+    setTerminalLaunching(true);
+    setTerminalError(null);
     try {
-      const result = await createWorktree({ projectPath: activePath, name: fullName });
-      addWorktreeToState({ name: fullName, path: result.path }, workingProjectId);
+      const result = await createWorktree({ projectPath: activePath, name: branchName, existingBranch });
+      addWorktreeToState({ name: branchName, path: result.path }, workingProjectId);
       await openSession(sessionName, result.path, workingProjectId ?? "", agent, prompt, undefined);
       resetTerminalModal();
     } catch (e) {
@@ -1461,22 +1495,24 @@ export function WorkspaceView({ zen, name, path }: Props) {
     <div className="workspace-layout">
       <TopBar />
       <div className="sub-bar">
-        <button
-          className="sub-bar-icon-btn"
-          title="Toggle sidebar"
-          aria-label="Toggle sidebar"
-          onClick={() => setSidebarOpen((o) => !o)}
-        >
-          <PanelLeft size={15} />
-        </button>
-        <button
-          className="sub-bar-icon-btn"
-          title="Switch theme"
-          aria-label="Switch theme"
-          onClick={toggleTheme}
-        >
-          {isDark ? <Sun size={15} /> : <Moon size={15} />}
-        </button>
+        <Tooltip content="Toggle sidebar" placement="bottom">
+          <button
+            className="sub-bar-icon-btn"
+            aria-label="Toggle sidebar"
+            onClick={() => setSidebarOpen((o) => !o)}
+          >
+            <PanelLeft size={15} />
+          </button>
+        </Tooltip>
+        <Tooltip content="Switch theme" placement="bottom">
+          <button
+            className="sub-bar-icon-btn"
+            aria-label="Switch theme"
+            onClick={toggleTheme}
+          >
+            {isDark ? <Sun size={15} /> : <Moon size={15} />}
+          </button>
+        </Tooltip>
         {activeSession && (
           <>
             <span className="sub-bar-divider">/</span>
@@ -1496,14 +1532,15 @@ export function WorkspaceView({ zen, name, path }: Props) {
         {activeSession && (
           <div className="sub-bar-right">
             <div className="sub-bar-prompt-wrap" ref={promptPickerRef}>
-              <button
-                className={`sub-bar-icon-btn${promptPickerOpen ? " sub-bar-icon-btn--active" : ""}`}
-                title="Prompt library"
-                aria-label="Prompt library"
-                onClick={() => setPromptPickerOpen((o) => !o)}
-              >
-                <BookOpen size={15} />
-              </button>
+              <Tooltip content="Prompts" placement="bottom">
+                <button
+                  className={`sub-bar-icon-btn${promptPickerOpen ? " sub-bar-icon-btn--active" : ""}`}
+                  aria-label="Prompt library"
+                  onClick={() => setPromptPickerOpen((o) => !o)}
+                >
+                  <BookOpen size={15} />
+                </button>
+              </Tooltip>
               {promptPickerOpen && (
                 <div className="sub-bar-prompt-picker">
                   <div className="sub-bar-prompt-picker-header">
@@ -1561,14 +1598,15 @@ export function WorkspaceView({ zen, name, path }: Props) {
                 </div>
               )}
             </div>
-            <button
-              className="sub-bar-icon-btn"
-              title="Toggle right panel"
-              aria-label="Toggle right panel"
-              onClick={() => setRightSidebarOpen((o) => !o)}
-            >
-              <PanelRight size={15} />
-            </button>
+            <Tooltip content="Toggle right panel" placement="bottom">
+              <button
+                className="sub-bar-icon-btn"
+                aria-label="Toggle right panel"
+                onClick={() => setRightSidebarOpen((o) => !o)}
+              >
+                <PanelRight size={15} />
+              </button>
+            </Tooltip>
           </div>
         )}
       </div>
@@ -1582,7 +1620,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
             <span>Overview</span>
           </button>
           <button className={navBtn("knowledge-base")} onClick={() => goTo("knowledge-base")}>
-            <Network size={16} />
+            <Brain size={16} />
             <span>Knowledge Base</span>
           </button>
 
@@ -1708,14 +1746,15 @@ export function WorkspaceView({ zen, name, path }: Props) {
                         {atlasEnabled && getRuntimeState().atlasProjects[project.path] === true && (
                           <Cpu size={11} className="sidebar-project-atlas-icon" aria-label="Token Intelligence indexed" />
                         )}
-                        <button
-                          className="sidebar-project-add-btn"
-                          onClick={(e) => openSessionMenu(e, project.id, "right")}
-                          title="New session"
-                          aria-label="New session"
-                        >
-                          <Plus size={12} />
-                        </button>
+                        <Tooltip content="New session" placement="right">
+                          <button
+                            className="sidebar-project-add-btn"
+                            onClick={(e) => openSessionMenu(e, project.id, "right")}
+                            aria-label="New session"
+                          >
+                            <Plus size={12} />
+                          </button>
+                        </Tooltip>
                       </div>
                       {project.expanded && (
                         <div className="sidebar-project-sessions">
@@ -1834,11 +1873,11 @@ export function WorkspaceView({ zen, name, path }: Props) {
           </div>{/* end sidebar-scroll-wrap */}
 
           <div className="sidebar-bottom">
-            <button className="sidebar-nav-btn" onClick={() => openUrl("https://github.com/gsvprharsha/tempest/issues")}>
+            <button className="sidebar-nav-btn" onClick={() => openUrl("https://github.com/tempestai-dev/tempest/issues")}>
               <Bug size={16} />
               <span>Report a Bug</span>
             </button>
-            <button className="sidebar-nav-btn" onClick={() => openUrl("mailto:gsvprharsha.work@gmail.com")}>
+            <button className="sidebar-nav-btn" onClick={() => openUrl("mailto:tempestai.dev@gmail.com")}>
               <Mail size={16} />
               <span>Email Us</span>
             </button>
@@ -1966,75 +2005,82 @@ export function WorkspaceView({ zen, name, path }: Props) {
                         }}
                       />
                     )}
-                    <span
-                      className="session-tab-close"
-                      role="button"
-                      tabIndex={0}
-                      aria-label={`Close ${s.name}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        closeSession(s.id);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
+                    <Tooltip content="Close tab" placement="top">
+                      <span
+                        className="session-tab-close"
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Close ${s.name}`}
+                        onClick={(e) => {
                           e.stopPropagation();
                           closeSession(s.id);
-                        }
-                      }}
-                    >
-                      <X size={11} />
-                    </span>
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.stopPropagation();
+                            closeSession(s.id);
+                          }
+                        }}
+                      >
+                        <X size={11} />
+                      </span>
+                    </Tooltip>
                   </button>
                 );
               })}
-                <button
-                  className="session-tab-add"
-                  onClick={(e) => openSessionMenu(e, activeSession?.projectId ?? null, "below")}
-                  aria-label="New tab"
-                  title="New tab"
-                >
-                  <Plus size={13} />
-                </button>
+                <Tooltip content="New tab" placement="top">
+                  <button
+                    className="session-tab-add"
+                    onClick={(e) => openSessionMenu(e, activeSession?.projectId ?? null, "below")}
+                    aria-label="New tab"
+                  >
+                    <Plus size={13} />
+                  </button>
+                </Tooltip>
               </div>
               <div className="session-tab-actions">
                 {activeSession && !activeSession.kind && (
                   <>
-                    <button
-                      className="session-tab-split-btn session-tab-split-btn--v"
-                      onClick={() => splitPane("v")}
-                      aria-label="Split pane vertically"
-                      title="Split vertical (Ctrl+Shift+|)"
-                    >
-                      <Columns2 size={13} />
-                    </button>
-                    <button
-                      className="session-tab-split-btn session-tab-split-btn--h"
-                      onClick={() => splitPane("h")}
-                      aria-label="Split pane horizontally"
-                      title="Split horizontal (Ctrl+Shift+_)"
-                    >
-                      <Rows2 size={13} />
-                    </button>
+                    <Tooltip content="Split vertical" placement="top">
+                      <button
+                        className="session-tab-split-btn session-tab-split-btn--v"
+                        onClick={() => splitPane("v")}
+                        aria-label="Split pane vertically"
+                      >
+                        <Columns2 size={13} />
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="Split horizontal" placement="top">
+                      <button
+                        className="session-tab-split-btn session-tab-split-btn--h"
+                        onClick={() => splitPane("h")}
+                        aria-label="Split pane horizontally"
+                      >
+                        <Rows2 size={13} />
+                      </button>
+                    </Tooltip>
                   </>
                 )}
                 {activeSession?.agent && (
-                  <button
-                    className="session-tab-queue-btn"
-                    onClick={() => setQueueOpenSessionId((prev) => prev === activeSession.id ? null : activeSession.id)}
-                    aria-label="Message queue"
-                    title="Message queue (Ctrl+Shift+Q)"
-                  >
-                    <ListOrdered size={13} />
-                  </button>
+                  <Tooltip content="Message queue" placement="top">
+                    <button
+                      className="session-tab-queue-btn"
+                      onClick={() => setQueueOpenSessionId((prev) => prev === activeSession.id ? null : activeSession.id)}
+                      aria-label="Message queue"
+                    >
+                      <ListOrdered size={13} />
+                    </button>
+                  </Tooltip>
                 )}
-                <button
-                  className="session-tab-broadcast"
-                  onClick={() => setBroadcastOpen(true)}
-                  aria-label="Broadcast to agents"
-                  title="Broadcast to agents (Ctrl+Shift+M)"
-                >
-                  <Megaphone size={13} />
-                </button>
+                <Tooltip content="Broadcast to agents" placement="top">
+                  <button
+                    className="session-tab-broadcast"
+                    onClick={() => setBroadcastOpen(true)}
+                    aria-label="Broadcast to agents"
+                  >
+                    <Megaphone size={13} />
+                  </button>
+                </Tooltip>
               </div>
             </div>
           )}
@@ -2063,13 +2109,15 @@ export function WorkspaceView({ zen, name, path }: Props) {
                   onClick={isInSplit ? () => setActiveSessionId(s.id) : undefined}
                 >
                   {isInSplit && (
-                    <button
-                      className="pane-close-btn"
-                      onClick={(e) => { e.stopPropagation(); closeSession(s.id); }}
-                      aria-label="Close pane"
-                    >
-                      <X size={10} />
-                    </button>
+                    <Tooltip content="Close pane" placement="top">
+                      <button
+                        className="pane-close-btn"
+                        onClick={(e) => { e.stopPropagation(); closeSession(s.id); }}
+                        aria-label="Close pane"
+                      >
+                        <X size={10} />
+                      </button>
+                    </Tooltip>
                   )}
                   {!s.kind && s.agent && !hidden && queueOpenSessionId === s.id && (
                     <QueuePanel
@@ -2085,6 +2133,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
                       hidden={hidden}
                       previewUrl={s.previewUrl}
                       onUrlChange={(url) => updateSessionPreviewUrl(s.id, url)}
+                      suppressPanel={sessionMenuOpen || showTerminalNaming}
                     />
                   ) : s.kind === "editor" ? (
                     <CodeMirrorPane
@@ -2625,15 +2674,51 @@ export function WorkspaceView({ zen, name, path }: Props) {
                   <span>{pendingAgent ? `New ${pendingAgent.name} Session` : "New Workspace"}</span>
                 </div>
                 <p className="naming-modal-desc">Give your workspace a name to get started.</p>
-                <input
-                  className="naming-modal-input"
-                  type="text"
-                  placeholder="e.g. my-feature"
-                  value={terminalName}
-                  onChange={(e) => setTerminalName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") launchTerminalWorktree(); }}
-                  autoFocus
-                />
+                <div className="naming-modal-branch-toggle">
+                  <button
+                    className={`naming-modal-branch-opt${!useExistingBranch ? " active" : ""}`}
+                    onClick={() => setUseExistingBranch(false)}
+                  >New branch</button>
+                  <button
+                    className={`naming-modal-branch-opt${useExistingBranch ? " active" : ""}`}
+                    onClick={() => setUseExistingBranch(true)}
+                  >Use existing</button>
+                </div>
+                {useExistingBranch ? (
+                  existingBranchList.length > 0 ? (
+                    <select
+                      className="naming-modal-input naming-modal-select"
+                      value={existingBranchName}
+                      onChange={(e) => setExistingBranchName(e.target.value)}
+                      autoFocus
+                    >
+                      <option value="">Select a branch…</option>
+                      {existingBranchList.map((b) => (
+                        <option key={b} value={b}>{b}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      className="naming-modal-input"
+                      type="text"
+                      placeholder="Branch name"
+                      value={existingBranchName}
+                      onChange={(e) => setExistingBranchName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") launchTerminalWorktree(); }}
+                      autoFocus
+                    />
+                  )
+                ) : (
+                  <input
+                    className="naming-modal-input"
+                    type="text"
+                    placeholder="e.g. my-feature"
+                    value={terminalName}
+                    onChange={(e) => setTerminalName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") launchTerminalWorktree(); }}
+                    autoFocus
+                  />
+                )}
                 {pendingAgent && (
                   <div className="naming-modal-prompt-block">
                     <div className="naming-modal-prompt-label">
@@ -2664,10 +2749,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
                   </button>
                   <button
                     className="naming-modal-btn naming-modal-btn--create"
-                    disabled={!terminalName.trim() || terminalLaunching}
+                    disabled={(useExistingBranch ? !existingBranchName.trim() : !terminalName.trim()) || terminalLaunching}
                     onClick={launchTerminalWorktree}
                   >
-                    {terminalLaunching ? <Loader size={13} className="spin" /> : "in Branch"}
+                    {terminalLaunching ? <Loader size={13} className="spin" /> : useExistingBranch ? "Open Branch" : "in Branch"}
                   </button>
                 </div>
               </>

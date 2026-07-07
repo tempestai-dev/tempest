@@ -114,6 +114,50 @@ function buildEditorTheme() {
       border: `1px solid ${v("border-default")}`,
       color: v("fg-default"),
     },
+    // Search panel
+    ".cm-panel": {
+      backgroundColor: v("bg-panel"),
+      borderTop: `1px solid ${v("border-default")}`,
+      color: v("fg-default"),
+    },
+    ".cm-textfield": {
+      backgroundColor: v("bg-hover"),
+      border: `1px solid ${v("border-default")}`,
+      borderRadius: "4px",
+      color: v("fg-default"),
+      fontFamily: "'Geist Mono', monospace",
+      fontSize: "12px",
+      padding: "3px 7px",
+      outline: "none",
+    },
+    "input.cm-textfield:focus": {
+      borderColor: v("accent-blue"),
+    },
+    ".cm-button": {
+      backgroundImage: "none",
+      backgroundColor: v("bg-hover"),
+      border: `1px solid ${v("border-default")}`,
+      borderRadius: "4px",
+      color: v("fg-default"),
+      cursor: "pointer",
+      fontFamily: "inherit",
+      fontSize: "11px",
+      padding: "2px 8px",
+    },
+    ".cm-button:hover": {
+      backgroundColor: v("bg-active"),
+    },
+    ".cm-panel label": {
+      color: v("fg-muted"),
+      fontSize: "12px",
+    },
+    ".cm-panel.cm-search": {
+      padding: "5px 8px",
+      gap: "6px",
+      display: "flex",
+      flexWrap: "wrap",
+      alignItems: "center",
+    },
   });
 }
 

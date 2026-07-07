@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/gsvprharsha/tempest/releases">
-    <img src="https://img.shields.io/github/v/release/gsvprharsha/tempest" alt="Version" />
+  <a href="https://github.com/tempestai-dev/tempest/releases">
+    <img src="https://img.shields.io/github/v/release/tempestai-dev/tempest" alt="Version" />
   </a>
   <img src="https://img.shields.io/badge/macOS-Supported-grey?logo=apple&logoColor=white&labelColor=000000" alt="macOS" />
   <img src="https://custom-icon-badges.demolab.com/badge/Windows-Supported-grey?logo=windows11&logoColor=white&labelColor=0078D6" alt="Windows" />
@@ -18,11 +18,11 @@
   <a href="https://tauri.app/">
     <img src="https://img.shields.io/badge/built%20with-Tauri%202-orange" alt="Tauri" />
   </a>
-  <a href="https://github.com/gsvprharsha/tempest/blob/main/LICENSE">
+  <a href="https://github.com/tempestai-dev/tempest/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License" />
   </a>
-  <a href="https://github.com/gsvprharsha/tempest/actions/workflows/ci.yml">
-    <img src="https://img.shields.io/github/actions/workflow/status/gsvprharsha/tempest/ci.yml?branch=main&label=build" alt="CI" />
+  <a href="https://github.com/tempestai-dev/tempest/actions/workflows/ci.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/tempestai-dev/tempest/ci.yml?branch=main&label=build" alt="CI" />
   </a>
 </p>
 
@@ -80,7 +80,7 @@ Pre-built binaries are available for Windows, macOS, and Linux.
 # Prerequisites: Node.js 18+, Rust 1.77+
 # Windows also requires WebView2 Runtime:
 # https://developer.microsoft.com/en-us/microsoft-edge/webview2/
-git clone https://github.com/gsvprharsha/tempest
+git clone https://github.com/tempestai-dev/tempest
 cd tempest
 npm install
 npm run dev        # development with hot reload
@@ -91,7 +91,7 @@ npm run build      # production build -> dist-installers/
 
 [X (Twitter)](https://x.com/usetempest) — @usetempest
 
-[GitHub](https://github.com/gsvprharsha/tempest)
+[GitHub](https://github.com/tempestai-dev/tempest)
 
 [Instagram](https://instagram.com/usetempest)
 

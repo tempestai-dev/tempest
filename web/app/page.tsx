@@ -39,7 +39,7 @@ const structuredDataSchema = {
       name: "Tempest",
       url: "https://tempestai.dev",
       sameAs: [
-        "https://github.com/gsvprharsha/tempest",
+        "https://github.com/tempestai-dev/tempest",
         "https://x.com/usetempest",
       ],
     },

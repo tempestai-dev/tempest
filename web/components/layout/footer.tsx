@@ -40,7 +40,7 @@ export function Footer() {
                 Docs
               </a>
               <a
-                href="https://github.com/gsvprharsha/tempest/blob/main/ROADMAP.md"
+                href="https://github.com/tempestai-dev/tempest/blob/main/ROADMAP.md"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors w-fit"
@@ -54,7 +54,7 @@ export function Footer() {
             <p className="text-sm font-medium">Community</p>
             <nav className="flex flex-col gap-2.5">
               <a
-                href="https://github.com/gsvprharsha/tempest"
+                href="https://github.com/tempestai-dev/tempest"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors w-fit"

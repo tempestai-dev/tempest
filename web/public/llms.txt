@@ -34,4 +34,4 @@
 - Supported platforms: Windows, macOS, Linux
 - Supported agents: Claude Code, Aider, OpenCode, Copilot CLI, Cline, Goose, and any terminal-based agent
 - License: Apache 2.0
-- Repository: https://github.com/gsvprharsha/tempest
+- Repository: https://github.com/tempestai-dev/tempest

@@ -5,6 +5,7 @@ import {
   RefreshCw, GitBranch, GitPullRequest, Loader, Check,
   Plus, Minus, X, AlertTriangle, ChevronDown, Trash2,
 } from "lucide-react";
+import { Tooltip } from "./Tooltip";
 import { useAttribution, setAttribution, COAUTHOR_LINE } from "../store/attribution";
 import "./DiffPane.css";
 
@@ -329,14 +330,15 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
       {/* ── Header ── */}
       <div className="dp-header">
         <span className="dp-header-title">Changes</span>
-        <button
-          className={`dp-reload-btn${loading ? " dp-reload-btn--spinning" : ""}`}
-          disabled={loading}
-          onClick={load}
-          title="Reload"
-        >
-          <RefreshCw size={13} />
-        </button>
+        <Tooltip content="Reload" placement="top">
+          <button
+            className={`dp-reload-btn${loading ? " dp-reload-btn--spinning" : ""}`}
+            disabled={loading}
+            onClick={load}
+          >
+            <RefreshCw size={13} />
+          </button>
+        </Tooltip>
         {/* ── Branch picker ── */}
         <div className="dp-branch-picker" ref={branchMenuRef}>
           <button
@@ -368,13 +370,14 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
                       {b.name}
                     </button>
                     {!b.is_current && (
-                      <button
-                        className="dp-branch-menu-del"
-                        onClick={(e) => { e.stopPropagation(); setDeleteTarget(b.name); setDeleteError(null); }}
-                        title={`Delete ${b.name}`}
-                      >
-                        <Trash2 size={11} />
-                      </button>
+                      <Tooltip content="Delete branch" placement="left">
+                        <button
+                          className="dp-branch-menu-del"
+                          onClick={(e) => { e.stopPropagation(); setDeleteTarget(b.name); setDeleteError(null); }}
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </Tooltip>
                     )}
                   </div>
                 ))
@@ -410,13 +413,14 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
             </>
           ) : (
             <div className="dp-branch-row">
-              <button
-                className="dp-branch-cancel"
-                onClick={() => { setShowBranchInput(false); setNewBranchName(""); }}
-                title="Cancel"
-              >
-                <X size={12} />
-              </button>
+              <Tooltip content="Cancel" placement="top">
+                <button
+                  className="dp-branch-cancel"
+                  onClick={() => { setShowBranchInput(false); setNewBranchName(""); }}
+                >
+                  <X size={12} />
+                </button>
+              </Tooltip>
               <input
                 className="dp-branch-input"
                 placeholder="branch-name"
@@ -484,13 +488,14 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
                     >
                       <span className={`dp-status ${statusClass(f.status)}`}>{f.status}</span>
                       <span className="dp-fpath" title={f.path}>{f.path}</span>
-                      <button
-                        className="dp-file-btn dp-file-btn--unstage"
-                        onClick={(e) => { e.stopPropagation(); unstageFile(f.path); }}
-                        title="Unstage"
-                      >
-                        <Minus size={11} />
-                      </button>
+                      <Tooltip content="Unstage file" placement="left">
+                        <button
+                          className="dp-file-btn dp-file-btn--unstage"
+                          onClick={(e) => { e.stopPropagation(); unstageFile(f.path); }}
+                        >
+                          <Minus size={11} />
+                        </button>
+                      </Tooltip>
                     </div>
                   ))
                 )}
@@ -523,20 +528,22 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
                       <span className={`dp-status ${statusClass(f.status)}`}>{f.status}</span>
                       <span className="dp-fpath" title={f.path}>{f.path}</span>
                       <div className="dp-file-btns">
-                        <button
-                          className="dp-file-btn dp-file-btn--stage"
-                          onClick={(e) => { e.stopPropagation(); stageFile(f.path); }}
-                          title="Stage"
-                        >
-                          <Plus size={11} />
-                        </button>
-                        <button
-                          className="dp-file-btn dp-file-btn--discard"
-                          onClick={(e) => { e.stopPropagation(); setDiscardTarget(f.path); }}
-                          title="Discard changes"
-                        >
-                          <X size={11} />
-                        </button>
+                        <Tooltip content="Stage file" placement="left">
+                          <button
+                            className="dp-file-btn dp-file-btn--stage"
+                            onClick={(e) => { e.stopPropagation(); stageFile(f.path); }}
+                          >
+                            <Plus size={11} />
+                          </button>
+                        </Tooltip>
+                        <Tooltip content="Discard changes" placement="left">
+                          <button
+                            className="dp-file-btn dp-file-btn--discard"
+                            onClick={(e) => { e.stopPropagation(); setDiscardTarget(f.path); }}
+                          >
+                            <X size={11} />
+                          </button>
+                        </Tooltip>
                       </div>
                     </div>
                   ))

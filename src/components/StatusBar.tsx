@@ -1,4 +1,5 @@
 import { Shield, Cpu, RefreshCw } from "lucide-react";
+import { Tooltip } from "./Tooltip";
 
 interface Props {
   /**
@@ -28,35 +29,38 @@ export function StatusBar({ sandboxed, atlasIndexed, atlasIndexing, onSyncAtlas 
       <div className="status-bar-right">
         {showAtlas && (
           atlasIndexing ? (
-            <div
-              className="status-bar-chip status-bar-chip--indexing"
-              title="Atlas is indexing this project…"
-            >
-              <RefreshCw size={10} className="status-bar-chip-icon status-bar-chip-icon--spin" />
-              <span className="status-bar-chip-label">Indexing</span>
-            </div>
+            <Tooltip content="Indexing codebase…" placement="top">
+              <div
+                className="status-bar-chip status-bar-chip--indexing"
+              >
+                <RefreshCw size={10} className="status-bar-chip-icon status-bar-chip-icon--spin" />
+                <span className="status-bar-chip-label">Indexing</span>
+              </div>
+            </Tooltip>
           ) : (
-            <div
-              className="status-bar-chip status-bar-chip--atlas-indexed"
-              title="Atlas index is up to date — click to re-sync"
-              onClick={onSyncAtlas}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => e.key === "Enter" && onSyncAtlas?.()}
-            >
-              <Cpu size={10} className="status-bar-chip-icon" />
-              <span className="status-bar-chip-label">Indexed</span>
-            </div>
+            <Tooltip content="Click to re-index" placement="top">
+              <div
+                className="status-bar-chip status-bar-chip--atlas-indexed"
+                onClick={onSyncAtlas}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === "Enter" && onSyncAtlas?.()}
+              >
+                <Cpu size={10} className="status-bar-chip-icon" />
+                <span className="status-bar-chip-label">Indexed</span>
+              </div>
+            </Tooltip>
           )
         )}
         {showShield && (
-          <div
-            className={`status-bar-chip status-bar-chip--shield${sandboxed ? " status-bar-chip--isolated" : ""}`}
-            title={sandboxed ? "Isolated via Hephaestus (Job Object)" : "Not isolated — enable in Settings → Security"}
-          >
-            <Shield size={10} className="status-bar-chip-icon" />
-            <span className="status-bar-chip-label">{sandboxed ? "Isolated" : "Not isolated"}</span>
-          </div>
+          <Tooltip content={sandboxed ? "Process isolated" : "Not isolated"} placement="top">
+            <div
+              className={`status-bar-chip status-bar-chip--shield${sandboxed ? " status-bar-chip--isolated" : ""}`}
+            >
+              <Shield size={10} className="status-bar-chip-icon" />
+              <span className="status-bar-chip-label">{sandboxed ? "Isolated" : "Not isolated"}</span>
+            </div>
+          </Tooltip>
         )}
       </div>
     </div>

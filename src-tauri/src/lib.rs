@@ -584,7 +584,11 @@ fn git_add_remote(repo_path: String, remote_url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn create_terminal_worktree(project_path: String, name: String) -> Result<String, String> {
+async fn create_terminal_worktree(
+    project_path: String,
+    name: String,
+    existing_branch: Option<String>,
+) -> Result<String, String> {
     // The body is pure blocking work (git subprocesses + file ops). Run it on a
     // dedicated blocking thread so a slow worktree creation never starves Tauri's
     // bounded IPC worker pool. Both params are owned, so they move in cleanly.
@@ -592,6 +596,9 @@ async fn create_terminal_worktree(project_path: String, name: String) -> Result<
     let project = std::path::Path::new(&project_path);
     let tempest_dir = project.join(".tempest");
     std::fs::create_dir_all(&tempest_dir).map_err(|e| e.to_string())?;
+    // Sanitize the name for use as a filesystem directory: branch names like
+    // "feat/my-feature" would create a real subdirectory without this replacement.
+    let dir_name = name.replace('/', "-");
 
     // 1. Ensure at least one commit exists so git worktree add has a HEAD to branch from.
     let has_commits = new_command("git")
@@ -637,7 +644,7 @@ async fn create_terminal_worktree(project_path: String, name: String) -> Result<
         .current_dir(project)
         .output();
 
-    let worktree_path = tempest_dir.join(&name);
+    let worktree_path = tempest_dir.join(&dir_name);
 
     // 3. Handle pre-existing path.
     if worktree_path.exists() {
@@ -662,14 +669,20 @@ async fn create_terminal_worktree(project_path: String, name: String) -> Result<
     }
 
     // 4. Create the worktree.
+    let wt_path_str = worktree_path.to_string_lossy().to_string();
+    let mut args = vec!["worktree", "add", &wt_path_str];
+    // When checking out an existing branch, pass it directly (no -b).
+    // When creating a new branch, pass -b <name> so git creates it.
+    let branch_arg;
+    if let Some(ref branch) = existing_branch {
+        branch_arg = branch.clone();
+        args.push(&branch_arg);
+    } else {
+        args.push("-b");
+        args.push(&name);
+    }
     let output = new_command("git")
-        .args([
-            "worktree",
-            "add",
-            &worktree_path.to_string_lossy(),
-            "-b",
-            &name,
-        ])
+        .args(&args)
         .current_dir(project)
         .output()
         .map_err(|e| format!("Failed to run git: {}", e))?;
@@ -682,7 +695,7 @@ async fn create_terminal_worktree(project_path: String, name: String) -> Result<
     //    up as an untracked file in git status. info/exclude is local-only and
     //    never committed, making it the right place for tool-internal files.
     {
-        let git_wt_dir = project.join(".git").join("worktrees").join(&name);
+        let git_wt_dir = project.join(".git").join("worktrees").join(&dir_name);
         let info_dir = git_wt_dir.join("info");
         let _ = std::fs::create_dir_all(&info_dir);
         let exclude_path = info_dir.join("exclude");
@@ -772,6 +785,18 @@ struct GitStatusEntry {
     path: String,
 }
 
+#[tauri::command]
+fn check_program_available(program: String) -> bool {
+    let check_cmd = if cfg!(windows) { "where" } else { "which" };
+    // Multi-word hints like "gh copilot" — only check the base executable name.
+    let first = program.split_whitespace().next().unwrap_or(&program);
+    new_command(check_cmd)
+        .arg(first)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 #[derive(serde::Serialize)]
 struct BranchInfo {
     name: String,
@@ -781,7 +806,7 @@ struct BranchInfo {
 #[tauri::command]
 fn git_status(path: String) -> Result<Vec<GitStatusEntry>, String> {
     let output = new_command("git")
-        .args(["status", "--short"])
+        .args(["status", "--short", "--untracked-files=all"])
         .current_dir(&path)
         .output()
         .map_err(|e| format!("Failed to run git: {}", e))?;
@@ -1527,6 +1552,29 @@ async fn create_pty_session(
         // the sandbox-transformed command to spawn.
         let sandboxed: Option<(hephaestus::IsolateHandle, hephaestus::SandboxedCommand)> =
             match sandbox {
+                Some(ref sb) if sb.mode == "lifecycle" => {
+                    // Lifecycle-only isolation: Job Object on Windows, no-op elsewhere.
+                    // WindowsIsolate::prepare is a no-op (no command wrapping, no
+                    // network/path restrictions) — the Job Object is the sole mechanism.
+                    // On Linux/macOS, process groups + PTY teardown provide equivalent
+                    // kill-on-close semantics; the lifecycle_job branch below fires too.
+                    if cfg!(windows) {
+                        let isolate = ISOLATE.get_or_init(hephaestus::platform);
+                        let spec = hephaestus::EnvironmentSpec::builder(env_id.as_str(), &cwd)
+                            .build()
+                            .map_err(|e| e.to_string())?;
+                        let handle = isolate.create(spec).map_err(|e| e.to_string())?;
+                        let prog_os = std::ffi::OsString::from(&program);
+                        let args_os: Vec<std::ffi::OsString> =
+                            cmd_args.iter().map(std::ffi::OsString::from).collect();
+                        let prepared = isolate
+                            .prepare(&handle, prog_os.as_os_str(), &args_os)
+                            .map_err(|e| e.to_string())?;
+                        Some((handle, prepared))
+                    } else {
+                        None
+                    }
+                }
                 Some(ref sb) if sb.mode != "off" => {
                     let isolate = ISOLATE.get_or_init(hephaestus::platform);
                     let mode = match sb.mode.as_str() {
@@ -2118,6 +2166,7 @@ pub fn run() {
             remove_atlas_index,
             start_atlas_daemon,
             stop_atlas_daemon,
+            check_program_available,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

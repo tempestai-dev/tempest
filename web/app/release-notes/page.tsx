@@ -38,7 +38,7 @@ export default async function ReleaseNotesPage() {
   let releases: GitHubRelease[] = []
 
   try {
-    const res = await fetch('https://api.github.com/repos/gsvprharsha/tempest/releases', {
+    const res = await fetch('https://api.github.com/repos/tempestai-dev/tempest/releases', {
       headers: process.env.GITHUB_TOKEN
         ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` }
         : {},
