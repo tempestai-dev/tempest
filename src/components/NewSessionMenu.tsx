@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { useAgentAvailability } from "../store/agentAvailability";
 import { Bot, TerminalSquare, MessageSquare, Globe, ChevronRight, Download } from "lucide-react";
 import claudeCodeSrc from "../assets/agent-icons/claude-color.svg";
 import geminiCliSrc from "../assets/agent-icons/geminicli-color.svg";
@@ -166,7 +166,7 @@ export function NewSessionMenu({
   onLivePreview,
 }: Props) {
   const [agentHovered, setAgentHovered] = useState(false);
-  const [available, setAvailable] = useState<Record<string, boolean>>({});
+  const available = useAgentAvailability();
 
   useEffect(() => {
     if (!open) { setAgentHovered(false); return; }
@@ -174,13 +174,6 @@ export function NewSessionMenu({
       if (e.key === "Escape") onClose();
     }
     window.addEventListener("keydown", onKey);
-    // Check each agent's CLI tool against PATH.
-    for (const a of AGENT_CONFIGS) {
-      const program = a.hint.split(" ")[0];
-      invoke<boolean>("check_program_available", { program })
-        .then((ok) => setAvailable((prev) => ({ ...prev, [a.hint]: ok })))
-        .catch(() => {});
-    }
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 

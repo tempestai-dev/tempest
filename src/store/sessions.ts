@@ -9,6 +9,7 @@ export interface WorktreeSession {
   closed?: boolean;
   isRootSession?: boolean;  // true when session opens in project root (no worktree)
   noGit?: boolean;          // true when user chose to continue without initializing git
+  parentPath?: string;      // worktree cwd of the parent session (set for sub-sessions only)
 }
 
 type Store = Record<string, WorktreeSession>;
@@ -52,6 +53,37 @@ export function getRootSessionsForProject(
   projectPath: string
 ): { key: string; session: WorktreeSession }[] {
   const prefix = `${projectPath}${ROOT_SESSION_PREFIX}`;
+  const store = getStore();
+  return Object.entries(store)
+    .filter(([key]) => key.startsWith(prefix))
+    .map(([key, session]) => ({ key, session }));
+}
+
+// Sub-sessions: additional PTY sessions opened inside an existing worktree.
+// They are keyed by worktreePath + "::sub::" + sessionId so multiple sub-sessions
+// at the same cwd can coexist without colliding with the parent's cwd-keyed entry.
+export const SUB_SESSION_PREFIX = "::sub::";
+
+export function subSessionKey(worktreePath: string, sessionId: string): string {
+  return `${worktreePath}${SUB_SESSION_PREFIX}${sessionId}`;
+}
+
+export function subSessionIdFromKey(key: string): string {
+  const idx = key.indexOf(SUB_SESSION_PREFIX);
+  return idx === -1 ? "" : key.slice(idx + SUB_SESSION_PREFIX.length);
+}
+
+export function subSessionWorktreePath(key: string): string {
+  const idx = key.indexOf(SUB_SESSION_PREFIX);
+  return idx === -1 ? "" : key.slice(0, idx);
+}
+
+// Returns all persisted sub-sessions for a given worktree path.
+// Used by the startup restore loop and pruneOrphanedSessions.
+export function getSubSessionsForWorktree(
+  worktreePath: string
+): { key: string; session: WorktreeSession }[] {
+  const prefix = `${worktreePath}${SUB_SESSION_PREFIX}`;
   const store = getStore();
   return Object.entries(store)
     .filter(([key]) => key.startsWith(prefix))

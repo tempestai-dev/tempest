@@ -7,7 +7,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { createWorktree, gitInit, NotAGitRepoError } from "../lib/worktree";
 import { addRecent, getRecents, removeRecent } from "../store/recents";
 import { getOpenProjects, saveOpenProjects } from "../store/openProjects";
-import { getWorktreeSession, saveWorktreeSession, removeWorktreeSession, markWorktreeSessionClosed, markWorktreeSessionOpen, pruneOrphanedSessions, dedupeRootSessions, rootSessionKey, rootSessionIdFromKey, getRootSessionsForProject, type WorktreeSession } from "../store/sessions";
+import { getWorktreeSession, saveWorktreeSession, removeWorktreeSession, markWorktreeSessionClosed, markWorktreeSessionOpen, pruneOrphanedSessions, dedupeRootSessions, rootSessionKey, rootSessionIdFromKey, getRootSessionsForProject, subSessionKey, subSessionIdFromKey, getSubSessionsForWorktree, type WorktreeSession } from "../store/sessions";
 import { getRuntimeState, setRuntimeState, type PersistedTab } from "../lib/runtimeState";
 import {
   LayoutGrid,
@@ -101,6 +101,14 @@ interface Session {
 interface Worktree {
   name: string;
   path: string;
+}
+
+interface BranchInfo {
+  name: string;
+  is_current: boolean;
+  is_remote: boolean;
+  is_worktree: boolean;
+  worktree_path?: string;
 }
 
 interface Project {
@@ -226,7 +234,9 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const [rootGitError, setRootGitError] = useState<string | null>(null);
   const [useExistingBranch, setUseExistingBranch] = useState(false);
   const [existingBranchName, setExistingBranchName] = useState("");
-  const [existingBranchList, setExistingBranchList] = useState<string[]>([]);
+  const [existingBranches, setExistingBranches] = useState<BranchInfo[]>([]);
+  const [existingDropOpen, setExistingDropOpen] = useState(false);
+  const existingDropRef = useRef<HTMLDivElement>(null);
 
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -385,6 +395,11 @@ export function WorkspaceView({ zen, name, path }: Props) {
           entries.filter((e) => e.is_dir && !TEMPEST_INTERNAL_DIRS.has(e.name)).forEach((e) => {
             wts.push({ name: e.name, path: e.path });
             validPaths.add(e.path);
+            // Sub-session keys are not disk paths — mark them valid so pruneOrphanedSessions
+            // doesn't wipe them when it scans for stale entries.
+            for (const { key } of getSubSessionsForWorktree(e.path)) {
+              validPaths.add(key);
+            }
           });
         } catch {
           // .tempest/ doesn't exist or project path is gone
@@ -416,11 +431,25 @@ export function WorkspaceView({ zen, name, path }: Props) {
       };
       const items: RestoreItem[] = [];
 
+      // Sub-sessions are collected separately and restored after all parents (Phase 5).
+      type SubRestoreItem = {
+        projectId: string;
+        worktreePath: string;
+        parentMintId: string;
+        subKey: string;
+        subSaved: WorktreeSession;
+        isActive: boolean;
+      };
+      const subItems: SubRestoreItem[] = [];
+
       for (const { project, wts } of allProjectData) {
         // Worktree sessions
         for (const wt of wts) {
           const saved = getWorktreeSession(wt.path);
           if (!saved || saved.closed === true) continue;
+          // Pre-mint the session ID so sub-sessions can reference it as parentSessionId
+          // before React state has flushed the parent's open() call.
+          const parentMintId = crypto.randomUUID();
           const instanceId = saved.instanceId ?? wt.path;
           items.push({
             instanceId,
@@ -431,9 +460,24 @@ export function WorkspaceView({ zen, name, path }: Props) {
               undefined, undefined,
               saved.agent ? saved.conversationId : undefined,
               undefined, undefined,
-              true // dedupe
+              true, // dedupe
+              parentMintId // providedSessionId — stable across this restore run
             ).catch(() => {}),
           });
+
+          // Collect persisted sub-sessions for Phase 5
+          for (const { key: subKey, session: subSaved } of getSubSessionsForWorktree(wt.path)) {
+            if (subSaved.closed === true) continue;
+            const subInstanceId = subSaved.instanceId ?? subKey;
+            subItems.push({
+              projectId: project.id,
+              worktreePath: wt.path,
+              parentMintId,
+              subKey,
+              subSaved,
+              isActive: subInstanceId === savedActiveId,
+            });
+          }
         }
 
         // Root sessions (agent + plain terminal in project root)
@@ -497,9 +541,28 @@ export function WorkspaceView({ zen, name, path }: Props) {
         return 0;
       });
 
-      // Phase 4 — open all in order.
+      // Phase 4 — open all main sessions in order.
       for (const item of items) {
         await item.open();
+      }
+
+      // Phase 5 — restore sub-sessions after all their parents are live.
+      // Sub-sessions are NOT sorted by sessionOrder: parents must always precede
+      // children, so we restore them in collection order. The active sub-session
+      // (if any) is opened last so setActiveSessionId ends on it.
+      const activeSubItems = subItems.filter((s) => s.isActive);
+      const inactiveSubItems = subItems.filter((s) => !s.isActive);
+      for (const { projectId, worktreePath, parentMintId, subKey, subSaved } of [...inactiveSubItems, ...activeSubItems]) {
+        const subId = subSessionIdFromKey(subKey);
+        await openSession(
+          subSaved.name, worktreePath, projectId, subSaved.agent,
+          undefined, undefined,
+          subSaved.agent ? subSaved.conversationId : undefined,
+          undefined, undefined,
+          false, // sub-sessions don't need dedupe — each has a unique subKey
+          subId, // providedSessionId — reuses the original UUID so instanceId stays stable
+          parentMintId // parentSessionId — links to the parent opened in Phase 4
+        ).catch(() => {});
       }
     }
 
@@ -639,8 +702,20 @@ export function WorkspaceView({ zen, name, path }: Props) {
     setPendingAgent(null);
     setUseExistingBranch(false);
     setExistingBranchName("");
-    setExistingBranchList([]);
+    setExistingBranches([]);
+    setExistingDropOpen(false);
   }
+
+  useEffect(() => {
+    if (!existingDropOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (existingDropRef.current && !existingDropRef.current.contains(e.target as Node)) {
+        setExistingDropOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [existingDropOpen]);
 
   // Fetch branches when the naming modal opens so the "use existing branch" toggle
   // has a list ready without the user having to wait after clicking it.
@@ -648,8 +723,8 @@ export function WorkspaceView({ zen, name, path }: Props) {
     if (!showTerminalNaming) return;
     const projectPath = projects.find((p) => p.id === pendingProjectId)?.path ?? (zen ? path ?? "" : "");
     if (!projectPath) return;
-    invoke<{ name: string; is_current: boolean }[]>("git_list_branches", { repoPath: projectPath })
-      .then((branches) => setExistingBranchList(branches.map((b) => b.name)))
+    invoke<BranchInfo[]>("git_list_branches", { repoPath: projectPath })
+      .then((branches) => setExistingBranches(branches))
       .catch(() => {});
   }, [showTerminalNaming]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -845,12 +920,16 @@ export function WorkspaceView({ zen, name, path }: Props) {
     try {
       const sessionId = providedSessionId ?? crypto.randomUUID();
 
-      // The localStorage key this session persists under. Root sessions (agent OR
-      // plain terminal) use a per-session unique key so they don't collide at the
-      // shared cwd = project root. Worktree sessions key on cwd, and only when they
-      // carry an agent worth resuming — plain terminal worktrees aren't persisted.
+      // The localStorage key this session persists under.
+      // Root sessions: per-session unique key (project.path + ::root:: + id) so multiple
+      //   root sessions at the same cwd don't overwrite each other.
+      // Sub-sessions: unique key (worktree.path + ::sub:: + id) so multiple sub-sessions
+      //   at the same cwd coexist and are restored independently of their parent.
+      // Main worktree agent sessions: keyed by cwd (stable across restarts).
+      // Main worktree terminal sessions: not persisted (no agent worth resuming).
       const rootKey = isRootSession ? rootSessionKey(cwd, sessionId) : null;
-      const storeKey = rootKey ?? (agent ? cwd : undefined);
+      const subKey = parentSessionId ? subSessionKey(cwd, sessionId) : null;
+      const storeKey = rootKey ?? subKey ?? (agent ? cwd : undefined);
 
       // Worktree sessions: the store key (path) is the stable identity — reuse it so
       // instanceId never changes across restarts. Root sessions have no path anchor, so
@@ -869,10 +948,14 @@ export function WorkspaceView({ zen, name, path }: Props) {
       const conversationId = usesCapturePattern && !originalId ? undefined : (originalId ?? sessionId);
 
       // Save metadata immediately after the PTY spawns so it survives tab close.
-      // Skip during restore (dedupe): the entry already exists and is correct, and
-      // re-writing it would create a duplicate under a freshly minted key.
-      if (storeKey && !dedupe && !parentSessionId) {
-        saveWorktreeSession(storeKey, { name: sessionName, agent, conversationId, instanceId, projectId, isRootSession, noGit });
+      // Skip during restore (dedupe=true): the entry already exists and is correct.
+      // Sub-sessions are now included — they save under their unique subKey.
+      if (storeKey && !dedupe) {
+        saveWorktreeSession(storeKey, {
+          name: sessionName, agent, conversationId, instanceId, projectId,
+          isRootSession, noGit,
+          ...(parentSessionId ? { parentPath: cwd } : {}),
+        });
       }
 
       // Build the optional capture callback for agents that mint their own session ID
@@ -1070,23 +1153,75 @@ export function WorkspaceView({ zen, name, path }: Props) {
 
     let branchName: string;
     let existingBranch: string | undefined;
+    let directWorktreePath: string | undefined;
+    let parentId: string | undefined;
+
     if (useExistingBranch) {
       if (!existingBranchName.trim()) return;
+      const selectedBranch = existingBranches.find((b) => b.name === existingBranchName);
       branchName = existingBranchName.trim().replace(/\//g, "-");
-      existingBranch = existingBranchName.trim();
+      if (selectedBranch?.is_worktree && selectedBranch.worktree_path) {
+        // Branch is already in a worktree — open a session there without calling createWorktree.
+        directWorktreePath = selectedBranch.worktree_path;
+        const liveParent = sessions.find((s) => s.cwd === directWorktreePath && !s.parentSessionId);
+        if (liveParent) {
+          parentId = liveParent.id;
+        } else {
+          // No live parent yet (e.g. user is on the overview tab). If a ghost exists in
+          // localStorage, pre-mint the parent ID and restore the ghost first so the new
+          // sub-session nests under it rather than replacing the worktree row.
+          const ghost = getWorktreeSession(directWorktreePath);
+          if (ghost && ghost.closed !== true) {
+            parentId = crypto.randomUUID();
+          }
+          // If no ghost either, parentId stays undefined and the new session becomes
+          // the main worktree session (correct for a truly fresh worktree).
+        }
+      } else {
+        existingBranch = existingBranchName.trim();
+      }
     } else {
       if (!terminalName.trim()) return;
       const fullName = branchPrefix ? `${branchPrefix}${terminalName}` : terminalName;
       branchName = fullName;
     }
-    const sessionName = branchName || (pendingAgent ? pendingAgent.name : "Terminal");
+    // For sessions opened in an existing worktree, generate a numbered name so they're
+    // distinct from the parent session. "#2", "#3", etc. count all live sessions at that path.
+    let sessionName: string;
+    if (directWorktreePath) {
+      const existingCount = sessions.filter((s) => s.cwd === directWorktreePath).length;
+      const agentLabel = pendingAgent?.name ?? "Terminal";
+      sessionName = existingCount > 0 ? `${agentLabel} #${existingCount + 1}` : agentLabel;
+    } else {
+      sessionName = branchName || (pendingAgent ? pendingAgent.name : "Terminal");
+    }
 
     setTerminalLaunching(true);
     setTerminalError(null);
     try {
-      const result = await createWorktree({ projectPath: activePath, name: branchName, existingBranch });
-      addWorktreeToState({ name: branchName, path: result.path }, workingProjectId);
-      await openSession(sessionName, result.path, workingProjectId ?? "", agent, prompt, undefined);
+      let worktreePath: string;
+      if (directWorktreePath) {
+        worktreePath = directWorktreePath;
+        addWorktreeToState({ name: branchName, path: worktreePath }, workingProjectId);
+        // If we pre-minted a parentId but no live session holds it yet, restore the
+        // ghost parent first with that exact ID so sub-session nesting works immediately.
+        if (parentId && !sessions.some((s) => s.id === parentId)) {
+          const ghost = getWorktreeSession(worktreePath);
+          if (ghost) {
+            await openSession(
+              ghost.name, worktreePath, workingProjectId ?? "",
+              ghost.agent, undefined, undefined,
+              ghost.agent ? ghost.conversationId : undefined,
+              false, ghost.noGit, false, parentId
+            );
+          }
+        }
+      } else {
+        const result = await createWorktree({ projectPath: activePath, name: branchName, existingBranch });
+        worktreePath = result.path;
+        addWorktreeToState({ name: branchName, path: worktreePath }, workingProjectId);
+      }
+      await openSession(sessionName, worktreePath, workingProjectId ?? "", agent, prompt, undefined, undefined, undefined, undefined, false, undefined, parentId);
       resetTerminalModal();
     } catch (e) {
       if (e instanceof NotAGitRepoError) {
@@ -1690,31 +1825,35 @@ export function WorkspaceView({ zen, name, path }: Props) {
                   const renderSubSessions = (parentId: string): React.ReactNode =>
                     projectSessions
                       .filter((s) => s.parentSessionId === parentId)
-                      .map((sub) => (
-                        <div key={sub.id} className="sidebar-session-group">
-                          <button
-                            className={`sidebar-project-session sidebar-project-session--sub${sub.id === activeSessionId ? " sidebar-project-session--active" : ""}`}
-                            onClick={() => setActiveSessionId(sub.id)}
-                          >
-                            {sub.agent ? <AgentIcon hint={sub.agent} size={12} /> : <TerminalSquare size={12} />}
-                            <span className="sidebar-session-name">{sub.name}</span>
-                            {sub.agent && <SidebarWorkBadge sessionId={sub.id} />}
-                            <span
-                              className="sidebar-session-close"
-                              role="button"
-                              tabIndex={0}
-                              aria-label={`Close ${sub.name}`}
-                              onClick={(e) => { e.stopPropagation(); closeSession(sub.id); }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); closeSession(sub.id); }
-                              }}
+                      .map((sub) => {
+                        const worktreeBranch = project.worktrees.find((w) => w.path === sub.cwd)?.name;
+                        return (
+                          <div key={sub.id} className="sidebar-session-group">
+                            <button
+                              className={`sidebar-project-session sidebar-project-session--sub${sub.id === activeSessionId ? " sidebar-project-session--active" : ""}`}
+                              onClick={() => setActiveSessionId(sub.id)}
                             >
-                              <X size={11} />
-                            </span>
-                          </button>
-                          {renderSubSessions(sub.id)}
-                        </div>
-                      ));
+                              {sub.agent ? <AgentIcon hint={sub.agent} size={12} /> : <TerminalSquare size={12} />}
+                              <span className="sidebar-session-name">{sub.name}</span>
+                              {worktreeBranch && <span className="sidebar-branch-badge">{worktreeBranch}</span>}
+                              {sub.agent && <SidebarWorkBadge sessionId={sub.id} />}
+                              <span
+                                className="sidebar-session-close"
+                                role="button"
+                                tabIndex={0}
+                                aria-label={`Close ${sub.name}`}
+                                onClick={(e) => { e.stopPropagation(); closeSession(sub.id); }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); closeSession(sub.id); }
+                                }}
+                              >
+                                <X size={11} />
+                              </span>
+                            </button>
+                            {renderSubSessions(sub.id)}
+                          </div>
+                        );
+                      });
                   // Canonical root session map: one entry per instanceId, live sessions
                   // take precedence over ghosts. Guarantees exactly one sidebar row per
                   // logical conversation regardless of how many storage records exist.
@@ -2674,51 +2813,66 @@ export function WorkspaceView({ zen, name, path }: Props) {
                   <span>{pendingAgent ? `New ${pendingAgent.name} Session` : "New Workspace"}</span>
                 </div>
                 <p className="naming-modal-desc">Give your workspace a name to get started.</p>
-                <div className="naming-modal-branch-toggle">
-                  <button
-                    className={`naming-modal-branch-opt${!useExistingBranch ? " active" : ""}`}
-                    onClick={() => setUseExistingBranch(false)}
-                  >New branch</button>
-                  <button
-                    className={`naming-modal-branch-opt${useExistingBranch ? " active" : ""}`}
-                    onClick={() => setUseExistingBranch(true)}
-                  >Use existing</button>
-                </div>
-                {useExistingBranch ? (
-                  existingBranchList.length > 0 ? (
-                    <select
-                      className="naming-modal-input naming-modal-select"
-                      value={existingBranchName}
-                      onChange={(e) => setExistingBranchName(e.target.value)}
-                      autoFocus
-                    >
-                      <option value="">Select a branch…</option>
-                      {existingBranchList.map((b) => (
-                        <option key={b} value={b}>{b}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      className="naming-modal-input"
-                      type="text"
-                      placeholder="Branch name"
-                      value={existingBranchName}
-                      onChange={(e) => setExistingBranchName(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") launchTerminalWorktree(); }}
-                      autoFocus
-                    />
-                  )
-                ) : (
-                  <input
-                    className="naming-modal-input"
-                    type="text"
-                    placeholder="e.g. my-feature"
-                    value={terminalName}
-                    onChange={(e) => setTerminalName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") launchTerminalWorktree(); }}
-                    autoFocus
-                  />
-                )}
+                {(() => {
+                  const pickableBranches = existingBranches.filter((b) => !b.is_current);
+                  const noOtherBranches = pickableBranches.length === 0;
+                  return (
+                    <>
+                      <div className="naming-modal-branch-toggle">
+                        <button
+                          className={`naming-modal-branch-opt${!useExistingBranch ? " active" : ""}`}
+                          onClick={() => setUseExistingBranch(false)}
+                        >New branch</button>
+                        <button
+                          className={`naming-modal-branch-opt${useExistingBranch ? " active" : ""}${noOtherBranches ? " naming-modal-branch-opt--disabled" : ""}`}
+                          onClick={() => { if (!noOtherBranches) setUseExistingBranch(true); }}
+                          disabled={noOtherBranches}
+                          title={noOtherBranches ? "No other branches exist" : undefined}
+                        >Use existing</button>
+                      </div>
+                      {useExistingBranch ? (
+                        <div className="naming-modal-drop" ref={existingDropRef}>
+                          <button
+                            type="button"
+                            className={`naming-modal-input naming-modal-drop-btn${existingDropOpen ? " naming-modal-drop-btn--open" : ""}`}
+                            onClick={() => setExistingDropOpen((v) => !v)}
+                          >
+                            <span className={existingBranchName ? "" : "naming-modal-drop-placeholder"}>
+                              {existingBranchName || "Select a branch…"}
+                            </span>
+                            <ChevronDown size={12} className={`naming-modal-drop-chevron${existingDropOpen ? " naming-modal-drop-chevron--open" : ""}`} />
+                          </button>
+                          {existingDropOpen && (
+                            <div className="naming-modal-drop-menu">
+                              {pickableBranches.map((b) => (
+                                <button
+                                  key={b.name}
+                                  type="button"
+                                  className={`naming-modal-drop-item${b.name === existingBranchName ? " naming-modal-drop-item--active" : ""}${b.is_worktree ? " naming-modal-drop-item--worktree" : ""}${b.is_remote ? " naming-modal-drop-item--remote" : ""}`}
+                                  onClick={() => { setExistingBranchName(b.name); setExistingDropOpen(false); }}
+                                >
+                                  <span className="naming-modal-drop-item-name">{b.name}</span>
+                                  {b.is_worktree && <span className="naming-modal-drop-badge">open</span>}
+                                  {b.is_remote && <span className="naming-modal-drop-badge">remote</span>}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <input
+                          className="naming-modal-input"
+                          type="text"
+                          placeholder="e.g. my-feature"
+                          value={terminalName}
+                          onChange={(e) => setTerminalName(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") launchTerminalWorktree(); }}
+                          autoFocus
+                        />
+                      )}
+                    </>
+                  );
+                })()}
                 {pendingAgent && (
                   <div className="naming-modal-prompt-block">
                     <div className="naming-modal-prompt-label">

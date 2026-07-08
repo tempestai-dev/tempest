@@ -23,6 +23,7 @@ export interface RuntimeState {
   settings: Partial<AppSettings>;
   keybindings: Partial<Record<ActionId, Shortcut | null>>;
   attribution: boolean;
+  onboardingComplete: boolean;
   migrations: Record<string, boolean>;
   tabs: PersistedTab[];           // non-terminal tabs (diff, preview, editor)
   sessionOrder: string[];         // instanceIds in tab-bar order
@@ -39,6 +40,7 @@ const DEFAULT_STATE: RuntimeState = {
   settings: {},
   keybindings: {},
   attribution: false,
+  onboardingComplete: false,
   migrations: {},
   tabs: [],
   sessionOrder: [],
@@ -71,6 +73,7 @@ export async function loadRuntimeState(): Promise<void> {
       settings:         parsed.settings         ?? migrateLS("tempest-app-settings", {}),
       keybindings:      parsed.keybindings      ?? migrateLS("tempest-keybindings", {}),
       attribution:      parsed.attribution      ?? (localStorage.getItem("tempest-attribution") === "true"),
+      onboardingComplete: parsed.onboardingComplete ?? (localStorage.getItem("tempest-onboarding-complete") === "true"),
       migrations:       parsed.migrations       ?? {},
       tabs:             parsed.tabs             ?? [],
       sessionOrder:     parsed.sessionOrder     ?? [],
@@ -88,6 +91,7 @@ export async function loadRuntimeState(): Promise<void> {
       settings:         migrateLS("tempest-app-settings", {}),
       keybindings:      migrateLS("tempest-keybindings", {}),
       attribution:      localStorage.getItem("tempest-attribution") === "true",
+      onboardingComplete: localStorage.getItem("tempest-onboarding-complete") === "true",
       migrations:       {},
       tabs:             [],
       sessionOrder:     [],

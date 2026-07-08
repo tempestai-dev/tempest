@@ -289,6 +289,8 @@
 .dp-branch-menu-row--current { background: var(--tempest-bg-active); }
 .dp-branch-menu-row--current:hover { background: var(--tempest-bg-active); }
 
+.dp-branch-menu-row--remote .dp-branch-menu-name { color: var(--tempest-fg-muted); }
+
 .dp-branch-menu-check {
   flex-shrink: 0;
   width: 16px;

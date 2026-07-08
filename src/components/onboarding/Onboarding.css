@@ -1,0 +1,315 @@
+/* ─── Shared onboarding styles ───────────────────────────────── */
+
+.ob-root {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: var(--tempest-bg-editor);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Drag region at the very top so the window is movable */
+.ob-drag {
+  height: 28px;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 4px;
+}
+
+/* Window control buttons */
+.ob-win-btn {
+  -webkit-app-region: no-drag;
+  width: 32px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: 5px;
+  color: var(--tempest-fg-subtle);
+  transition: background 0.15s, color 0.15s;
+}
+.ob-win-btn:hover       { background: var(--tempest-bg-hover); color: var(--tempest-fg-muted); }
+.ob-win-btn--close:hover { background: #c0392b; color: #fff; }
+
+/* Page wrapper */
+.ob-page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ─── Buttons ─────────────────────────────────────────────────── */
+
+.ob-btn-cta {
+  background: var(--tempest-fg-default);
+  color: var(--tempest-bg-editor);
+  border: none;
+  border-radius: 7px;
+  padding: 10px 28px 10px 36px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.2px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: inherit;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.28);
+  transition: opacity 0.15s;
+}
+.ob-btn-cta:hover { opacity: 0.85; }
+
+.ob-btn-nav-primary {
+  background: var(--tempest-fg-default);
+  color: var(--tempest-bg-editor);
+  border: none;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 22px;
+  cursor: pointer;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  transition: opacity 0.15s;
+}
+.ob-btn-nav-primary:hover { opacity: 0.85; }
+
+.ob-btn-nav-secondary {
+  background: transparent;
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 7px;
+  color: var(--tempest-fg-muted);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 22px;
+  cursor: pointer;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.ob-btn-nav-secondary:hover {
+  color: var(--tempest-fg-default);
+  border-color: var(--tempest-fg-muted);
+}
+
+.ob-btn-skip {
+  background: none;
+  border: none;
+  color: var(--tempest-fg-subtle);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 10px;
+  font-family: inherit;
+  letter-spacing: 0.1px;
+  transition: color 0.15s;
+}
+.ob-btn-skip:hover { color: var(--tempest-fg-muted); }
+
+/* ─── Agent cards ─────────────────────────────────────────────── */
+
+.ob-agent-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 8px 12px;
+  width: 92px;
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s;
+  font-family: inherit;
+  position: relative;
+}
+.ob-agent-card:hover:not(.ob-agent-card--selected) {
+  border-color: var(--tempest-border-subtle);
+  background: var(--tempest-bg-hover);
+}
+.ob-agent-card--selected {
+  border-color: var(--tempest-fg-default) !important;
+  background: var(--tempest-bg-hover);
+}
+.ob-agent-card--unavailable {
+  opacity: 0.4;
+}
+
+.ob-agent-icon-wrap {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ob-agent-name {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--tempest-fg-muted);
+  line-height: 1.25;
+  transition: color 0.15s;
+}
+.ob-agent-card--selected .ob-agent-name {
+  color: var(--tempest-fg-default);
+}
+
+.ob-agent-badge {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+.ob-agent-badge--ok {
+  background: color-mix(in srgb, var(--tempest-accent-green) 15%, transparent);
+  color: var(--tempest-accent-green);
+}
+.ob-agent-badge--missing {
+  background: color-mix(in srgb, var(--tempest-border-subtle) 40%, transparent);
+  color: var(--tempest-fg-subtle);
+}
+
+/* Themed scrollbars — matches the rest of the app */
+.ob-scrollable {
+  scrollbar-width: thin;
+  scrollbar-color: var(--tempest-border-subtle) transparent;
+}
+.ob-scrollable::-webkit-scrollbar         { width: 4px; height: 4px; }
+.ob-scrollable::-webkit-scrollbar-track   { background: transparent; }
+.ob-scrollable::-webkit-scrollbar-thumb   { background: var(--tempest-border-subtle); border-radius: 2px; }
+
+/* Gradient fades on horizontal scroll */
+.ob-scroll-fade-left {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 60px;
+  pointer-events: none;
+  z-index: 2;
+  background: linear-gradient(to right, var(--tempest-bg-editor), transparent);
+}
+.ob-scroll-fade-right {
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  width: 60px;
+  pointer-events: none;
+  z-index: 2;
+  background: linear-gradient(to left, var(--tempest-bg-editor), transparent);
+}
+
+/* Theme toggle — bottom-right corner */
+.ob-theme-toggle {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 7px;
+  color: var(--tempest-fg-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.ob-theme-toggle:hover {
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
+  border-color: var(--tempest-border-subtle);
+}
+
+/* Skeleton shimmer */
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.ob-skeleton {
+  background: linear-gradient(90deg, var(--tempest-border-default) 25%, var(--tempest-bg-hover) 50%, var(--tempest-border-default) 75%);
+  background-size: 400% 100%;
+  animation: shimmer 2s infinite linear;
+  border-radius: 5px;
+}
+
+/* ─── Metallic shine card ────────────────────────────────────── */
+@keyframes ob-shine {
+  0%   { transform: translateX(-220%); }
+  35%  { transform: translateX(220%); }
+  100% { transform: translateX(220%); }
+}
+
+.ob-card--shine {
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--tempest-fg-default) 5%, transparent) !important;
+  border-color: color-mix(in srgb, var(--tempest-fg-default) 25%, transparent) !important;
+}
+
+.ob-card--shine::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    108deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.04) 42%,
+    rgba(255, 255, 255, 0.14) 50%,
+    rgba(255, 255, 255, 0.04) 58%,
+    transparent 70%
+  );
+  transform: translateX(-220%);
+  animation: ob-shine 2s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Mono icon dark-mode inversion */
+[data-theme="dark"]  .ob-icon--mono { filter: invert(1); }
+[data-theme="light"] .ob-icon--mono { filter: none; }
+
+/* ─── Toggle switch ──────────────────────────────────────────── */
+.ob-toggle {
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--tempest-border-default);
+  border: none;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.2s;
+  padding: 0;
+}
+.ob-toggle--on {
+  background: var(--tempest-fg-default);
+}
+.ob-toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--tempest-bg-editor);
+  transition: transform 0.2s;
+}
+.ob-toggle--on .ob-toggle-thumb {
+  transform: translateX(16px);
+}

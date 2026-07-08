@@ -598,6 +598,101 @@
   cursor: pointer;
 }
 
+.naming-modal-branch-opt--disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.naming-modal-drop {
+  position: relative;
+  width: 100%;
+}
+
+.naming-modal-drop-btn {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  text-align: left;
+}
+
+.naming-modal-drop-btn--open {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.naming-modal-drop-placeholder {
+  color: var(--tempest-fg-subtle);
+}
+
+.naming-modal-drop-chevron {
+  flex-shrink: 0;
+  opacity: 0.5;
+  transition: transform 0.15s;
+}
+
+.naming-modal-drop-chevron--open {
+  transform: rotate(180deg);
+}
+
+.naming-modal-drop-menu {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  right: 0;
+  background: var(--tempest-bg-panel);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  z-index: 200;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.naming-modal-drop-item {
+  width: 100%;
+  padding: 7px 10px;
+  background: transparent;
+  border: none;
+  color: var(--tempest-fg-default);
+  font-size: 12px;
+  font-family: "Geist Mono", monospace;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.1s;
+}
+
+.naming-modal-drop-item:hover {
+  background: var(--tempest-bg-hover);
+}
+
+.naming-modal-drop-item--active {
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--tempest-accent-purple, #818cf8);
+}
+
+.naming-modal-drop-item--remote .naming-modal-drop-item-name {
+  color: var(--tempest-fg-muted);
+}
+
+.naming-modal-drop-badge {
+  margin-left: auto;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-muted);
+  flex-shrink: 0;
+}
+
+.naming-modal-drop-item--worktree .naming-modal-drop-badge {
+  color: var(--tempest-accent-blue, #60a5fa);
+  background: rgba(96, 165, 250, 0.1);
+}
+
 .naming-modal-input {
   width: 100%;
   padding: 8px 10px;
@@ -1278,6 +1373,22 @@
 
 .sidebar-project-session--root {
   font-style: italic;
+}
+
+.sidebar-branch-badge {
+  margin-left: 2px;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: rgba(96, 165, 250, 0.1);
+  color: var(--tempest-accent-blue, #60a5fa);
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  flex-shrink: 0;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Sub-sessions (spawned via split) — nested under their parent row */

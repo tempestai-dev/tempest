@@ -801,6 +801,9 @@ fn check_program_available(program: String) -> bool {
 struct BranchInfo {
     name: String,
     is_current: bool,
+    is_remote: bool,
+    is_worktree: bool,
+    worktree_path: Option<String>,
 }
 
 #[tauri::command]
@@ -851,20 +854,66 @@ fn get_git_branch(path: String) -> Result<String, String> {
 #[tauri::command]
 fn git_list_branches(repo_path: String) -> Result<Vec<BranchInfo>, String> {
     let dir = std::path::Path::new(&repo_path);
-    let out = run_git(dir, &["branch"])?;
+
+    // Build branch-name → worktree-path map so we can surface the existing
+    // checkout directory for branches already in a worktree.
+    let mut worktree_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    if let Ok(wt_out) = run_git(dir, &["worktree", "list", "--porcelain"]) {
+        if wt_out.status.success() {
+            let wt_text = String::from_utf8_lossy(&wt_out.stdout);
+            let mut cur_path = String::new();
+            for line in wt_text.lines() {
+                if let Some(p) = line.strip_prefix("worktree ") {
+                    #[cfg(windows)]
+                    { cur_path = p.replace('/', "\\"); }
+                    #[cfg(not(windows))]
+                    { cur_path = p.to_string(); }
+                } else if let Some(br) = line.strip_prefix("branch refs/heads/") {
+                    if !cur_path.is_empty() {
+                        worktree_map.insert(br.to_string(), cur_path.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    let out = run_git(dir, &["branch", "-a"])?;
     if !out.status.success() {
         return Err(git_stderr(&out));
     }
-    let branches = String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .filter(|l| l.len() >= 2 && !l.starts_with("+ "))
-        .map(|l| {
-            let is_current = l.starts_with("* ");
-            let name = l[2..].trim().to_string();
-            BranchInfo { name, is_current }
-        })
-        .filter(|b| !b.name.is_empty())
-        .collect();
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let mut local_names = std::collections::HashSet::new();
+    let mut branches: Vec<BranchInfo> = Vec::new();
+
+    // Pass 1 — local branches including worktree-attached ones ("+" prefix)
+    for l in stdout.lines() {
+        if l.len() < 2 { continue; }
+        let raw = l[2..].trim();
+        if raw.starts_with("remotes/") { continue; }
+        if raw.is_empty() { continue; }
+        let is_current = l.starts_with("* ");
+        let is_worktree = l.starts_with("+ ");
+        let worktree_path = if is_worktree { worktree_map.get(raw).cloned() } else { None };
+        local_names.insert(raw.to_string());
+        branches.push(BranchInfo { name: raw.to_string(), is_current, is_remote: false, is_worktree, worktree_path });
+    }
+
+    // Pass 2 — remote-only branches (skip if a local tracking branch already exists)
+    for l in stdout.lines() {
+        if l.len() < 2 { continue; }
+        let raw = l[2..].trim();
+        if !raw.starts_with("remotes/") { continue; }
+        if raw.contains(" -> ") { continue; }
+        let after_remotes = &raw["remotes/".len()..];
+        let name = match after_remotes.find('/') {
+            Some(i) => after_remotes[i + 1..].to_string(),
+            None => continue,
+        };
+        if name.is_empty() || local_names.contains(&name) { continue; }
+        branches.push(BranchInfo { name, is_current: false, is_remote: true, is_worktree: false, worktree_path: None });
+    }
+
     Ok(branches)
 }
 

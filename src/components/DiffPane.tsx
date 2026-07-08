@@ -29,6 +29,9 @@ type FileSection = "staged" | "unstaged";
 interface BranchInfo {
   name: string;
   is_current: boolean;
+  is_remote: boolean;
+  is_worktree: boolean;
+  worktree_path?: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -128,7 +131,7 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
         invoke<BranchInfo[]>("git_list_branches", { repoPath: cwd }).catch(() => []),
       ]);
       setCurrentBranch(branch);
-      setBranches(branchList);
+      setBranches(branchList.filter((b) => !b.is_worktree));
       const filtered = entries.filter((e) => !e.path.includes(".tempest-pid"));
       const s: FileEntry[] = [];
       const u: FileEntry[] = [];
@@ -358,7 +361,7 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
                 branches.map((b) => (
                   <div
                     key={b.name}
-                    className={`dp-branch-menu-row${b.is_current ? " dp-branch-menu-row--current" : ""}`}
+                    className={`dp-branch-menu-row${b.is_current ? " dp-branch-menu-row--current" : ""}${b.is_remote ? " dp-branch-menu-row--remote" : ""}`}
                   >
                     <span className="dp-branch-menu-check">{b.is_current ? <Check size={11} /> : null}</span>
                     <button
@@ -369,7 +372,7 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
                     >
                       {b.name}
                     </button>
-                    {!b.is_current && (
+                    {!b.is_current && !b.is_remote && (
                       <Tooltip content="Delete branch" placement="left">
                         <button
                           className="dp-branch-menu-del"
