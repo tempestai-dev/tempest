@@ -4,16 +4,20 @@
   align-items: stretch;
 }
 
+.tt--stretch {
+  align-self: stretch;
+}
+
 .tt-tip {
   position: absolute;
   z-index: 9999;
   padding: 4px 8px;
-  background: var(--tempest-bg-panel);
-  border: 1px solid var(--tempest-border-default);
+  background: var(--tempest-fg-default);
+  border: 1px solid var(--tempest-fg-default);
   border-radius: 4px;
   font-size: 11px;
   line-height: 1.4;
-  color: var(--tempest-fg-muted);
+  color: var(--tempest-bg-base);
   white-space: nowrap;
   pointer-events: none;
   user-select: none;
@@ -34,8 +38,8 @@
   position: absolute;
   width: 6px;
   height: 6px;
-  background: var(--tempest-bg-panel);
-  border: 1px solid var(--tempest-border-default);
+  background: var(--tempest-fg-default);
+  border: 1px solid var(--tempest-fg-default);
   pointer-events: none;
 }
 

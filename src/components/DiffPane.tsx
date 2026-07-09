@@ -24,6 +24,12 @@ interface FileEntry {
   status: string;
 }
 
+interface FileStats {
+  path: string;
+  adds: number;
+  dels: number;
+}
+
 type FileSection = "staged" | "unstaged";
 
 interface BranchInfo {
@@ -88,6 +94,7 @@ interface Props {
 export function DiffPane({ cwd, hidden, gitRevision }: Props) {
   const [staged, setStaged] = useState<FileEntry[]>([]);
   const [unstaged, setUnstaged] = useState<FileEntry[]>([]);
+  const [statsMap, setStatsMap] = useState<Record<string, { adds: number; dels: number }>>({});
   const [selected, setSelected] = useState<{ path: string; section: FileSection } | null>(null);
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
@@ -95,6 +102,8 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
   const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
   const [diffLoading, setDiffLoading] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [stagingAll, setStagingAll] = useState(false);
+  const [unstagingAll, setUnstagingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [commitTitle, setCommitTitle] = useState("");
@@ -125,13 +134,17 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const [entries, branch, branchList] = await Promise.all([
+      const [entries, branch, branchList, stats] = await Promise.all([
         invoke<FileEntry[]>("git_status", { path: cwd }),
         invoke<string>("get_git_branch", { path: cwd }).catch(() => ""),
         invoke<BranchInfo[]>("git_list_branches", { repoPath: cwd }).catch(() => []),
+        invoke<FileStats[]>("git_numstat", { repoPath: cwd }).catch(() => [] as FileStats[]),
       ]);
       setCurrentBranch(branch);
       setBranches(branchList.filter((b) => !b.is_worktree));
+      const map: Record<string, { adds: number; dels: number }> = {};
+      for (const s of stats) map[s.path] = { adds: s.adds, dels: s.dels };
+      setStatsMap(map);
       const filtered = entries.filter((e) => !e.path.includes(".tempest-pid"));
       const s: FileEntry[] = [];
       const u: FileEntry[] = [];
@@ -212,12 +225,16 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
   };
 
   const stageAll = async () => {
+    setStagingAll(true);
     try { await invoke("git_stage", { repoPath: cwd, filePath: "." }); } catch { /* non-fatal */ }
+    finally { setStagingAll(false); }
     await load();
   };
 
   const unstageAll = async () => {
+    setUnstagingAll(true);
     try { await invoke("git_unstage", { repoPath: cwd, filePath: "." }); } catch { /* non-fatal */ }
+    finally { setUnstagingAll(false); }
     await load();
   };
 
@@ -475,8 +492,8 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
                     )}
                   </span>
                   {staged.length > 0 && (
-                    <button className="dp-action-all" onClick={unstageAll} title="Unstage all">
-                      Unstage All
+                    <button className="dp-action-all" onClick={unstageAll} disabled={unstagingAll} title="Unstage all">
+                      {unstagingAll ? <Loader size={10} className="dp-spin" /> : "Unstage All"}
                     </button>
                   )}
                 </div>
@@ -491,6 +508,12 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
                     >
                       <span className={`dp-status ${statusClass(f.status)}`}>{f.status}</span>
                       <span className="dp-fpath" title={f.path}>{f.path}</span>
+                      {statsMap[f.path] && (
+                        <span className="dp-file-stats">
+                          <span className="dp-stat-adds">+{statsMap[f.path].adds}</span>
+                          <span className="dp-stat-dels">-{statsMap[f.path].dels}</span>
+                        </span>
+                      )}
                       <Tooltip content="Unstage file" placement="left">
                         <button
                           className="dp-file-btn dp-file-btn--unstage"
@@ -514,8 +537,8 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
                     )}
                   </span>
                   {unstaged.length > 0 && (
-                    <button className="dp-action-all dp-action-all--stage" onClick={stageAll} title="Stage all">
-                      Stage All
+                    <button className="dp-action-all dp-action-all--stage" onClick={stageAll} disabled={stagingAll} title="Stage all">
+                      {stagingAll ? <Loader size={10} className="dp-spin" /> : "Stage All"}
                     </button>
                   )}
                 </div>
@@ -530,6 +553,12 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
                     >
                       <span className={`dp-status ${statusClass(f.status)}`}>{f.status}</span>
                       <span className="dp-fpath" title={f.path}>{f.path}</span>
+                      {statsMap[f.path] && (
+                        <span className="dp-file-stats">
+                          <span className="dp-stat-adds">+{statsMap[f.path].adds}</span>
+                          <span className="dp-stat-dels">-{statsMap[f.path].dels}</span>
+                        </span>
+                      )}
                       <div className="dp-file-btns">
                         <Tooltip content="Stage file" placement="left">
                           <button

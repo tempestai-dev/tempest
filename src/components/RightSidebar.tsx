@@ -8,6 +8,10 @@ import {
   Eye,
   ChevronRight,
   ChevronDown,
+  Loader,
+  WrapText,
+  ChevronsUpDown,
+  ChevronsDownUp,
 } from "lucide-react";
 import { Tooltip } from "./Tooltip";
 import "./RightSidebar.css";
@@ -23,8 +27,24 @@ interface TreeNode {
 }
 
 interface GitChange {
+  xy?: string;
   status: string;
   path: string;
+  adds?: number;
+  dels?: number;
+}
+
+interface FileStats {
+  path: string;
+  adds: number;
+  dels: number;
+}
+
+interface DiffLine {
+  kind: "hunk" | "context" | "added" | "removed";
+  line_old: number | null;
+  line_new: number | null;
+  content: string;
 }
 
 interface Props {
@@ -158,6 +178,82 @@ export function RightSidebar({ cwd, rootPath, open, gitRevision, noGit, onOpenDi
   const dragState = useRef<{ startX: number; startWidth: number } | null>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
 
+  // ── Inline diff state ─────────────────────────────────────────────────────
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+  const [diffCache, setDiffCache] = useState<Record<string, DiffLine[]>>({});
+  const [diffLoadingPaths, setDiffLoadingPaths] = useState<Set<string>>(new Set());
+  const [wrapLines, setWrapLines] = useState(false);
+
+  const allExpanded = changes.length > 0 && changes.every((c) => expandedPaths.has(c.path));
+
+  // Clear expand state when cwd changes (different project/session)
+  useEffect(() => {
+    setExpandedPaths(new Set());
+    setDiffCache({});
+    setDiffLoadingPaths(new Set());
+  }, [cwd]);
+
+  const handleExpandAll = useCallback(async () => {
+    if (!cwd) return;
+    setExpandedPaths(new Set(changes.map((c) => c.path)));
+    const uncached = changes.filter((c) => !(c.path in diffCache));
+    if (uncached.length === 0) return;
+    setDiffLoadingPaths((prev) => new Set([...prev, ...uncached.map((c) => c.path)]));
+    await Promise.all(uncached.map(async (c) => {
+      try {
+        const isUntracked = c.xy === "??";
+        const hasUnstaged = !isUntracked && (c.xy?.[1] ?? " ") !== " ";
+        const staged = !isUntracked && !hasUnstaged;
+        const lines = await invoke<DiffLine[]>("git_diff_file", {
+          path: cwd, filePath: c.path, staged, untracked: isUntracked,
+        });
+        setDiffCache((prev) => ({ ...prev, [c.path]: lines }));
+      } catch {
+        setDiffCache((prev) => ({ ...prev, [c.path]: [] }));
+      } finally {
+        setDiffLoadingPaths((prev) => { const s = new Set(prev); s.delete(c.path); return s; });
+      }
+    }));
+  }, [cwd, changes, diffCache]);
+
+  const handleCollapseAll = useCallback(() => {
+    setExpandedPaths(new Set());
+  }, []);
+
+  const toggleExpand = useCallback(async (c: GitChange) => {
+    const { path } = c;
+    const isExpanded = expandedPaths.has(path);
+
+    setExpandedPaths((prev) => {
+      const next = new Set(prev);
+      isExpanded ? next.delete(path) : next.add(path);
+      return next;
+    });
+
+    if (!isExpanded && !(path in diffCache) && cwd) {
+      setDiffLoadingPaths((prev) => new Set(prev).add(path));
+      try {
+        const isUntracked = c.xy === "??";
+        // y-column non-blank → has unstaged changes; else staged-only
+        const hasUnstaged = !isUntracked && (c.xy?.[1] ?? " ") !== " ";
+        const staged = !isUntracked && !hasUnstaged;
+        const lines = await invoke<DiffLine[]>("git_diff_file", {
+          path: cwd,
+          filePath: path,
+          staged,
+          untracked: isUntracked,
+        });
+        setDiffCache((prev) => ({ ...prev, [path]: lines }));
+      } catch {
+        setDiffCache((prev) => ({ ...prev, [path]: [] }));
+      } finally {
+        setDiffLoadingPaths((prev) => { const s = new Set(prev); s.delete(path); return s; });
+      }
+    }
+  }, [expandedPaths, diffCache, cwd]);
+
+  // ── Drag resize ───────────────────────────────────────────────────────────
+
   function onDragStart(e: React.MouseEvent) {
     if (!open) return;
     e.preventDefault();
@@ -192,6 +288,8 @@ export function RightSidebar({ cwd, rootPath, open, gitRevision, noGit, onOpenDi
     document.addEventListener("mouseup", onUp);
   }
 
+  // ── Data loading ──────────────────────────────────────────────────────────
+
   const loadFiles = useCallback(async (path: string) => {
     const entries = await invoke<{ name: string; path: string; is_dir: boolean }[]>(
       "list_directory",
@@ -202,8 +300,16 @@ export function RightSidebar({ cwd, rootPath, open, gitRevision, noGit, onOpenDi
 
   const loadChanges = useCallback(async (path: string) => {
     try {
-      const result = await invoke<GitChange[]>("git_status", { path });
-      setChanges(result.filter((c) => !c.path.includes(".tempest-pid")));
+      const [result, stats] = await Promise.all([
+        invoke<GitChange[]>("git_status", { path }),
+        invoke<FileStats[]>("git_numstat", { repoPath: path }).catch(() => [] as FileStats[]),
+      ]);
+      const statsMap: Record<string, { adds: number; dels: number }> = {};
+      for (const s of stats) statsMap[s.path] = { adds: s.adds, dels: s.dels };
+      const merged = result
+        .filter((c) => !c.path.includes(".tempest-pid"))
+        .map((c) => ({ ...c, ...statsMap[c.path] }));
+      setChanges(merged);
       setGitError(null);
     } catch (e) {
       setChanges([]);
@@ -232,12 +338,9 @@ export function RightSidebar({ cwd, rootPath, open, gitRevision, noGit, onOpenDi
     setGitError(null);
     const filesPath = rootPath ?? cwd;
     if (!filesPath) return;
-    // Skip git_status when the user explicitly chose to continue without git
     reload(filesPath, noGit ? null : (cwd ?? null));
   }, [cwd, rootPath, noGit]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // When an agent finishes a turn, gitRevision increments — refresh only the
-  // Changes tab so the file tree isn't disrupted mid-browse.
   const prevRevision = useRef(0);
   useEffect(() => {
     if (!gitRevision || gitRevision === prevRevision.current) return;
@@ -261,6 +364,8 @@ export function RightSidebar({ cwd, rootPath, open, gitRevision, noGit, onOpenDi
       setTree((prev) => toggleInTree(prev, node.path));
     }
   }
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div
@@ -325,6 +430,29 @@ export function RightSidebar({ cwd, rootPath, open, gitRevision, noGit, onOpenDi
         )}
 
         {activeTab === "changes" && (
+          <>
+            {!noGit && !gitError && changes.length > 0 && (
+              <div className="rs-changes-toolbar">
+                <Tooltip content={wrapLines ? "Scroll long lines" : "Wrap long lines"} placement="top">
+                  <button
+                    className={`rs-toolbar-btn${wrapLines ? " rs-toolbar-btn--active" : ""}`}
+                    onClick={() => setWrapLines((v) => !v)}
+                  >
+                    <WrapText size={13} />
+                  </button>
+                </Tooltip>
+                <Tooltip content={allExpanded ? "Collapse all" : "Expand all"} placement="top">
+                  <button
+                    className="rs-toolbar-btn"
+                    onClick={allExpanded ? handleCollapseAll : handleExpandAll}
+                  >
+                    {allExpanded
+                      ? <ChevronsDownUp size={13} />
+                      : <ChevronsUpDown size={13} />}
+                  </button>
+                </Tooltip>
+              </div>
+            )}
           <div className="rs-scroll">
             {noGit && (
               <div className="rs-git-no-init">Git needs to be initialized to view changes</div>
@@ -335,15 +463,59 @@ export function RightSidebar({ cwd, rootPath, open, gitRevision, noGit, onOpenDi
             {!noGit && !gitError && changes.length === 0 && (
               <div className="rs-empty">No changes</div>
             )}
-            {!noGit && changes.map((c, i) => (
-              <div key={i} className="rs-change-item" title={c.path}>
-                <span className={`rs-change-status ${statusClass(c.status)}`}>
-                  {statusLabel(c.status)}
-                </span>
-                <span className="rs-change-path">{c.path}</span>
-              </div>
-            ))}
+            {!noGit && changes.map((c, i) => {
+              const isExpanded = expandedPaths.has(c.path);
+              const isLoading = diffLoadingPaths.has(c.path);
+              const lines = diffCache[c.path] ?? [];
+
+              return (
+                <div key={i} className="rs-change-group">
+                  <div
+                    className={`rs-change-item${isExpanded ? " rs-change-item--expanded" : ""}`}
+                    title={c.path}
+                    onClick={() => toggleExpand(c)}
+                  >
+                    <ChevronRight
+                      size={10}
+                      className={`rs-change-chevron${isExpanded ? " rs-change-chevron--open" : ""}`}
+                    />
+                    <span className={`rs-change-status ${statusClass(c.status)}`}>
+                      {statusLabel(c.status)}
+                    </span>
+                    <span className="rs-change-path">{c.path}</span>
+                    {(c.adds !== undefined || c.dels !== undefined) && (
+                      <span className="rs-change-stats">
+                        {c.adds !== undefined && <span className="rs-stat-adds">+{c.adds}</span>}
+                        {c.dels !== undefined && <span className="rs-stat-dels">-{c.dels}</span>}
+                      </span>
+                    )}
+                  </div>
+
+                  {isExpanded && (
+                    <div className={`rs-diff-body${wrapLines ? " rs-diff-body--wrap" : ""}`}>
+                      {isLoading ? (
+                        <div className="rs-diff-center">
+                          <Loader size={12} className="rs-diff-spinner" />
+                        </div>
+                      ) : lines.length === 0 ? (
+                        <div className="rs-diff-center rs-diff-empty">No diff available</div>
+                      ) : (
+                        lines.map((line, j) => (
+                          <div key={j} className={`rs-diff-line rs-diff-line--${line.kind}`}>
+                            <span className="rs-diff-ln">
+                              {line.kind === "hunk" ? "…" : (line.line_new ?? line.line_old ?? "")}
+                            </span>
+                            <span className="rs-diff-content">{line.content}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
+          </>
         )}
 
       </div>

@@ -1098,6 +1098,71 @@ struct FileDiff {
     lines: Vec<DiffLine>,
 }
 
+#[derive(serde::Serialize)]
+struct FileStats {
+    path: String,
+    adds: u32,
+    dels: u32,
+}
+
+#[tauri::command]
+fn git_numstat(repo_path: String) -> Result<Vec<FileStats>, String> {
+    let dir = std::path::Path::new(&repo_path);
+
+    fn parse_numstat(text: &str) -> std::collections::HashMap<String, (u32, u32)> {
+        let mut map = std::collections::HashMap::new();
+        for line in text.lines() {
+            let mut parts = line.splitn(3, '\t');
+            let Some(adds_str) = parts.next() else { continue };
+            let Some(dels_str) = parts.next() else { continue };
+            let Some(path) = parts.next() else { continue };
+            if path.is_empty() { continue; }
+            let adds = adds_str.parse::<u32>().unwrap_or(0);
+            let dels = dels_str.parse::<u32>().unwrap_or(0);
+            let e = map.entry(path.to_string()).or_insert((0, 0));
+            e.0 += adds;
+            e.1 += dels;
+        }
+        map
+    }
+
+    // HEAD diff covers staged+unstaged tracked files.
+    let mut combined = if let Ok(out) = run_git(dir, &["diff", "--numstat", "HEAD"]) {
+        if out.status.success() {
+            parse_numstat(&String::from_utf8_lossy(&out.stdout))
+        } else {
+            std::collections::HashMap::new()
+        }
+    } else {
+        std::collections::HashMap::new()
+    };
+
+    // Untracked new files aren't in the HEAD diff — count their lines via diff --numstat /dev/null.
+    // git status --short gives us the ?? entries; for each we run diff --no-index.
+    if let Ok(status_out) = run_git(dir, &["status", "--short", "--untracked-files=all"]) {
+        if status_out.status.success() {
+            for line in String::from_utf8_lossy(&status_out.stdout).lines() {
+                if line.starts_with("?? ") {
+                    let path = line[3..].trim();
+                    if path.is_empty() { continue; }
+                    let full = dir.join(path);
+                    // Count non-empty lines in the file as additions.
+                    if let Ok(content) = std::fs::read_to_string(&full) {
+                        let adds = content.lines().count() as u32;
+                        combined.entry(path.to_string()).or_insert((adds, 0));
+                    }
+                }
+            }
+        }
+    }
+
+    let stats = combined
+        .into_iter()
+        .map(|(path, (adds, dels))| FileStats { path, adds, dels })
+        .collect();
+    Ok(stats)
+}
+
 fn parse_hunk_header(line: &str) -> (u32, u32) {
     // @@ -old_start[,count] +new_start[,count] @@
     let mut old_start = 1u32;
@@ -2216,6 +2281,7 @@ pub fn run() {
             start_atlas_daemon,
             stop_atlas_daemon,
             check_program_available,
+            git_numstat,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -8,11 +8,17 @@ import type { ActionId, Shortcut } from "../store/keybindings";
 // A non-terminal tab (diff, preview, editor) that survives app restarts.
 export interface PersistedTab {
   instanceId: string;                         // stable UUID minted once when tab is first opened
-  kind: "diff" | "preview" | "editor";
+  kind: "diff" | "preview" | "editor" | "chat";
   projectId: string;
   cwd: string;                                // worktree path (diff), file path (editor), "" (preview)
   name: string;
   previewUrl?: string;
+}
+
+export interface ChatMessageRecord {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
 }
 
 export interface RuntimeState {
@@ -25,11 +31,12 @@ export interface RuntimeState {
   attribution: boolean;
   onboardingComplete: boolean;
   migrations: Record<string, boolean>;
-  tabs: PersistedTab[];           // non-terminal tabs (diff, preview, editor)
+  tabs: PersistedTab[];           // non-terminal tabs (diff, preview, editor, chat)
   sessionOrder: string[];         // instanceIds in tab-bar order
   activeInstanceId: string | null; // instanceId of the last focused session
   prompts: Array<{ id: string; title: string; body: string; enabled: boolean; isBuiltin: boolean }>;
   atlasProjects: Record<string, boolean>; // path → true (index) | false (skip); absent = not yet decided
+  chatHistory: Record<string, ChatMessageRecord[]>; // projectPath → conversation
 }
 
 const DEFAULT_STATE: RuntimeState = {
@@ -47,6 +54,7 @@ const DEFAULT_STATE: RuntimeState = {
   activeInstanceId: null,
   prompts: [],
   atlasProjects: {},
+  chatHistory: {},
 };
 
 let _state: RuntimeState = { ...DEFAULT_STATE };
@@ -80,6 +88,7 @@ export async function loadRuntimeState(): Promise<void> {
       activeInstanceId: parsed.activeInstanceId ?? null,
       prompts:          parsed.prompts          ?? [],
       atlasProjects:    parsed.atlasProjects    ?? {},
+      chatHistory:      parsed.chatHistory      ?? {},
     };
   } catch {
     // File doesn't exist yet — import whatever is in localStorage.
@@ -98,6 +107,7 @@ export async function loadRuntimeState(): Promise<void> {
       activeInstanceId: null,
       prompts:          [],
       atlasProjects:    {},
+      chatHistory:      {},
     };
   }
   persist();

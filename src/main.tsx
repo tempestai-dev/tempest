@@ -7,6 +7,7 @@ import { loadRuntimeState } from "./lib/runtimeState";
 // StrictMode intentionally removed — it double-invokes effects which causes
 // PTY sessions to spawn twice on mount. This matches Termic's design decision.
 (async () => {
+  document.addEventListener("contextmenu", (e) => e.preventDefault());
   await loadRuntimeState();
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <ThemeProvider>

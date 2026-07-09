@@ -238,19 +238,45 @@
 
 /* Changes tab */
 
+.rs-change-group {
+  border-bottom: 1px solid transparent;
+}
+
+.rs-change-group:has(.rs-diff-body) {
+  border-bottom-color: var(--tempest-border-subtle);
+}
+
 .rs-change-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 3px 10px;
+  gap: 6px;
+  padding: 3px 10px 3px 6px;
   min-width: 0;
-  cursor: default;
+  cursor: pointer;
   user-select: none;
   transition: background 0.08s;
 }
 
 .rs-change-item:hover {
   background: var(--tempest-bg-hover);
+}
+
+.rs-change-item--expanded {
+  background: var(--tempest-bg-active);
+}
+
+.rs-change-item--expanded:hover {
+  background: var(--tempest-bg-hover);
+}
+
+.rs-change-chevron {
+  flex-shrink: 0;
+  color: var(--tempest-fg-subtle);
+  transition: transform 0.12s ease;
+}
+
+.rs-change-chevron--open {
+  transform: rotate(90deg);
 }
 
 .rs-change-status {
@@ -278,3 +304,121 @@
   min-width: 0;
   font-family: "Geist Mono", monospace;
 }
+
+.rs-change-stats {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: "Geist Mono", monospace;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rs-stat-adds { color: var(--tempest-git-added); }
+.rs-stat-dels { color: var(--tempest-git-deleted); }
+
+/* ── Changes toolbar ─────────────────────────────────────────────────────── */
+
+.rs-changes-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--tempest-border-subtle);
+  background: var(--tempest-bg-panel);
+}
+
+.rs-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  transition: color 0.1s ease, background 0.1s ease;
+}
+
+.rs-toolbar-btn:hover {
+  color: var(--tempest-fg-default);
+  background: var(--tempest-bg-hover);
+}
+
+.rs-toolbar-btn--active {
+  color: var(--tempest-fg-default);
+  background: var(--tempest-bg-active);
+}
+
+/* ── Inline diff body ─────────────────────────────────────────────────────── */
+
+.rs-diff-body {
+  overflow-x: auto;
+  border-top: 1px solid var(--tempest-border-subtle);
+  scrollbar-width: thin;
+  scrollbar-color: var(--tempest-border-subtle) transparent;
+}
+
+.rs-diff-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--tempest-fg-subtle);
+}
+
+.rs-diff-empty { opacity: 0.55; }
+
+@keyframes rs-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.rs-diff-spinner { animation: rs-spin 0.7s linear infinite; }
+
+.rs-diff-line {
+  display: flex;
+  align-items: stretch;
+  font-family: "Geist Mono", monospace;
+  font-size: 11px;
+  line-height: 18px;
+  min-width: max-content;
+}
+
+.rs-diff-line--hunk    { background: color-mix(in srgb, var(--tempest-accent-blue) 8%, transparent); }
+.rs-diff-line--added   { background: color-mix(in srgb, var(--tempest-git-added) 10%, transparent); }
+.rs-diff-line--removed { background: color-mix(in srgb, var(--tempest-git-deleted) 10%, transparent); }
+.rs-diff-line--context { background: transparent; }
+
+.rs-diff-ln {
+  flex-shrink: 0;
+  width: 28px;
+  padding: 0 4px;
+  text-align: right;
+  color: var(--tempest-fg-subtle);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.45;
+  border-right: 1px solid var(--tempest-border-subtle);
+  user-select: none;
+}
+
+.rs-diff-content {
+  flex: 1;
+  padding: 0 8px;
+  white-space: pre;
+  color: var(--tempest-fg-default);
+}
+
+.rs-diff-line--hunk    .rs-diff-content { color: var(--tempest-accent-blue); opacity: 0.85; }
+.rs-diff-line--added   .rs-diff-content { color: var(--tempest-git-added); }
+.rs-diff-line--removed .rs-diff-content { color: var(--tempest-git-deleted); }
+
+.rs-diff-body--wrap { overflow-x: hidden; }
+.rs-diff-body--wrap .rs-diff-line { min-width: unset; }
+.rs-diff-body--wrap .rs-diff-content { white-space: pre-wrap; word-break: break-all; }

@@ -83,7 +83,7 @@
   border: 1px solid var(--tempest-border-default);
   border-radius: 8px;
   padding: 4px;
-  min-width: 192px;
+  min-width: 228px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
   z-index: 302;
 }
@@ -154,10 +154,15 @@
   flex: 1;
   font-size: 13px;
   color: var(--tempest-fg-default);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .nsm-subitem-hint {
+  flex-shrink: 0;
   font-size: 11px;
   color: var(--tempest-fg-subtle);
   font-family: "Geist Mono", monospace;
+  white-space: nowrap;
 }

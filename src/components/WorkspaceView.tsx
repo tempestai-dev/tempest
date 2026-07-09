@@ -43,6 +43,7 @@ import {
   Check,
   Cpu,
   Database,
+  MessageSquare,
 } from "lucide-react";
 import { useWorkState, setWorkState, clearWorkState } from "../store/workState";
 import { useKeybindings, matchesEvent, formatShortcut } from "../store/keybindings";
@@ -53,6 +54,7 @@ import { TerminalPane } from "./TerminalPane";
 import { DiffPane } from "./DiffPane";
 import { PreviewPane } from "./PreviewPane";
 import { CodeMirrorPane } from "./CodeMirrorPane";
+import { ChatPane } from "./ChatPane";
 import { RightSidebar } from "./RightSidebar";
 import { NewSessionMenu, NewSessionPlacement, AgentConfig, AGENT_CONFIGS, AgentIcon } from "./NewSessionMenu";
 import { SettingsPanel } from "./SettingsPanel";
@@ -81,7 +83,7 @@ interface Session {
   name: string;
   cwd: string;
   projectId: string;
-  kind?: "terminal" | "diff" | "preview" | "editor"; // defaults to "terminal" when absent
+  kind?: "terminal" | "diff" | "preview" | "editor" | "chat"; // defaults to "terminal" when absent
   previewUrl?: string; // current URL for preview tabs
   agent?: string; // CLI command when this is an agent session (e.g. "claude")
   conversationId?: string; // the Claude conversation UUID
@@ -306,6 +308,9 @@ export function WorkspaceView({ zen, name, path }: Props) {
   // Always-current keyboard shortcut handler (avoids stale closure on the listener).
   const shortcutHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
 
+  // Chat tab remount nonces — incrementing forces the ChatPane to remount (clears in-memory messages)
+  const [chatNonce, setChatNonce] = useState<Record<string, number>>({});
+
   // Sidebar right-click context menu
   const [ctxMenu, setCtxMenu] = useState<{
     x: number; y: number;
@@ -316,6 +321,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
     isProjectHeader?: boolean; // true when right-clicking a project row (not a worktree)
     isRootSession?: boolean;   // true when right-clicking a root session or its ghost
     rootKey?: string;          // unique store key for a root-session ghost (sessionId is null)
+    isChatGhost?: boolean;     // true when right-clicking the chat ghost row (sessionId is null)
   } | null>(null);
 
   // Delete workspace dialog state
@@ -736,11 +742,12 @@ export function WorkspaceView({ zen, name, path }: Props) {
     sessionId: string | null,
     isProjectHeader = false,
     isRootSession = false,
-    rootKey?: string
+    rootKey?: string,
+    isChatGhost = false
   ) {
     e.preventDefault();
     e.stopPropagation();
-    setCtxMenu({ x: e.clientX, y: e.clientY, worktree, projectPath, projectId, sessionId, isProjectHeader, isRootSession, rootKey });
+    setCtxMenu({ x: e.clientX, y: e.clientY, worktree, projectPath, projectId, sessionId, isProjectHeader, isRootSession, rootKey, isChatGhost });
   }
 
   function removeProject(projectId: string) {
@@ -781,14 +788,15 @@ export function WorkspaceView({ zen, name, path }: Props) {
     worktree: Worktree,
     projectPath: string,
     projectId: string,
-    sessionId: string | null
+    sessionId: string | null,
+    preselectBranch = false
   ) {
     setCtxMenu(null);
     // Tempest always creates the branch with the same name as the worktree folder
     setDeleteDialog({
       worktree, projectPath, projectId, sessionId,
       branchName: worktree.name,
-      deleteBranch: false,
+      deleteBranch: preselectBranch,
       step: 1,
       loading: false,
       error: null,
@@ -1113,6 +1121,34 @@ export function WorkspaceView({ zen, name, path }: Props) {
     setActiveSessionId(sessionId);
   }
 
+  function openChatTab(projectId: string) {
+    const existing = sessionsRef.current.find((s) => s.kind === "chat" && s.projectId === projectId);
+    if (existing) { setActiveSessionId(existing.id); return; }
+    const sessionId = crypto.randomUUID();
+    const tab: PersistedTab = { instanceId: sessionId, kind: "chat", projectId, cwd: "", name: "Chat" };
+    const st = getRuntimeState();
+    setRuntimeState({ tabs: [...st.tabs, tab] });
+    setSessions((prev) => [...prev, {
+      id: sessionId, instanceId: sessionId, name: "Chat", cwd: "", projectId, kind: "chat",
+      createdAt: new Date().toISOString(),
+      metadata: { resumeCount: 0, hasBeenResumed: false },
+    }]);
+    setActiveSessionId(sessionId);
+  }
+
+  function clearChatHistory(projectId: string, sessionId?: string) {
+    const projectPath = projects.find((p) => p.id === projectId)?.path;
+    if (projectPath) {
+      const st = getRuntimeState();
+      const next = { ...st.chatHistory };
+      delete next[projectPath];
+      setRuntimeState({ chatHistory: next });
+    }
+    if (sessionId) {
+      setChatNonce((prev) => ({ ...prev, [sessionId]: (prev[sessionId] ?? 0) + 1 }));
+    }
+  }
+
   function updateSessionPreviewUrl(sessionId: string, url: string) {
     setSessions((prev) => prev.map((s) => s.id === sessionId ? { ...s, previewUrl: url } : s));
     // Persist the updated URL to the tabs slice.
@@ -1381,14 +1417,16 @@ export function WorkspaceView({ zen, name, path }: Props) {
 
     for (const id of toClose) {
       const closing = sessions.find((s) => s.id === id);
-      if (closing?.kind !== "diff" && closing?.kind !== "preview" && closing?.kind !== "editor") {
+      if (closing?.kind === "chat") {
+        // Chat tabs: keep the PersistedTab (for ghost + restart restore) — just remove from live sessions.
+      } else if (closing?.kind !== "diff" && closing?.kind !== "preview" && closing?.kind !== "editor") {
         invoke("close_pty_session", { sessionId: id }).catch(() => {});
         // Use storeKey (not cwd) so a session that was never persisted (e.g. a plain terminal
         // root session sharing cwd with an agent root session) cannot corrupt the agent's entry.
         if (closing?.storeKey) markWorktreeSessionClosed(closing.storeKey);
         sessionManager.unregister(id);
       } else if (closing) {
-        // Remove the persisted tab entry for non-terminal tabs.
+        // Remove the persisted tab entry for non-terminal tabs (diff, preview, editor).
         const st = getRuntimeState();
         setRuntimeState({ tabs: st.tabs.filter((t) => t.instanceId !== closing.instanceId) });
       }
@@ -1762,7 +1800,13 @@ export function WorkspaceView({ zen, name, path }: Props) {
           {/* Scrollable middle */}
           <div className="sidebar-scroll-wrap">
           <div className={`sidebar-fade-top${sidebarAtTop ? " sidebar-fade--hidden" : ""}`} />
-          <div className="sidebar-scroll" ref={sidebarScrollRef} onScroll={checkSidebarScroll}>
+          <div className="sidebar-scroll" ref={sidebarScrollRef} onScroll={checkSidebarScroll}
+            onContextMenu={(e) => {
+              const proj = projects.find((p) => p.id === (activeSession?.projectId ?? null)) ?? projects[0];
+              if (!proj) return;
+              openCtxMenu(e, null, proj.path, proj.id, null);
+            }}
+          >
           {zen ? (
             /* ── Zen mode sidebar ── */
             <>
@@ -1866,7 +1910,9 @@ export function WorkspaceView({ zen, name, path }: Props) {
                     if (!canonRoots.has(id)) canonRoots.set(id, { ghost: e });
                   }
                   return (
-                    <div key={project.id} className="sidebar-project">
+                    <div key={project.id} className="sidebar-project"
+                      onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, null)}
+                    >
                       <div
                         className="sidebar-project-header"
                         onContextMenu={(e) =>
@@ -1991,13 +2037,27 @@ export function WorkspaceView({ zen, name, path }: Props) {
                                     openCtxMenu(e, null, project.path, project.id, s.id)
                                   }
                                 >
-                                  {s.kind === "diff" ? <Eye size={12} /> : s.kind === "preview" ? <Globe size={12} /> : s.kind === "editor" ? <FileCode size={12} /> : s.agent ? <AgentIcon hint={s.agent} size={12} /> : <TerminalSquare size={12} />}
+                                  {s.kind === "diff" ? <Eye size={12} /> : s.kind === "preview" ? <Globe size={12} /> : s.kind === "editor" ? <FileCode size={12} /> : s.kind === "chat" ? <MessageSquare size={12} /> : s.agent ? <AgentIcon hint={s.agent} size={12} /> : <TerminalSquare size={12} />}
                                   <span>{s.name}</span>
                                   {s.agent && <SidebarWorkBadge sessionId={s.id} />}
                                 </button>
                                 {renderSubSessions(s.id)}
                               </div>
                             ))}
+                          {/* Chat ghost — shown when a chat tab exists in runtime state but isn't open */}
+                          {getRuntimeState().tabs.some((t) => t.kind === "chat" && t.projectId === project.id) &&
+                            !projectSessions.some((s) => s.kind === "chat") && (
+                            <div className="sidebar-session-group">
+                              <button
+                                className="sidebar-project-session"
+                                onClick={() => openChatTab(project.id)}
+                                onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, null, false, false, undefined, true)}
+                              >
+                                <MessageSquare size={12} />
+                                <span>Chat</span>
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -2108,7 +2168,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
                       if (isActive && s.agent) setWorkState(s.id, "idle");
                     }}
                   >
-                    {s.kind === "diff" ? <Eye size={12} /> : s.kind === "preview" ? <Globe size={12} /> : s.kind === "editor" ? <FileCode size={12} /> : s.agent ? <AgentIcon hint={s.agent} size={12} /> : <TerminalSquare size={12} />}
+                    {s.kind === "diff" ? <Eye size={12} /> : s.kind === "preview" ? <Globe size={12} /> : s.kind === "editor" ? <FileCode size={12} /> : s.kind === "chat" ? <MessageSquare size={12} /> : s.agent ? <AgentIcon hint={s.agent} size={12} /> : <TerminalSquare size={12} />}
                     {renamingSessionId === s.id ? (
                       <input
                         className="session-tab-rename"
@@ -2167,7 +2227,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
                   </button>
                 );
               })}
-                <Tooltip content="New tab" placement="top">
+                <Tooltip content="New tab" placement="top" className="tt--stretch">
                   <button
                     className="session-tab-add"
                     onClick={(e) => openSessionMenu(e, activeSession?.projectId ?? null, "below")}
@@ -2180,7 +2240,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
               <div className="session-tab-actions">
                 {activeSession && !activeSession.kind && (
                   <>
-                    <Tooltip content="Split vertical" placement="top">
+                    <Tooltip content="Split vertical" placement="top" className="tt--stretch">
                       <button
                         className="session-tab-split-btn session-tab-split-btn--v"
                         onClick={() => splitPane("v")}
@@ -2189,7 +2249,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
                         <Columns2 size={13} />
                       </button>
                     </Tooltip>
-                    <Tooltip content="Split horizontal" placement="top">
+                    <Tooltip content="Split horizontal" placement="top" className="tt--stretch">
                       <button
                         className="session-tab-split-btn session-tab-split-btn--h"
                         onClick={() => splitPane("h")}
@@ -2201,7 +2261,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
                   </>
                 )}
                 {activeSession?.agent && (
-                  <Tooltip content="Message queue" placement="top">
+                  <Tooltip content="Message queue" placement="top" className="tt--stretch">
                     <button
                       className="session-tab-queue-btn"
                       onClick={() => setQueueOpenSessionId((prev) => prev === activeSession.id ? null : activeSession.id)}
@@ -2211,7 +2271,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
                     </button>
                   </Tooltip>
                 )}
-                <Tooltip content="Broadcast to agents" placement="top">
+                <Tooltip content="Broadcast to agents" placement="top" className="tt--stretch">
                   <button
                     className="session-tab-broadcast"
                     onClick={() => setBroadcastOpen(true)}
@@ -2278,6 +2338,13 @@ export function WorkspaceView({ zen, name, path }: Props) {
                     <CodeMirrorPane
                       filePath={s.cwd}
                       hidden={hidden}
+                    />
+                  ) : s.kind === "chat" ? (
+                    <ChatPane
+                      key={`chat-${s.id}-${chatNonce[s.id] ?? 0}`}
+                      sessionId={s.id}
+                      hidden={hidden}
+                      projectPath={projects.find((p) => p.id === s.projectId)?.path}
                     />
                   ) : (
                     <TerminalPane
@@ -2515,6 +2582,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
           setTerminalPrompt("");
           setShowTerminalNaming(true);
         }}
+        onChat={pendingProjectId ? () => {
+          setSessionMenuOpen(false);
+          openChatTab(pendingProjectId);
+        } : undefined}
         onLivePreview={pendingProjectId ? () => {
           setSessionMenuOpen(false);
           openPreviewTab(pendingProjectId);
@@ -2529,96 +2600,106 @@ export function WorkspaceView({ zen, name, path }: Props) {
             style={{ top: ctxMenu.y, left: ctxMenu.x }}
             onClick={(e) => e.stopPropagation()}
           >
-            {ctxMenu.sessionId && !ctxMenu.isRootSession && (
-              <button
-                className="ctx-item"
-                onClick={() => {
-                  closeSession(ctxMenu.sessionId!);
-                  setCtxMenu(null);
-                }}
-              >
-                <X size={13} />
-                Close session
-              </button>
-            )}
-            {ctxMenu.isRootSession && (
-              <button
-                className="ctx-item ctx-item--danger"
-                onClick={() => {
-                  const target = ctxMenu.sessionId ? sessions.find((s) => s.id === ctxMenu.sessionId) : null;
-                  if (ctxMenu.sessionId) closeSession(ctxMenu.sessionId);
-                  // Fully purge this root session's persisted entry. Each root session
-                  // owns a unique store key: a live session carries it on storeKey, and a
-                  // ghost carries it on ctxMenu.rootKey. Removing only that key leaves any
-                  // other root session for the same project untouched.
-                  const keyToRemove = target?.storeKey ?? ctxMenu.rootKey;
-                  if (keyToRemove) removeWorktreeSession(keyToRemove);
-                  setCtxMenu(null);
-                }}
-              >
-                <Trash2 size={13} />
-                Remove session
-              </button>
-            )}
-            {ctxMenu.worktree && (
-              <button
-                className="ctx-item ctx-item--danger"
-                onClick={() =>
-                  openDeleteDialog(ctxMenu.worktree!, ctxMenu.projectPath, ctxMenu.projectId, ctxMenu.sessionId)
-                }
-              >
-                <Trash2 size={13} />
-                Delete workspace
-              </button>
-            )}
-            {ctxMenu.isProjectHeader && getSettings().atlasEnabled && (
-              <button
-                className="ctx-item"
-                onClick={() => {
-                  const decided = getRuntimeState().atlasProjects ?? {};
-                  setRuntimeState({ atlasProjects: { ...decided, [ctxMenu.projectPath]: true } });
-                  invoke("start_atlas_index", { projectPath: ctxMenu.projectPath })
-                    .then(() => invoke("start_atlas_daemon", { projectPath: ctxMenu.projectPath }).catch(() => {}))
-                    .catch((e) => console.error("[Atlas] start_atlas_index failed:", e));
-                  setAtlasIndexingPaths((prev) =>
-                    prev.includes(ctxMenu.projectPath) ? prev : [...prev, ctxMenu.projectPath]
-                  );
-                  setCtxMenu(null);
-                }}
-              >
-                <Database size={13} />
-                {(getRuntimeState().atlasProjects ?? {})[ctxMenu.projectPath] === true
-                  ? "Re-index project"
-                  : "Index project"}
-              </button>
-            )}
-            {ctxMenu.isProjectHeader && getSettings().atlasEnabled &&
-              (getRuntimeState().atlasProjects ?? {})[ctxMenu.projectPath] === true && (
-              <button
-                className="ctx-item ctx-item--danger"
-                onClick={() => {
-                  invoke("remove_atlas_index", { projectPath: ctxMenu.projectPath })
-                    .catch((e) => console.error("[Atlas] remove_atlas_index failed:", e));
-                  const decided = getRuntimeState().atlasProjects ?? {};
-                  const updated = { ...decided };
-                  delete updated[ctxMenu.projectPath];
-                  setRuntimeState({ atlasProjects: updated });
-                  setCtxMenu(null);
-                }}
-              >
-                <Database size={13} />
-                Remove index
-              </button>
-            )}
-            {ctxMenu.isProjectHeader && (
-              <button
-                className="ctx-item ctx-item--danger"
-                onClick={() => removeProject(ctxMenu.projectId)}
-              >
-                <FolderOpen size={13} />
-                Remove project
-              </button>
-            )}
+            {(() => {
+              const m = ctxMenu;
+              if (!m) return null;
+              const targetSession = m.sessionId ? sessions.find((s) => s.id === m.sessionId) : null;
+              const atlasOn = getSettings().atlasEnabled;
+              const indexed = (getRuntimeState().atlasProjects ?? {})[m.projectPath] === true;
+              const canClose = !!m.sessionId;
+              const hasChat = getRuntimeState().tabs.some(
+                (t) => t.kind === "chat" && t.projectId === m.projectId
+              );
+              // Diff opens against worktree path when available, project root otherwise
+              const diffPath = m.worktree ? m.worktree.path : m.projectPath;
+
+              const indexProject = () => {
+                const decided = getRuntimeState().atlasProjects ?? {};
+                setRuntimeState({ atlasProjects: { ...decided, [m.projectPath]: true } });
+                invoke("start_atlas_index", { projectPath: m.projectPath })
+                  .then(() => invoke("start_atlas_daemon", { projectPath: m.projectPath }).catch(() => {}))
+                  .catch((e) => console.error("[Atlas] start_atlas_index failed:", e));
+                setAtlasIndexingPaths((prev) => prev.includes(m.projectPath) ? prev : [...prev, m.projectPath]);
+                setCtxMenu(null);
+              };
+              const removeIndex = () => {
+                invoke("remove_atlas_index", { projectPath: m.projectPath })
+                  .catch((e) => console.error("[Atlas] remove_atlas_index failed:", e));
+                const decided = getRuntimeState().atlasProjects ?? {};
+                const updated = { ...decided };
+                delete updated[m.projectPath];
+                setRuntimeState({ atlasProjects: updated });
+                setCtxMenu(null);
+              };
+
+              const hasToolItems = atlasOn || hasChat;
+              const hasDestructiveWorktree = !!m.worktree;
+              const hasDestructiveSession = m.isRootSession;
+
+              return (
+                <>
+                  {/* ── Navigation ── */}
+                  <button className="ctx-item" onClick={() => { openChatTab(m.projectId); setCtxMenu(null); }}>
+                    <MessageSquare size={13} /> Open chat
+                  </button>
+                  <button className="ctx-item" onClick={() => { openDiffTab(diffPath, m.projectId); setCtxMenu(null); }}>
+                    <Eye size={13} /> Open diff
+                  </button>
+                  {canClose && (
+                    <button className="ctx-item" onClick={() => { closeSession(m.sessionId!); setCtxMenu(null); }}>
+                      <X size={13} /> Close
+                    </button>
+                  )}
+
+                  {/* ── Tools (index, chat history) ── */}
+                  {hasToolItems && <div className="ctx-sep" />}
+                  {atlasOn && (
+                    <button className="ctx-item" onClick={indexProject}>
+                      <Database size={13} /> {indexed ? "Re-index project" : "Index project"}
+                    </button>
+                  )}
+                  {hasChat && (
+                    <button className="ctx-item ctx-item--danger" onClick={() => { clearChatHistory(m.projectId, targetSession?.id); setCtxMenu(null); }}>
+                      <Trash2 size={13} /> Clear history
+                    </button>
+                  )}
+
+                  {/* ── Destructive ── */}
+                  <div className="ctx-sep" />
+                  {hasDestructiveWorktree && (
+                    <>
+                      <button className="ctx-item ctx-item--danger" onClick={() => openDeleteDialog(m.worktree!, m.projectPath, m.projectId, m.sessionId)}>
+                        <Trash2 size={13} /> Delete workspace
+                      </button>
+                      <button className="ctx-item ctx-item--danger" onClick={() => openDeleteDialog(m.worktree!, m.projectPath, m.projectId, m.sessionId, true)}>
+                        <Trash2 size={13} /> Delete branch
+                      </button>
+                    </>
+                  )}
+                  {hasDestructiveSession && (
+                    <button
+                      className="ctx-item ctx-item--danger"
+                      onClick={() => {
+                        const keyToRemove = targetSession?.storeKey ?? m.rootKey;
+                        if (m.sessionId) closeSession(m.sessionId);
+                        if (keyToRemove) removeWorktreeSession(keyToRemove);
+                        setCtxMenu(null);
+                      }}
+                    >
+                      <Trash2 size={13} /> Remove session
+                    </button>
+                  )}
+                  {atlasOn && indexed && (
+                    <button className="ctx-item ctx-item--danger" onClick={removeIndex}>
+                      <Database size={13} /> Remove index
+                    </button>
+                  )}
+                  <button className="ctx-item ctx-item--danger" onClick={() => { removeProject(m.projectId); setCtxMenu(null); }}>
+                    <FolderOpen size={13} /> Remove project
+                  </button>
+                </>
+              );
+            })()}
           </div>
         </div>,
         document.body

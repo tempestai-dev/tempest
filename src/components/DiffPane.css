@@ -468,8 +468,13 @@
   transition: opacity 0.1s ease;
 }
 
-.dp-action-all:hover {
+.dp-action-all:hover:not(:disabled) {
   opacity: 0.8;
+}
+
+.dp-action-all:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .dp-action-all--stage {
@@ -518,6 +523,19 @@
 }
 
 .dp-file-row--active .dp-fpath { color: var(--tempest-fg-default); }
+
+.dp-file-stats {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: "Geist Mono", monospace;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dp-stat-adds { color: var(--tempest-git-added); }
+.dp-stat-dels { color: var(--tempest-git-deleted); }
 
 .dp-file-btn {
   flex-shrink: 0;

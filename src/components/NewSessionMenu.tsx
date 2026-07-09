@@ -153,6 +153,7 @@ interface Props {
   onClose: () => void;
   onNewTerminal: () => void;
   onAgentSession: (agent: AgentConfig) => void;
+  onChat?: () => void;
   onLivePreview?: () => void;
 }
 
@@ -163,6 +164,7 @@ export function NewSessionMenu({
   onClose,
   onNewTerminal,
   onAgentSession,
+  onChat,
   onLivePreview,
 }: Props) {
   const [agentHovered, setAgentHovered] = useState(false);
@@ -248,11 +250,15 @@ export function NewSessionMenu({
           )}
         </div>
 
-        <button className="nsm-item nsm-item--disabled" disabled>
+        <button
+          className={`nsm-item${!onChat ? " nsm-item--disabled" : ""}`}
+          disabled={!onChat}
+          onClick={() => { onChat?.(); onClose(); }}
+        >
           <MessageSquare size={14} className="nsm-item-icon" />
           <div className="nsm-item-text">
             <span className="nsm-item-label">Chat</span>
-            <span className="nsm-item-desc">Coming soon</span>
+            <span className="nsm-item-desc">AI engineering companion</span>
           </div>
         </button>
 
