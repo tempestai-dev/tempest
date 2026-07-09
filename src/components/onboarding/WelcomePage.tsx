@@ -4,6 +4,10 @@ import { TempestLogo } from '../../assets/TempestLogo';
 import screenshotDark from '../../assets/onboarding/screenshot-dark.png';
 import screenshotLight from '../../assets/onboarding/screenshot-light.png';
 
+// Preload both at module load time so they're decoded before the page renders
+const _preloadDark = new Image(); _preloadDark.src = screenshotDark;
+const _preloadLight = new Image(); _preloadLight.src = screenshotLight;
+
 interface Props {
   onStart: () => void;
   onSkip: () => void;

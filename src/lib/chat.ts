@@ -6,7 +6,7 @@ import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createXai } from "@ai-sdk/xai";
 import { createGroq } from "@ai-sdk/groq";
 import { streamText } from "ai";
-import type { LanguageModel } from "ai";
+import type { LanguageModel, LanguageModelUsage } from "ai";
 
 function buildModel(providerId: string, modelId: string, apiKey: string): LanguageModel {
   switch (providerId) {
@@ -41,6 +41,7 @@ export async function streamChat(
   messages: { role: "user" | "assistant"; content: string }[],
   onChunk: (delta: string) => void,
   signal?: AbortSignal,
+  onUsage?: (inputTokens: number, outputTokens: number) => void,
 ): Promise<void> {
   const apiKey = LOCAL_PROVIDERS.has(providerId)
     ? ""
@@ -50,9 +51,27 @@ export async function streamChat(
 
   const model = buildModel(providerId, modelId, apiKey);
 
-  const result = streamText({ model, messages, abortSignal: signal });
+  // Capture usage from the onFinish callback — the reliable way to read token
+  // usage in AI SDK v7. It fires once the model call settles with the final,
+  // aggregated LanguageModelUsage ({ inputTokens, outputTokens, ... }).
+  let finishUsage: LanguageModelUsage | undefined;
+  const result = streamText({
+    model,
+    messages,
+    abortSignal: signal,
+    onFinish: ({ usage }) => { finishUsage = usage; },
+  });
 
   for await (const chunk of result.textStream) {
     onChunk(chunk);
+  }
+
+  if (onUsage) {
+    try {
+      // Prefer the value captured in onFinish; fall back to the (auto-consuming)
+      // usage promise in case onFinish hasn't flushed by the time the loop ends.
+      const usage = finishUsage ?? (await result.usage);
+      onUsage(usage.inputTokens ?? 0, usage.outputTokens ?? 0);
+    } catch { /* provider doesn't report usage */ }
   }
 }

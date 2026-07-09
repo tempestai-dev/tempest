@@ -37,6 +37,7 @@ export interface RuntimeState {
   prompts: Array<{ id: string; title: string; body: string; enabled: boolean; isBuiltin: boolean }>;
   atlasProjects: Record<string, boolean>; // path → true (index) | false (skip); absent = not yet decided
   chatHistory: Record<string, ChatMessageRecord[]>; // projectPath → conversation
+  chatContextTokens: Record<string, number>;        // projectPath → last known inputTokens
 }
 
 const DEFAULT_STATE: RuntimeState = {
@@ -55,6 +56,7 @@ const DEFAULT_STATE: RuntimeState = {
   prompts: [],
   atlasProjects: {},
   chatHistory: {},
+  chatContextTokens: {},
 };
 
 let _state: RuntimeState = { ...DEFAULT_STATE };
@@ -87,8 +89,9 @@ export async function loadRuntimeState(): Promise<void> {
       sessionOrder:     parsed.sessionOrder     ?? [],
       activeInstanceId: parsed.activeInstanceId ?? null,
       prompts:          parsed.prompts          ?? [],
-      atlasProjects:    parsed.atlasProjects    ?? {},
-      chatHistory:      parsed.chatHistory      ?? {},
+      atlasProjects:       parsed.atlasProjects       ?? {},
+      chatHistory:         parsed.chatHistory         ?? {},
+      chatContextTokens:   parsed.chatContextTokens   ?? {},
     };
   } catch {
     // File doesn't exist yet — import whatever is in localStorage.
@@ -106,8 +109,9 @@ export async function loadRuntimeState(): Promise<void> {
       sessionOrder:     [],
       activeInstanceId: null,
       prompts:          [],
-      atlasProjects:    {},
-      chatHistory:      {},
+      atlasProjects:     {},
+      chatHistory:       {},
+      chatContextTokens: {},
     };
   }
   persist();

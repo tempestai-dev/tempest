@@ -512,8 +512,11 @@ export function WorkspaceView({ zen, name, path }: Props) {
       }
 
       // Non-terminal tabs (diff, preview, editor) — only for projects still open.
+      // Chat tabs are intentionally excluded: their PersistedTab is kept as a ghost
+      // sidebar marker even after the user closes them, so restoring them here would
+      // re-open a tab the user explicitly closed. The ghost handles re-entry instead.
       const openProjectIds = new Set(projects.map((p) => p.id));
-      for (const tab of savedTabs.filter((t) => openProjectIds.has(t.projectId))) {
+      for (const tab of savedTabs.filter((t) => openProjectIds.has(t.projectId) && t.kind !== "chat")) {
         const newId = crypto.randomUUID();
         items.push({
           instanceId: tab.instanceId,
@@ -1124,10 +1127,20 @@ export function WorkspaceView({ zen, name, path }: Props) {
   function openChatTab(projectId: string) {
     const existing = sessionsRef.current.find((s) => s.kind === "chat" && s.projectId === projectId);
     if (existing) { setActiveSessionId(existing.id); return; }
-    const sessionId = crypto.randomUUID();
-    const tab: PersistedTab = { instanceId: sessionId, kind: "chat", projectId, cwd: "", name: "Chat" };
+    // Reuse the existing PersistedTab's instanceId when the chat is a ghost (closed but
+    // not removed). Without this, every click on the ghost mints a new UUID and pushes a
+    // second PersistedTab — leading to two tabs restored side-by-side on the next boot.
     const st = getRuntimeState();
-    setRuntimeState({ tabs: [...st.tabs, tab] });
+    const existingChatTabs = st.tabs.filter((t) => t.kind === "chat" && t.projectId === projectId);
+    const existingTab = existingChatTabs[0];
+    const sessionId = existingTab?.instanceId ?? crypto.randomUUID();
+    if (existingChatTabs.length > 1) {
+      // Purge accidental duplicates left by the old bug: keep only the first entry.
+      setRuntimeState({ tabs: st.tabs.filter((t) => !(t.kind === "chat" && t.projectId === projectId && t.instanceId !== sessionId)) });
+    }
+    if (!existingTab) {
+      setRuntimeState({ tabs: [...st.tabs, { instanceId: sessionId, kind: "chat", projectId, cwd: "", name: "Chat" }] });
+    }
     setSessions((prev) => [...prev, {
       id: sessionId, instanceId: sessionId, name: "Chat", cwd: "", projectId, kind: "chat",
       createdAt: new Date().toISOString(),
@@ -2659,9 +2672,21 @@ export function WorkspaceView({ zen, name, path }: Props) {
                     </button>
                   )}
                   {hasChat && (
-                    <button className="ctx-item ctx-item--danger" onClick={() => { clearChatHistory(m.projectId, targetSession?.id); setCtxMenu(null); }}>
-                      <Trash2 size={13} /> Clear history
-                    </button>
+                    <>
+                      <button className="ctx-item ctx-item--danger" onClick={() => { clearChatHistory(m.projectId, targetSession?.id); setCtxMenu(null); }}>
+                        <Trash2 size={13} /> Clear history
+                      </button>
+                      <button className="ctx-item ctx-item--danger" onClick={() => {
+                        const chatSess = sessions.find((s) => s.kind === "chat" && s.projectId === m.projectId);
+                        if (chatSess) closeSession(chatSess.id);
+                        const st = getRuntimeState();
+                        setRuntimeState({ tabs: st.tabs.filter((t) => !(t.kind === "chat" && t.projectId === m.projectId)) });
+                        clearChatHistory(m.projectId, chatSess?.id);
+                        setCtxMenu(null);
+                      }}>
+                        <X size={13} /> Remove chat
+                      </button>
+                    </>
                   )}
 
                   {/* ── Destructive ── */}

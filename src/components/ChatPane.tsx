@@ -2,9 +2,10 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Plus, ArrowUp, SlidersHorizontal, ChevronDown, Search, Bug, GitPullRequest } from "lucide-react";
+import { Plus, ArrowUp, ChevronDown, Search, Bug, GitPullRequest } from "lucide-react";
 import { streamChat } from "../lib/chat";
 import { getRuntimeState, setRuntimeState } from "../lib/runtimeState";
+import tempestChat from "../assets/tempest-chat.png";
 import "./ChatPane.css";
 
 const CDN = "https://cdn.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/";
@@ -142,6 +143,48 @@ const PROVIDER_MODELS: Record<string, ChatModel[]> = {
   ],
 };
 
+// Context window sizes per model (tokens)
+const MODEL_CONTEXT: Record<string, number> = {
+  "claude-fable-5":              2_000_000,
+  "claude-opus-4-8":               200_000,
+  "claude-opus-4-7":               200_000,
+  "claude-opus-4-6":               200_000,
+  "claude-opus-4-5":               200_000,
+  "claude-sonnet-5":               200_000,
+  "claude-sonnet-4-6":             200_000,
+  "claude-sonnet-4-5":             200_000,
+  "claude-haiku-4-5-20251001":     200_000,
+  "gpt-4.1":                     1_047_576,
+  "gpt-4.1-mini":                1_047_576,
+  "gpt-4.1-nano":                1_047_576,
+  "gpt-4o":                        128_000,
+  "gpt-4o-mini":                   128_000,
+  "o3":                            200_000,
+  "o3-mini":                       200_000,
+  "o4-mini":                       200_000,
+  "gemini-2.5-pro":              1_048_576,
+  "gemini-2.5-flash":            1_048_576,
+  "gemini-flash-latest":         1_048_576,
+  "gemini-flash-lite-latest":    1_048_576,
+  "mistral-large-latest":          131_072,
+  "mistral-large-2512":            131_072,
+  "mistral-medium-2508":           131_072,
+  "magistral-medium-2509":         131_072,
+  "magistral-small-2509":          131_072,
+  "mistral-small-latest":          131_072,
+  "mistral-small-2603":            131_072,
+  "deepseek-v3":                   163_840,
+  "deepseek-chat":                 163_840,
+  "deepseek-reasoner":             163_840,
+  "grok-4":                        256_000,
+  "grok-3":                        131_072,
+  "grok-3-mini":                   131_072,
+};
+const DEFAULT_CONTEXT = 128_000;
+function getContextSize(modelId: string): number {
+  return MODEL_CONTEXT[modelId] ?? DEFAULT_CONTEXT;
+}
+
 interface ChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -187,6 +230,14 @@ export function ChatPane({ hidden, projectPath }: Props) {
   const [pickerPos, setPickerPos] = useState({ bottom: 0, left: 0 });
   const [pickerProvider, setPickerProvider] = useState(CHAT_PROVIDERS[0].id);
   const [search, setSearch] = useState("");
+
+  const [contextTokens, setContextTokens] = useState(() => {
+    // Only restore if there's actual history — stale tokens with an empty chat makes no sense
+    const history = loadChatHistory(projectPath);
+    if (history.length === 0) return 0;
+    return getRuntimeState().chatContextTokens[projectPath ?? ""] ?? 0;
+  });
+  const [ctxPopupOpen, setCtxPopupOpen] = useState(false);
 
   const editableRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -237,6 +288,17 @@ export function ChatPane({ hidden, projectPath }: Props) {
           ));
         },
         controller.signal,
+        (inputTokens, outputTokens) => {
+          // Context used = prompt tokens + the tokens we just generated (both
+          // occupy the window on the next turn). Input alone is tiny on the
+          // first turn and rounds to 0.0k, hiding the real usage.
+          const used = inputTokens + outputTokens;
+          setContextTokens(used);
+          const st = getRuntimeState();
+          setRuntimeState({
+            chatContextTokens: { ...st.chatContextTokens, [projectPath ?? ""]: used },
+          });
+        },
       );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Something went wrong.";
@@ -302,6 +364,17 @@ export function ChatPane({ hidden, projectPath }: Props) {
     : rawPickerModels;
   const hasMessages = messages.length > 0 || isLoading;
 
+  // Context ring geometry
+  const ctxSize   = getContextSize(model.id);
+  const ctxPct    = contextTokens > 0 ? Math.min(contextTokens / ctxSize, 1) : 0;
+  const ctxR      = 7;
+  const ctxCirc   = 2 * Math.PI * ctxR;
+  const ctxOffset = ctxCirc * (1 - ctxPct);
+  const ctxLevel  = ctxPct >= 0.9 ? "danger" : ctxPct >= 0.7 ? "warn" : "ok";
+  const ctxUsedK  = (contextTokens / 1000).toFixed(1);
+  const ctxTotalK = Math.round(ctxSize / 1000);
+  const ctxLeftK  = ((ctxSize - contextTokens) / 1000).toFixed(1);
+
   const inputBox = (
     <div className="chat-box" onClick={focusInput}>
       {isEmpty && <div className="chat-box-ph">Ask anything…</div>}
@@ -339,9 +412,47 @@ export function ChatPane({ hidden, projectPath }: Props) {
         </button>
 
         <div className="chat-bar-space" />
-        <button className="chat-bar-btn" disabled title="Preferences">
-          <SlidersHorizontal size={14} />
-        </button>
+
+        {/* Context ring — visible only once we have real usage data */}
+        {hasMessages && contextTokens > 0 && (
+          <div
+            className={`chat-ctx-ring chat-ctx-ring--${ctxLevel}`}
+            onMouseEnter={() => setCtxPopupOpen(true)}
+            onMouseLeave={() => setCtxPopupOpen(false)}
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <circle cx="10" cy="10" r={ctxR} strokeWidth="2" className="chat-ctx-track" />
+              <circle
+                cx="10" cy="10" r={ctxR} strokeWidth="2"
+                strokeDasharray={ctxCirc}
+                strokeDashoffset={ctxOffset}
+                strokeLinecap="round"
+                transform={`rotate(-90 10 10)`}
+                className="chat-ctx-progress"
+              />
+            </svg>
+            {ctxPopupOpen && (
+              <div className="chat-ctx-popup">
+                <div className="chat-ctx-popup-title">Context window</div>
+                <div className="chat-ctx-popup-bar">
+                  <div
+                    className={`chat-ctx-popup-fill chat-ctx-popup-fill--${ctxLevel}`}
+                    style={{ width: `${Math.round(ctxPct * 100)}%` }}
+                  />
+                </div>
+                <div className="chat-ctx-popup-row">
+                  <span className="chat-ctx-popup-label">Used</span>
+                  <span className="chat-ctx-popup-value">{ctxUsedK}k / {ctxTotalK}k</span>
+                </div>
+                <div className="chat-ctx-popup-row">
+                  <span className="chat-ctx-popup-label">Remaining</span>
+                  <span className="chat-ctx-popup-value">{ctxLeftK}k tokens</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <button
           className="chat-bar-send"
           onClick={(e) => { e.stopPropagation(); send(); }}
@@ -361,9 +472,15 @@ export function ChatPane({ hidden, projectPath }: Props) {
           <div className="chat-msgs">
             {messages.map((msg) => (
               <div key={msg.id} className="chat-msg">
-                <div className="chat-msg-role">
-                  {msg.role === "user" ? "You" : "Assistant"}
-                </div>
+                {msg.role === "user" ? (
+                  <div className="chat-msg-avatar chat-msg-avatar--user" />
+                ) : (
+                  <img
+                    className="chat-msg-avatar chat-msg-avatar--assistant"
+                    src={tempestChat}
+                    alt="Tempest"
+                  />
+                )}
                 <div className="chat-msg-body">
                   {msg.role === "assistant" ? (
                     isLoading && msg.content === "" ? (
