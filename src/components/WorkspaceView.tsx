@@ -873,10 +873,16 @@ export function WorkspaceView({ zen, name, path }: Props) {
     agent: string,
     sessionId: string, // the new PTY session UUID, minted as the conversation id on first spawn
     conversationId?: string, // stored UUID, present only when resuming
-    prompt?: string
+    prompt?: string,
+    model?: string, // specific model to pass as --model <id> to supported CLIs
   ): string[] {
     const config = AGENT_CONFIGS.find((a) => a.hint === agent);
     const args: string[] = [];
+
+    // Prepend --model flag for CLIs that support it
+    if (model && (agent === "claude" || agent === "gemini" || agent === "codex")) {
+      args.push("--model", model);
+    }
 
     if (config && conversationId && config.resumeArgs) {
       // Standard ID-based resume (Claude Code, Gemini CLI)
@@ -921,7 +927,8 @@ export function WorkspaceView({ zen, name, path }: Props) {
     noGit?: boolean,
     dedupe = false, // true only in the restore loop — prevents duplicate PTY spawns from stale-closure races
     providedSessionId?: string, // pre-minted ID so splitPane() can set up the tree before the PTY spawns
-    parentSessionId?: string // set when spawned via a split — makes this a sub-session of another
+    parentSessionId?: string, // set when spawned via a split — makes this a sub-session of another
+    model?: string, // specific model override passed as --model to supported agent CLIs
   ) {
     // Guard is scoped to the restore loop (dedupe=true). User-triggered opens never block
     // each other, so two root sessions at the same cwd can be opened intentionally.
@@ -952,7 +959,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
       // Assemble the agent's full argument list (session/resume flags + prompt) here in
       // TypeScript so Rust receives a ready-to-run command. originalId is present only
       // when resuming an existing conversation.
-      const args = agent ? buildAgentArgs(agent, sessionId, originalId, prompt) : null;
+      const args = agent ? buildAgentArgs(agent, sessionId, originalId, prompt, model) : null;
 
       const config = agent ? AGENT_CONFIGS.find((a) => a.hint === agent) : null;
       const usesCapturePattern = !!(config?.capturePattern && config.captureResumeArgs);
@@ -1049,6 +1056,30 @@ export function WorkspaceView({ zen, name, path }: Props) {
         captureOnChunk,
         agent ?? undefined,
       );
+
+      // Kick the PTY with an initial resize immediately after spawn. Agent CLIs
+      // (Claude Code, Gemini, etc.) don't begin rendering / running their task
+      // until they receive a real terminal size + resize event. A pane launched
+      // in the background (e.g. via launchAgentFromChat — the user stays on the
+      // chat tab) mounts its TerminalPane with display:none, so its container is
+      // 0×0 and the visibility-gated fitAndResize/ResizeObserver never fires
+      // resize_pty. Without this, the agent stays idle at the 24×80 spawn size
+      // until the tab is focused. We size from the shared workspace area — which
+      // is always laid out — so a hidden pane gets the same dimensions a focused
+      // one would. The exact fit is corrected by the ResizeObserver once the pane
+      // is shown.
+      if (agent) {
+        const area = workspaceContentRef.current;
+        const fontSize = getSettings().terminalFontSize;
+        // Approximate monospace cell metrics; the precise fit happens on show.
+        const cellW = fontSize * 0.6;
+        const cellH = fontSize * 1.2;
+        const w = area?.clientWidth ?? 0;
+        const h = area?.clientHeight ?? 0;
+        const cols = w > 0 ? Math.max(20, Math.floor(w / cellW)) : 120;
+        const rows = h > 0 ? Math.max(10, Math.floor(h / cellH)) : 40;
+        invoke("resize_pty", { sessionId, rows, cols }).catch(() => {});
+      }
 
       const newSession: Session = {
         id: sessionId,
@@ -1159,6 +1190,29 @@ export function WorkspaceView({ zen, name, path }: Props) {
     }
     if (sessionId) {
       setChatNonce((prev) => ({ ...prev, [sessionId]: (prev[sessionId] ?? 0) + 1 }));
+    }
+  }
+
+  // Launch a temporary agent session from within a Chat conversation. Opens a
+  // root agent session in the project root with the given prompt and model pre-loaded.
+  // Keeps focus on the chat tab; immediately marks the new session as "working" since
+  // the prompt is passed as a CLI arg (no user Enter to trigger the normal work detector).
+  async function launchAgentFromChat(projectId: string, agentHint: string, prompt: string, model?: string) {
+    const project = projects.find((p) => p.id === projectId);
+    if (!project) return;
+    const cfg = AGENT_CONFIGS.find((a) => a.hint === agentHint);
+    const name = cfg ? `${cfg.name}${model ? ` (${model.split("-").slice(-2).join("-")})` : ""}` : agentHint;
+    const prevActiveId = activeSessionId;
+    const newSessionId = crypto.randomUUID();
+    try {
+      await openSession(name, project.path, projectId, agentHint, prompt, undefined, undefined, true, undefined, false, newSessionId, undefined, model);
+      // Prompt is sent as a CLI arg — the terminal never fires markUserInput, so set
+      // "working" here so the tab badge appears immediately.
+      setWorkState(newSessionId, "working");
+      // Stay on the chat tab
+      setActiveSessionId(prevActiveId);
+    } catch (e) {
+      console.error("Failed to launch agent from chat:", e);
     }
   }
 
@@ -2358,6 +2412,11 @@ export function WorkspaceView({ zen, name, path }: Props) {
                       sessionId={s.id}
                       hidden={hidden}
                       projectPath={projects.find((p) => p.id === s.projectId)?.path}
+                      atlasIndexed={(() => {
+                        const p = projects.find((pr) => pr.id === s.projectId)?.path;
+                        return atlasEnabled && !!p && getRuntimeState().atlasProjects[p] === true;
+                      })()}
+                      onLaunchAgent={(hint, prompt, model) => launchAgentFromChat(s.projectId, hint, prompt, model)}
                     />
                   ) : (
                     <TerminalPane

@@ -18,7 +18,8 @@ export interface PersistedTab {
 export interface ChatMessageRecord {
   id: string;
   role: "user" | "assistant";
-  content: string;
+  content?: string;      // legacy — plain text only (kept for backward compat with old saves)
+  parts?: unknown[];     // new — full MessagePart[] (tool calls, proposals, text all preserved)
 }
 
 export interface RuntimeState {
@@ -38,6 +39,7 @@ export interface RuntimeState {
   atlasProjects: Record<string, boolean>; // path → true (index) | false (skip); absent = not yet decided
   chatHistory: Record<string, ChatMessageRecord[]>; // projectPath → conversation
   chatContextTokens: Record<string, number>;        // projectPath → last known inputTokens
+  chatSystemPrompts: Record<string, string>;        // projectPath → user's custom system prompt
 }
 
 const DEFAULT_STATE: RuntimeState = {
@@ -57,6 +59,7 @@ const DEFAULT_STATE: RuntimeState = {
   atlasProjects: {},
   chatHistory: {},
   chatContextTokens: {},
+  chatSystemPrompts: {},
 };
 
 let _state: RuntimeState = { ...DEFAULT_STATE };
@@ -92,6 +95,7 @@ export async function loadRuntimeState(): Promise<void> {
       atlasProjects:       parsed.atlasProjects       ?? {},
       chatHistory:         parsed.chatHistory         ?? {},
       chatContextTokens:   parsed.chatContextTokens   ?? {},
+      chatSystemPrompts:   parsed.chatSystemPrompts   ?? {},
     };
   } catch {
     // File doesn't exist yet — import whatever is in localStorage.
@@ -112,6 +116,7 @@ export async function loadRuntimeState(): Promise<void> {
       atlasProjects:     {},
       chatHistory:       {},
       chatContextTokens: {},
+      chatSystemPrompts: {},
     };
   }
   persist();

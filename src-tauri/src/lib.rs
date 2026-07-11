@@ -314,6 +314,103 @@ fn get_atlas_graph(project_path: String) -> Result<GraphData, String> {
     Ok(GraphData { nodes, edges })
 }
 
+#[derive(serde::Serialize)]
+struct SymbolMatch {
+    name: String,
+    kind: String,
+    file_path: String,
+    start_line: i64,
+    end_line: i64,
+    language: String,
+}
+
+/// Keyword search over the Atlas symbol index. Extracts significant tokens from
+/// `question`, scores every indexed symbol by name/path matches, and returns the
+/// top matches. Real data from the project's `.tempest/atlas/atlas.db`; used to
+/// answer `@codebase` mentions in Chat.
+#[tauri::command]
+fn atlas_query(project_path: String, question: String) -> Result<Vec<SymbolMatch>, String> {
+    let db_path = std::path::Path::new(&project_path)
+        .join(".tempest")
+        .join("atlas")
+        .join("atlas.db");
+
+    if !db_path.exists() {
+        return Err(format!("Atlas database not found at {}", db_path.display()));
+    }
+
+    let stop: std::collections::HashSet<&str> = [
+        "the", "and", "for", "that", "this", "with", "how", "does", "what", "why",
+        "where", "codebase", "from", "into", "are", "was", "were", "has", "have",
+        "not", "you", "your", "can", "should", "would", "when", "which", "who",
+    ]
+    .into_iter()
+    .collect();
+
+    let keywords: Vec<String> = question
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|t| t.len() >= 3)
+        .map(|t| t.to_lowercase())
+        .filter(|t| !stop.contains(t.as_str()))
+        .collect();
+
+    if keywords.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let conn = rusqlite::Connection::open_with_flags(
+        &db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
+    )
+    .map_err(|e| format!("Failed to open atlas db: {e}"))?;
+
+    let mut stmt = conn
+        .prepare("SELECT name, kind, file_path, start_line, end_line, language FROM nodes")
+        .map_err(|e| format!("Failed to prepare query: {e}"))?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(SymbolMatch {
+                name: row.get(0)?,
+                kind: row.get(1)?,
+                file_path: row.get(2)?,
+                start_line: row.get(3)?,
+                end_line: row.get(4)?,
+                language: row.get(5)?,
+            })
+        })
+        .map_err(|e| format!("Failed to query nodes: {e}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to read nodes: {e}"))?;
+
+    let mut scored: Vec<(i32, SymbolMatch)> = rows
+        .into_iter()
+        .filter_map(|s| {
+            let name_l = s.name.to_lowercase();
+            let path_l = s.file_path.to_lowercase();
+            let mut score = 0;
+            for kw in &keywords {
+                if name_l == *kw {
+                    score += 3;
+                } else if name_l.contains(kw.as_str()) {
+                    score += 2;
+                }
+                if path_l.contains(kw.as_str()) {
+                    score += 1;
+                }
+            }
+            if score > 0 {
+                Some((score, s))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    scored.sort_by(|a, b| b.0.cmp(&a.0));
+    Ok(scored.into_iter().take(40).map(|(_, s)| s).collect())
+}
+
 #[tauri::command]
 fn check_atlas_db(project_path: String) -> bool {
     std::path::Path::new(&project_path)
@@ -390,6 +487,168 @@ fn stop_atlas_daemon(
         let _ = child.wait();
     }
     Ok(())
+}
+
+fn mcp_notify(proc: &mut McpBridgeProcess, method: &str, params: serde_json::Value) -> Result<(), String> {
+    use std::io::Write;
+    let msg = serde_json::json!({ "jsonrpc": "2.0", "method": method, "params": params });
+    let line = serde_json::to_string(&msg).map_err(|e| e.to_string())?;
+    proc.writer.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
+    proc.writer.write_all(b"\n").map_err(|e| e.to_string())?;
+    proc.writer.flush().map_err(|e| e.to_string())
+}
+
+fn mcp_request(proc: &mut McpBridgeProcess, method: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
+    use std::io::{BufRead, Write};
+    let id = proc.next_id;
+    proc.next_id += 1;
+
+    let req = serde_json::json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
+    let line = serde_json::to_string(&req).map_err(|e| e.to_string())?;
+    proc.writer.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
+    proc.writer.write_all(b"\n").map_err(|e| e.to_string())?;
+    proc.writer.flush().map_err(|e| e.to_string())?;
+
+    loop {
+        let mut buf = String::new();
+        let n = proc.reader.read_line(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 { return Err("Atlas MCP process closed connection".to_string()); }
+        let trimmed = buf.trim();
+        if trimmed.is_empty() { continue; }
+        let parsed: serde_json::Value = serde_json::from_str(trimmed)
+            .map_err(|e| format!("MCP JSON parse error: {e}"))?;
+
+        if parsed.get("method").is_some() {
+            if parsed["method"] == "roots/list" {
+                if let Some(rid) = parsed.get("id").cloned() {
+                    let resp = serde_json::json!({ "jsonrpc": "2.0", "id": rid, "result": { "roots": [] } });
+                    let resp_str = serde_json::to_string(&resp).map_err(|e| e.to_string())?;
+                    proc.writer.write_all(resp_str.as_bytes()).map_err(|e| e.to_string())?;
+                    proc.writer.write_all(b"\n").map_err(|e| e.to_string())?;
+                    proc.writer.flush().map_err(|e| e.to_string())?;
+                }
+            }
+            continue;
+        }
+
+        if parsed.get("id") == Some(&serde_json::json!(id)) {
+            if let Some(err) = parsed.get("error") {
+                return Err(format!("MCP error: {err}"));
+            }
+            return Ok(parsed.get("result").cloned().unwrap_or(serde_json::Value::Null));
+        }
+    }
+}
+
+fn spawn_atlas_mcp_bridge(app: &tauri::AppHandle, project_path: &str) -> Result<McpBridgeProcess, String> {
+    let entry = atlas_resource_dir(app)?
+        .join("dist").join("mcp").join("server-entry.js");
+    if !entry.exists() {
+        return Err(format!("Atlas not bundled at: {}", entry.display()));
+    }
+
+    let mut child = new_command("node")
+        .arg("--liftoff-only")
+        .arg(&entry)
+        .arg("--path")
+        .arg(project_path)
+        .current_dir(project_path)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn Atlas MCP bridge: {e}"))?;
+
+    let stdin  = child.stdin.take().ok_or_else(||  "Failed to acquire Atlas MCP stdin".to_string())?;
+    let stdout = child.stdout.take().ok_or_else(|| "Failed to acquire Atlas MCP stdout".to_string())?;
+
+    let mut proc = McpBridgeProcess {
+        child,
+        writer:  std::io::BufWriter::new(stdin),
+        reader:  std::io::BufReader::new(stdout),
+        next_id: 1,
+    };
+
+    mcp_request(&mut proc, "initialize", serde_json::json!({
+        "protocolVersion": "2024-11-05",
+        "capabilities": {},
+        "clientInfo": { "name": "tempest", "version": "1.0" }
+    }))?;
+    mcp_notify(&mut proc, "notifications/initialized", serde_json::json!({}))?;
+
+    Ok(proc)
+}
+
+#[tauri::command]
+fn atlas_mcp_tools(
+    app: tauri::AppHandle,
+    state: tauri::State<AtlasMcpState>,
+    project_path: String,
+) -> Result<String, String> {
+    let mut map = state.0.lock().unwrap();
+
+    let dead = map.get_mut(&project_path)
+        .map(|p| !matches!(p.child.try_wait(), Ok(None)))
+        .unwrap_or(false);
+    if dead { map.remove(&project_path); }
+
+    if !map.contains_key(&project_path) {
+        let proc = spawn_atlas_mcp_bridge(&app, &project_path)?;
+        map.insert(project_path.clone(), proc);
+    }
+
+    let proc = map.get_mut(&project_path).unwrap();
+    let result = mcp_request(proc, "tools/list", serde_json::json!({}))?;
+    let tools = result.get("tools").cloned().unwrap_or(serde_json::Value::Array(vec![]));
+    serde_json::to_string(&tools).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn atlas_mcp_call(
+    app: tauri::AppHandle,
+    state: tauri::State<AtlasMcpState>,
+    project_path: String,
+    tool_name: String,
+    args_json: String,
+) -> Result<String, String> {
+    let args: serde_json::Value = serde_json::from_str(&args_json)
+        .unwrap_or(serde_json::json!({}));
+
+    let mut map = state.0.lock().unwrap();
+
+    let dead = map.get_mut(&project_path)
+        .map(|p| !matches!(p.child.try_wait(), Ok(None)))
+        .unwrap_or(false);
+    if dead { map.remove(&project_path); }
+
+    if !map.contains_key(&project_path) {
+        let proc = spawn_atlas_mcp_bridge(&app, &project_path)?;
+        map.insert(project_path.clone(), proc);
+    }
+
+    let proc = map.get_mut(&project_path).unwrap();
+    let result = mcp_request(proc, "tools/call", serde_json::json!({
+        "name": tool_name,
+        "arguments": args,
+    }))?;
+    serde_json::to_string(&result).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn git_ls_files(path: String) -> Result<Vec<String>, String> {
+    let out = new_command("git")
+        .args(["ls-files"])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to run git ls-files: {e}"))?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(|l| l.to_string())
+        .collect())
 }
 
 #[tauri::command]
@@ -846,6 +1105,70 @@ fn get_git_branch(path: String) -> Result<String, String> {
 
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[derive(serde::Serialize)]
+struct CommitInfo {
+    hash: String,
+    author: String,
+    relative_date: String,
+    subject: String,
+}
+
+/// Return the most recent commits as structured records. An empty repo (no
+/// commits yet) yields an empty list rather than an error.
+#[tauri::command]
+fn git_recent_commits(path: String, count: u32) -> Result<Vec<CommitInfo>, String> {
+    let n = if count == 0 { 5 } else { count.min(50) };
+    let output = new_command("git")
+        .args([
+            "log",
+            &format!("-{n}"),
+            // Unit separator (\x1f) between fields — safe against subjects with pipes.
+            "--pretty=format:%h\x1f%an\x1f%ar\x1f%s",
+        ])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to run git: {}", e))?;
+
+    if !output.status.success() {
+        return Ok(Vec::new());
+    }
+
+    let commits = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.split('\u{1f}');
+            let hash = parts.next()?.to_string();
+            if hash.is_empty() {
+                return None;
+            }
+            Some(CommitInfo {
+                hash,
+                author: parts.next().unwrap_or("").to_string(),
+                relative_date: parts.next().unwrap_or("").to_string(),
+                subject: parts.next().unwrap_or("").to_string(),
+            })
+        })
+        .collect();
+
+    Ok(commits)
+}
+
+/// Return the `origin` remote URL, or an empty string when no remote is set.
+#[tauri::command]
+fn git_remote_url(path: String) -> Result<String, String> {
+    let output = new_command("git")
+        .args(["remote", "get-url", "origin"])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to run git: {}", e))?;
+
+    if !output.status.success() {
+        return Ok(String::new());
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
@@ -1518,6 +1841,15 @@ pub struct PtyState(pub(crate) Arc<DashMap<String, Arc<PtySession>>>);
 pub struct ZenState(pub Mutex<std::collections::HashMap<String, (String, String)>>);
 
 pub struct DaemonState(pub Mutex<std::collections::HashMap<String, std::process::Child>>);
+
+struct McpBridgeProcess {
+    child:   std::process::Child,
+    writer:  std::io::BufWriter<std::process::ChildStdin>,
+    reader:  std::io::BufReader<std::process::ChildStdout>,
+    next_id: u64,
+}
+
+pub struct AtlasMcpState(pub(crate) Mutex<std::collections::HashMap<String, McpBridgeProcess>>);
 
 #[tauri::command]
 fn open_zen_window(
@@ -2226,6 +2558,7 @@ pub fn run() {
         .manage(PtyState(Arc::new(DashMap::new())))
         .manage(ZenState(Mutex::new(std::collections::HashMap::new())))
         .manage(DaemonState(Mutex::new(std::collections::HashMap::new())))
+        .manage(AtlasMcpState(Mutex::new(std::collections::HashMap::new())))
         .setup(|app| {
             use tauri::Manager;
             if let Some(window) = app.get_webview_window("main") {
@@ -2240,6 +2573,8 @@ pub fn run() {
             git_init,
             get_git_branch,
             git_status,
+            git_recent_commits,
+            git_remote_url,
             create_pty_session,
             write_to_pty,
             resize_pty,
@@ -2276,10 +2611,14 @@ pub fn run() {
             write_runtime_state,
             start_atlas_index,
             get_atlas_graph,
+            atlas_query,
             check_atlas_db,
             remove_atlas_index,
             start_atlas_daemon,
             stop_atlas_daemon,
+            atlas_mcp_tools,
+            atlas_mcp_call,
+            git_ls_files,
             check_program_available,
             git_numstat,
         ])
@@ -2297,6 +2636,15 @@ pub fn run() {
                     let _ = child.wait();
                 }
                 drop(map);
+
+                // Kill all Atlas MCP bridge processes on app exit.
+                let mcp_state = app_handle.state::<AtlasMcpState>();
+                let mut mcp_map = mcp_state.0.lock().unwrap();
+                for (_, mut proc) in mcp_map.drain() {
+                    let _ = proc.child.kill();
+                    let _ = proc.child.wait();
+                }
+                drop(mcp_map);
 
                 // Tear down every live PTY session so agent subprocesses (e.g.
                 // Notepad spawned via `Start-Process`) never outlive the app.
