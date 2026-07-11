@@ -1,0 +1,78 @@
+---
+slug: tempest-v013-release
+title: "Tempest v0.1.3: Chat"
+date: 2026-07-11
+type: release-notes
+description: "Agents are for building. Chat is for thinking. v0.1.3 ships the missing half — and this is only the beginning of it."
+author: "Tempest Team"
+tags: [release, chat, atlas, parallel-agents]
+---
+
+v0.1.3 is the Chat release. Here is everything that shipped.
+
+## Why Chat alongside agents
+
+Agent sessions in Tempest are execution tools. You give one a task, it writes code, you review the diff. That workflow is fast when you already know what to build.
+
+Most engineering work starts before that.
+
+Understanding a system. Researching an approach. Debugging a failure. Reviewing a design. Making a decision. That work does not belong in a terminal. It belongs in a conversation.
+
+Chat is your personal engineering companion inside Tempest. It has full access to your codebase through Atlas, can read files and git history, and understands your project the way a senior engineer would. When a conversation reaches the point where implementation is needed, Chat can spawn an agent session to handle it — and you stay in the conversation while the agent works in a background tab.
+
+Chat is where you figure something out. Agents are where you get it done. They are not the same surface.
+
+This release is only the beginning of it.
+
+## Chat Tab
+
+Open Chat from the `+` tab picker. It runs a live agentic loop — up to 24 sequential reasoning steps per response, with full tool use at every step. While the AI is thinking, a shimmer indicator shows it is working. Each tool call appears as a collapsible step card with the tool name, arguments, and result inline.
+
+Chat sessions are per-project. Your conversation, tool calls, and any spawned-agent cards all persist across tab close and app restart. Nothing is lost between sessions.
+
+**Built-in tools:**
+
+- `read_file` — reads any file in the project
+- `list_files` — lists directory contents
+- `run_git_log` — recent commit history
+- `run_git_status` — current working tree status
+- `propose_agent_task` — spawns a new agent session (see below)
+- All `atlas_*` tools via the Atlas MCP bridge — symbol lookup, callers, callees, cross-file relationships
+
+## Atlas in Chat
+
+Chat connects directly to Atlas via a Rust-side MCP bridge. When you ask about your codebase, the AI queries the live knowledge graph rather than reading files from scratch. Symbol lookups, call chains, and cross-file relationships are answered in milliseconds with zero wasted tokens.
+
+The bridge starts automatically alongside the Chat tab. No configuration required. If Token Intelligence is enabled for your project, Chat inherits it.
+
+## Agentic Step Cards
+
+Every tool call the AI makes is shown as a step card in the conversation.
+
+The status dot pulses amber while the step is running and collapses to a hollow ring when it completes. Each card shows a distinct icon per tool type — file, folder, git commit, git branch, terminal, database for Atlas tools — with a compact mono preview of the arguments. Click any card to expand the full result inline, with a smooth height animation. Cards fade in as each step starts.
+
+## Propose Agent Task
+
+When Chat reaches the point where implementation is needed, the AI proposes an agent task. A card appears in the conversation with the agent type, model, task description, and the AI's reasoning. Click **Launch** — a new agent tab opens in the background, receives the task prompt, and begins working immediately. You stay on the Chat tab.
+
+Model selection is AI-controlled. The chat AI specifies the exact model variant — `claude-haiku-4-5-20251001`, `claude-sonnet-4-6`, or any supported variant — and Tempest passes it directly to the agent CLI via `--model`. The right model for the job is chosen in the conversation, not in a settings menu.
+
+Proposal cards persist after launch. The Launch button becomes disabled and shows "Launched" so you always know what was sent. Dismiss cards you don't want to act on. Both states survive tab close and app restart.
+
+The work-done badge on the launched agent tab — spinner to green dot — appears immediately, before the agent produces any output.
+
+## @ File Mentions
+
+Type `@` in the chat input to open a file picker. Search by name, select a file, and it appears as a chip in the input. When you send, Tempest reads the file and prepends its full contents as context. No need to paste manually or ask the AI to read it. Multiple mentions are supported in the same message.
+
+## Background Agent Start Fix
+
+Agent sessions launched from Chat previously would not start their CLI until you physically clicked the tab. The process was alive but idle, waiting for a terminal resize signal that never came while the tab was hidden.
+
+This is fixed. Tempest now sends `resize_pty` immediately after spawning the agent, using the current workspace dimensions. The agent CLI starts and begins executing the task the moment it is launched, regardless of which tab is active.
+
+## Get it
+
+Tempest v0.1.3 is free and open source under Apache 2.0.
+
+[Download on GitHub.](https://github.com/tempestai-dev/tempest)

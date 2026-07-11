@@ -1,5 +1,19 @@
 [
   {
+    "slug": "tempest-v013-release",
+    "title": "Tempest v0.1.3: Chat",
+    "date": "2026-07-11",
+    "type": "release-notes",
+    "description": "Agents are for building. Chat is for thinking. v0.1.3 ships the missing half — and this is only the beginning of it.",
+    "author": "Tempest Team",
+    "tags": [
+      "release",
+      "chat",
+      "atlas",
+      "parallel-agents"
+    ]
+  },
+  {
     "slug": "tempest-v012-release",
     "title": "Tempest v0.1.2: Token Intelligence",
     "date": "2026-07-03",

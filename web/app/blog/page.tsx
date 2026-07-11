@@ -41,6 +41,7 @@ const filters = [
   { label: 'All', type: undefined, href: '/blog' },
   { label: 'Blog', type: 'blog', href: '/blog?type=blog' },
   { label: 'Dev Log', type: 'dev-log', href: '/blog?type=dev-log' },
+  { label: 'Release Notes', type: 'release-notes', href: '/blog?type=release-notes' },
 ] as const
 
 function typeLabel(type: BlogPost['type']): string {
@@ -60,6 +61,7 @@ export default async function BlogPage({
   const visible = posts.filter((post) => {
     if (type === 'blog') return post.type === 'blog'
     if (type === 'dev-log') return post.type === 'dev-log'
+    if (type === 'release-notes') return post.type === 'release-notes'
     return true
   })
 
@@ -98,7 +100,7 @@ export default async function BlogPage({
               href={`/blog/${post.slug}`}
               className="flex flex-col group"
             >
-              <div className="relative w-full aspect-video rounded overflow-hidden bg-foreground/[0.06]">
+              <div className="relative w-full aspect-video rounded overflow-hidden bg-foreground/[0.06] border border-foreground/[0.1]">
                 {getCoverPath(post.slug) && (
                   <Image
                     src={getCoverPath(post.slug)!}
