@@ -38,3 +38,4 @@ src-tauri/resources/atlas/
 .kiro/settings/mcp.json
 opencode.jsonc
 opencode.json
+.gstack/

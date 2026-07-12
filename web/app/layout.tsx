@@ -22,7 +22,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://tempestai.dev"),
   title: "Tempest — Run Claude Code, Aider & AI Agents in Parallel",
   description:
-    "Run a fleet of AI coding agents in parallel — each isolated, none colliding. Claude Code, Aider, OpenCode, and more, all from one interface, each on its own branch.",
+    "Run AI coding agents in parallel — each isolated, none colliding. Claude Code, Aider, OpenCode, and more, all from one interface, each on its own branch.",
   icons: {
     icon: "/favicon.ico",
   },
@@ -35,7 +35,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Tempest — Run Claude Code, Aider & AI Agents in Parallel",
     description:
-      "Run a fleet of AI coding agents in parallel — each isolated, none colliding. Claude Code, Aider, OpenCode, and more, all from one interface, each on its own branch.",
+      "Run AI coding agents in parallel — each isolated, none colliding. Claude Code, Aider, OpenCode, and more, all from one interface, each on its own branch.",
     type: "website",
     url: "https://tempestai.dev",
     images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Tempest — Run Claude Code, Aider & AI Agents in Parallel" }],
@@ -44,7 +44,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Tempest — Run Claude Code, Aider & AI Agents in Parallel",
     description:
-      "Run a fleet of AI coding agents in parallel — each isolated, none colliding. Claude Code, Aider, OpenCode, and more, all from one interface, each on its own branch.",
+      "Run AI coding agents in parallel — each isolated, none colliding. Claude Code, Aider, OpenCode, and more, all from one interface, each on its own branch.",
     images: ["/og-image.png"],
   },
 };

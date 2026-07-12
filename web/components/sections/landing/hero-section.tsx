@@ -147,7 +147,7 @@ export function HeroSection({ initialOS }: { initialOS?: string }) {
               <span>Run a fleet of</span>
 
               {/* sr-only: crawlable text listing all agents */}
-              <span className="sr-only">Claude Code, Codex, Goose, OpenCode, Gemini CLI, Cline, and Aider</span>
+              <span className="sr-only">Claude Code, Aider, and more</span>
 
               {/* Visual animation — hidden from crawlers and screen readers */}
               <span
@@ -170,9 +170,9 @@ export function HeroSection({ initialOS }: { initialOS?: string }) {
           </h1>
 
           <p className="mt-4 text-base text-muted-foreground max-w-xl leading-relaxed">
-            The token-efficient, open-source way to run AI coding
-            agents in parallel — up to 64% fewer tokens — and each
-            agent gets its own git worktree and branch: zero merge
+            The open-source, token-efficient way to run Claude Code,
+            Aider, and more AI coding agents in parallel — up to 64%
+            fewer tokens, each agent on its own git branch: zero merge
             conflicts, live status, built-in diff and PR.
           </p>
 

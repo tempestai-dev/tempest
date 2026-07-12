@@ -31,7 +31,7 @@
     "slug": "tempest-v011-release",
     "title": "Tempest v0.1.1: Prompt Library, Message Queue, and Branch Management",
     "date": "2026-07-01",
-    "type": "dev-log",
+    "type": "release-notes",
     "description": "A major quality-of-life release. Reusable prompts, queued agent tasks, better Git workflows, workspace persistence, and native releases for Windows, macOS, and Linux.",
     "author": "Tempest Team",
     "tags": [
@@ -46,7 +46,7 @@
     "slug": "tempest-v010-release",
     "title": "Tempest v0.1.0: Parallel AI Agent Sessions Are Here",
     "date": "2026-06-29",
-    "type": "dev-log",
+    "type": "release-notes",
     "description": "Tempest v0.1.0 ships the core: isolated git worktrees per agent session, full conversation history, live status, built-in diff and push, and live preview.",
     "author": "Tempest Team",
     "tags": [
