@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, memo, type CSSProperties } from "react";
+import { useState, useEffect, useRef, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { sessionManager } from "../store/sessionManager";
@@ -17,10 +17,6 @@ import {
   Bug,
   Settings,
   Mail,
-  PanelLeft,
-  PanelRight,
-  Sun,
-  Moon,
   TerminalSquare,
   Eye,
   X,
@@ -34,22 +30,26 @@ import {
   SquareSlash,
   Globe,
   FileCode,
-  Megaphone,
-  Columns2,
-  Rows2,
-  ListOrdered,
   BookOpen,
   Copy,
   Check,
   Cpu,
   Database,
   MessageSquare,
+  Minus,
+  Square,
+  SplitSquareHorizontal,
+  Keyboard,
+  PanelLeft,
+  PanelRight,
+  SunMoon,
+  GitBranch,
 } from "lucide-react";
-import { useWorkState, setWorkState, clearWorkState } from "../store/workState";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { setWorkState, clearWorkState } from "../store/workState";
 import { useKeybindings, matchesEvent, formatShortcut } from "../store/keybindings";
 import { useAttribution, getAttribution, COAUTHOR_LINE } from "../store/attribution";
 import { useSettings, getSettings, updateSetting } from "../store/appSettings";
-import { TopBar } from "./TopBar";
 import { TerminalPane } from "./TerminalPane";
 import { DiffPane } from "./DiffPane";
 import { PreviewPane } from "./PreviewPane";
@@ -62,15 +62,21 @@ import { Tooltip } from "./Tooltip";
 import { BroadcastDialog, BroadcastSession } from "./BroadcastDialog";
 import "./BroadcastDialog.css";
 import { QueuePanel } from "./QueuePanel";
-import { dequeue, useQueue } from "../store/messageQueue";
+import { dequeue } from "../store/messageQueue";
 import { getPrompts, type PromptEntry } from "../store/prompts";
 import { useTheme, builtinThemes } from "../themes/ThemeContext";
 import { Mark } from "../assets/Mark";
 import { StatusBar } from "./StatusBar";
 import { AtlasIndexModal } from "./AtlasIndexModal";
 import { KnowledgeBasePage } from "./KnowledgeBasePage";
+import { Toolbar } from "./Toolbar";
+import AgentTabs from "./AgentTabs";
+import IconCapsule from "./IconCapsule";
+import { SidebarWorkBadge } from "./SessionBadges";
 import "./StatusBar.css";
+import "./TopBar.css";
 import "./WorkspaceView.css";
+import "./Toolbar.css";
 
 interface Props {
   zen?: true;
@@ -122,6 +128,8 @@ interface Project {
 }
 
 type NavSection = "overview" | "knowledge-base";
+
+const win = getCurrentWindow();
 
 // Directories under .tempest/ that are internal to Tempest and must never be
 // treated as git worktrees in the sidebar.
@@ -185,42 +193,14 @@ function collectHandles(n: PaneNode, r: PaneRect = { top: 0, left: 0, width: 1, 
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Right-side work state badge on a tab: spinner while working, dot when done.
-// memo: re-renders only when this session's work state changes, not on any parent re-render.
-const WorkStateBadge = memo(function WorkStateBadge({ sessionId }: { sessionId: string }) {
-  const state = useWorkState(sessionId);
-  if (state === "working") return <Loader size={11} className="spin work-spinner" />;
-  if (state === "done") return <span className="work-done-dot" aria-label="Agent finished" />;
-  return null;
-});
-
-// Queue count badge on a tab — re-renders only when this session's queue changes.
-const QueueBadge = memo(function QueueBadge({ sessionId, onClick }: { sessionId: string; onClick: (e: React.MouseEvent) => void }) {
-  const queue = useQueue(sessionId);
-  if (!queue.length) return null;
-  return (
-    <button
-      className="session-tab-queue-badge"
-      onClick={onClick}
-      title={`${queue.length} message${queue.length !== 1 ? "s" : ""} queued`}
-    >
-      {queue.length}
-    </button>
-  );
-});
-
-// Compact work-state indicator for sidebar rows (spinner while working, dot when done).
-const SidebarWorkBadge = memo(function SidebarWorkBadge({ sessionId }: { sessionId: string }) {
-  const state = useWorkState(sessionId);
-  if (state === "working") return <Loader size={11} className="spin work-spinner" />;
-  if (state === "done") return <span className="work-done-dot" aria-label="Agent finished" />;
-  return null;
-});
+// WorkStateBadge, QueueBadge, SidebarWorkBadge — imported from ./SessionBadges
 
 
 export function WorkspaceView({ zen, name, path }: Props) {
   const [activeSection, setActiveSection] = useState<NavSection>("overview");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [tabsMode] = useState<"designed" | "tabbed" | "ver1" | "designer">("designer");
+  const [canvasMode, setCanvasMode] = useState<"agents" | "diff">("agents");
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
   const [sessionMenuRect, setSessionMenuRect] = useState<DOMRect | null>(null);
   const [sessionMenuPlacement, setSessionMenuPlacement] = useState<NewSessionPlacement>("below");
@@ -251,10 +231,11 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const dragOverTabIdRef = useRef<string | null>(null);
   const dragOverSideRef = useRef<"before" | "after">("before");
 
-  const [activeBranch, setActiveBranch] = useState<string | null>(null);
+  const [, setActiveBranch] = useState<string | null>(null);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
   const [gitRevision, setGitRevision] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [compactOpen, setCompactOpen] = useState(false);
   const [settingsInitialSection, setSettingsInitialSection] = useState<string>("appearance");
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const [atlasPromptPath, setAtlasPromptPath] = useState<string | null>(null);
@@ -271,6 +252,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const [sidebarAtTop, setSidebarAtTop] = useState(true);
   const [sidebarAtBottom, setSidebarAtBottom] = useState(false);
   const sidebarScrollRef = useRef<HTMLDivElement>(null);
+  const [expandedWorktrees, setExpandedWorktrees] = useState<Set<string>>(new Set());
 
   // Split pane layout. null = single-pane mode (normal). Non-null = one or more
   // splits active. activeSessionId continues to track which pane has focus.
@@ -1612,6 +1594,55 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const paneRects      = paneLayout ? computeRects(paneLayout) : null;
   const splitHandles   = paneLayout ? collectHandles(paneLayout) : [];
 
+  // ─── Tab handlers for Toolbar ────────────────────────────────────────────
+  function handleTabClick(id: string) {
+    if (activeSplitIds && !activeSplitIds.has(id)) setPaneLayout(null);
+    const s = sessions.find((x) => x.id === id);
+    setActiveSessionId(id);
+    if (id === activeSessionId && s?.agent) setWorkState(id, "idle");
+  }
+
+  function handleTabDragStart(id: string, e: React.DragEvent<HTMLButtonElement>) {
+    setDragTabId(id);
+    dragTabIdRef.current = id;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", id);
+  }
+
+  function handleTabDragOver(id: string, e: React.DragEvent<HTMLButtonElement>) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const rect = e.currentTarget.getBoundingClientRect();
+    const side = e.clientX < rect.left + rect.width / 2 ? "before" : "after";
+    setDragOverTabId(id);
+    setDragOverSide(side as "before" | "after");
+    dragOverTabIdRef.current = id;
+    dragOverSideRef.current  = side as "before" | "after";
+  }
+
+  function handleTabDrop(id: string, e: React.DragEvent<HTMLButtonElement>) {
+    e.preventDefault();
+    const fromId = dragTabIdRef.current;
+    const side   = dragOverSideRef.current;
+    if (!fromId || fromId === id) { clearTabDrag(); return; }
+    setSessions((prev) => {
+      const from = prev.findIndex((x) => x.id === fromId);
+      let   to   = prev.findIndex((x) => x.id === id);
+      if (from === -1 || to === -1) return prev;
+      if (side === "after") to += 1;
+      const next = [...prev];
+      const [tab] = next.splice(from, 1);
+      next.splice(to > from ? to - 1 : to, 0, tab);
+      return next;
+    });
+    clearTabDrag();
+  }
+
+  function handleTabDragLeave(e: React.DragEvent) {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverTabId(null);
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     if (!activeSession) { setActiveBranch(null); return; }
     invoke<string>("get_git_branch", { path: activeSession.cwd })
@@ -1649,10 +1680,6 @@ export function WorkspaceView({ zen, name, path }: Props) {
     return () => clearInterval(id);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function worktreeLabel(cwd: string): string {
-    return cwd.split(/[/\\]/).filter(Boolean).pop() ?? cwd;
-  }
-
   // Zen mode: merge worktrees from disk with any non-worktree sessions
   const zenSidebarItems: Worktree[] = zen
     ? [
@@ -1663,11 +1690,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
       ]
     : [];
 
-  // Default mode: badge project name
+  // Default mode: active project
   const activeSessionProject = zen
     ? null
     : projects.find((p) => p.id === activeSession?.projectId) ?? null;
-  const badgeName = zen ? name : activeSessionProject?.name;
 
   // Default mode helpers
   function toggleProject(projectId: string) {
@@ -1675,6 +1701,25 @@ export function WorkspaceView({ zen, name, path }: Props) {
       prev.map((p) => (p.id === projectId ? { ...p, expanded: !p.expanded } : p))
     );
   }
+
+  function toggleWorktree(key: string) {
+    setExpandedWorktrees((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
+
+  // Auto-expand the worktree row that contains the newly focused session.
+  useEffect(() => {
+    if (!activeSession) return;
+    if (activeSession.isRootSession) {
+      const proj = projects.find((p) => p.id === activeSession.projectId);
+      if (proj) setExpandedWorktrees((prev) => new Set([...prev, proj.path + "::root"]));
+    } else if (!activeSession.parentSessionId) {
+      setExpandedWorktrees((prev) => new Set([...prev, activeSession.cwd]));
+    }
+  }, [activeSessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function timeAgo(iso: string): string {
     const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -1732,54 +1777,51 @@ export function WorkspaceView({ zen, name, path }: Props) {
 
   // Build the workspace list shown in OverviewPage from live session state.
   return (
-    <div className="workspace-layout">
-      <TopBar />
-      <div className="sub-bar">
-        <Tooltip content="Toggle sidebar" placement="bottom">
-          <button
-            className="sub-bar-icon-btn"
-            aria-label="Toggle sidebar"
-            onClick={() => setSidebarOpen((o) => !o)}
-          >
-            <PanelLeft size={15} />
-          </button>
-        </Tooltip>
-        <Tooltip content="Switch theme" placement="bottom">
-          <button
-            className="sub-bar-icon-btn"
-            aria-label="Switch theme"
-            onClick={toggleTheme}
-          >
-            {isDark ? <Sun size={15} /> : <Moon size={15} />}
-          </button>
-        </Tooltip>
-        {activeSession && (
-          <>
-            <span className="sub-bar-divider">/</span>
-            <span className="sub-bar-badge">
-              <span className="sub-bar-badge-project">{badgeName}</span>
-              <span className="sub-bar-badge-sep">/</span>
-              <span className="sub-bar-badge-worktree">{worktreeLabel(activeSession.cwd)}</span>
-              {activeBranch && (
-                <span className="sub-bar-badge-branch">
-                  <span className="sub-bar-badge-on">on</span> {activeBranch}
-                </span>
-              )}
-            </span>
-          </>
-        )}
+    <div className="app">
+      <div className="topbar">
+        <div className="topbar-drag" data-tauri-drag-region />
+        <div className="topbar-right">
+          <Tooltip content="Minimize" placement="bottom">
+            <button className="win-btn" onClick={() => win.minimize()}>
+              <Minus size={11} />
+            </button>
+          </Tooltip>
+          <Tooltip content="Maximize" placement="bottom">
+            <button className="win-btn" onClick={() => win.toggleMaximize()}>
+              <Square size={10} />
+            </button>
+          </Tooltip>
+          <Tooltip content="Close" placement="bottom">
+            <button className="win-btn win-btn--close" onClick={() => win.close()}>
+              <X size={12} />
+            </button>
+          </Tooltip>
+        </div>
+      </div>
 
-        {activeSession && (
-          <div className="sub-bar-right">
-            <div className="sub-bar-prompt-wrap" ref={promptPickerRef}>
+      <Toolbar
+        tabsMode={tabsMode}
+        projectName={activeSessionProject?.name ?? projects[0]?.name ?? ""}
+        rightActions={
+          <>
+            <Tooltip content="Toggle diff view" placement="bottom">
+              <SplitSquareHorizontal
+                className={`topbar-icon${canvasMode === "diff" ? " active" : ""}`}
+                onClick={() => setCanvasMode((m) => m === "diff" ? "agents" : "diff")}
+              />
+            </Tooltip>
+            <Tooltip content="Keyboard shortcuts" placement="bottom">
+              <Keyboard
+                className="topbar-icon"
+                onClick={() => { setSettingsInitialSection("keybindings"); setSettingsOpen(true); }}
+              />
+            </Tooltip>
+            <div className="topbar-prompt-wrap" ref={promptPickerRef}>
               <Tooltip content="Prompts" placement="bottom">
-                <button
-                  className={`sub-bar-icon-btn${promptPickerOpen ? " sub-bar-icon-btn--active" : ""}`}
-                  aria-label="Prompt library"
+                <BookOpen
+                  className={`topbar-icon${promptPickerOpen ? " active" : ""}`}
                   onClick={() => setPromptPickerOpen((o) => !o)}
-                >
-                  <BookOpen size={15} />
-                </button>
+                />
               </Tooltip>
               {promptPickerOpen && (
                 <div className="sub-bar-prompt-picker">
@@ -1838,31 +1880,24 @@ export function WorkspaceView({ zen, name, path }: Props) {
                 </div>
               )}
             </div>
-            <Tooltip content="Toggle right panel" placement="bottom">
-              <button
-                className="sub-bar-icon-btn"
-                aria-label="Toggle right panel"
-                onClick={() => setRightSidebarOpen((o) => !o)}
-              >
-                <PanelRight size={15} />
-              </button>
-            </Tooltip>
+          </>
+        }
+      />
+
+      <div className="body">
+        <aside className={`sidebar-left${sidebarOpen ? "" : " sidebar-left--collapsed"}`} style={{ "--sidebar-fs": `${sidebarFontSize}px` } as CSSProperties}>
+
+          {/* Fixed top: nav items */}
+          <div className="sidebar-nav">
+            <button className={navBtn("overview")} onClick={() => goTo("overview")}>
+              <LayoutGrid size={16} />
+              <span>Overview</span>
+            </button>
+            <button className={navBtn("knowledge-base")} onClick={() => goTo("knowledge-base")}>
+              <Brain size={16} />
+              <span>Knowledge Base</span>
+            </button>
           </div>
-        )}
-      </div>
-
-      <div className="workspace-body">
-        <aside className={`sidebar${sidebarOpen ? "" : " sidebar--collapsed"}`} style={{ "--sidebar-fs": `${sidebarFontSize}px` } as CSSProperties}>
-
-          {/* Fixed top: Overview */}
-          <button className={navBtn("overview")} onClick={() => goTo("overview")}>
-            <LayoutGrid size={16} />
-            <span>Overview</span>
-          </button>
-          <button className={navBtn("knowledge-base")} onClick={() => goTo("knowledge-base")}>
-            <Brain size={16} />
-            <span>Knowledge Base</span>
-          </button>
 
           {/* Scrollable middle */}
           <div className="sidebar-scroll-wrap">
@@ -1929,45 +1964,11 @@ export function WorkspaceView({ zen, name, path }: Props) {
               {projects.length === 0 ? (
                 <div className="agents-empty">No projects added</div>
               ) : (
-                projects.map((project) => {
+                <div className="sidebar-proj-list">
+                {projects.map((project) => {
                   const projectSessions = sessions.filter((s) => s.projectId === project.id);
-                  // Sub-sessions (spawned via split) are never top-level rows — they render
-                  // nested under their parent.
-                  const renderSubSessions = (parentId: string): React.ReactNode =>
-                    projectSessions
-                      .filter((s) => s.parentSessionId === parentId)
-                      .map((sub) => {
-                        const worktreeBranch = project.worktrees.find((w) => w.path === sub.cwd)?.name;
-                        return (
-                          <div key={sub.id} className="sidebar-session-group">
-                            <button
-                              className={`sidebar-project-session sidebar-project-session--sub${sub.id === activeSessionId ? " sidebar-project-session--active" : ""}`}
-                              onClick={() => setActiveSessionId(sub.id)}
-                            >
-                              {sub.agent ? <AgentIcon hint={sub.agent} size={12} /> : <TerminalSquare size={12} />}
-                              <span className="sidebar-session-name">{sub.name}</span>
-                              {worktreeBranch && <span className="sidebar-branch-badge">{worktreeBranch}</span>}
-                              {sub.agent && <SidebarWorkBadge sessionId={sub.id} />}
-                              <span
-                                className="sidebar-session-close"
-                                role="button"
-                                tabIndex={0}
-                                aria-label={`Close ${sub.name}`}
-                                onClick={(e) => { e.stopPropagation(); closeSession(sub.id); }}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); closeSession(sub.id); }
-                                }}
-                              >
-                                <X size={11} />
-                              </span>
-                            </button>
-                            {renderSubSessions(sub.id)}
-                          </div>
-                        );
-                      });
-                  // Canonical root session map: one entry per instanceId, live sessions
-                  // take precedence over ghosts. Guarantees exactly one sidebar row per
-                  // logical conversation regardless of how many storage records exist.
+
+                  // Canonical root session map
                   const liveRootSessions = projectSessions.filter((s) => s.isRootSession && s.kind !== "diff" && !s.parentSessionId);
                   const storedRootEntries = getRootSessionsForProject(project.path);
                   const canonRoots = new Map<string, { session?: Session; ghost?: { key: string; session: WorktreeSession } }>();
@@ -1976,25 +1977,34 @@ export function WorkspaceView({ zen, name, path }: Props) {
                     const id = e.session.instanceId ?? rootSessionIdFromKey(e.key);
                     if (!canonRoots.has(id)) canonRoots.set(id, { ghost: e });
                   }
+
+                  const rootKey = project.path + "::root";
+                  const rootExpanded = expandedWorktrees.has(rootKey);
+                  const liveRoots = [...canonRoots.values()].filter((e) => e.session).map((e) => e.session!);
+                  const ghostRoots = [...canonRoots.values()].filter((e) => !e.session && e.ghost);
+                  const rootAgents = liveRoots.filter((s) => s.agent);
+                  const rootTerminals = liveRoots.filter((s) => !s.agent);
+                  const primaryRootAgent = rootAgents[0];
+
                   return (
                     <div key={project.id} className="sidebar-project"
                       onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, null)}
                     >
+                      {/* Project header */}
                       <div
                         className="sidebar-project-header"
-                        onContextMenu={(e) =>
-                          openCtxMenu(e, null, project.path, project.id, null, true)
-                        }
+                        onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, null, true)}
                       >
                         <button
                           className="sidebar-project-toggle"
                           onClick={() => toggleProject(project.id)}
                         >
-                          {project.expanded
-                            ? <ChevronDown size={12} />
-                            : <ChevronRight size={12} />}
+                          {project.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                           <span>{project.name}</span>
                         </button>
+                        {project.worktrees.length > 0 && (
+                          <span className="sidebar-project-count">{project.worktrees.length}</span>
+                        )}
                         {atlasEnabled && getRuntimeState().atlasProjects[project.path] === true && (
                           <Cpu size={11} className="sidebar-project-atlas-icon" aria-label="Token Intelligence indexed" />
                         )}
@@ -2008,91 +2018,180 @@ export function WorkspaceView({ zen, name, path }: Props) {
                           </button>
                         </Tooltip>
                       </div>
+
                       {project.expanded && (
                         <div className="sidebar-project-sessions">
-                          {/* Root sessions — one row per canonical identity (live or ghost) */}
-                          {[...canonRoots.values()].map((entry) => {
-                            if (entry.session) {
-                              const s = entry.session;
-                              return (
-                                <div key={s.instanceId} className="sidebar-session-group">
-                                  <button
-                                    className={`sidebar-project-session sidebar-project-session--root${s.id === activeSessionId ? " sidebar-project-session--active" : ""}`}
-                                    onClick={() => setActiveSessionId(s.id)}
-                                    onContextMenu={(e) =>
-                                      openCtxMenu(e, null, project.path, project.id, s.id, false, true, s.storeKey)
-                                    }
-                                  >
-                                    <SquareSlash size={12} />
-                                    <span className="sidebar-session-name">{s.name}</span>
-                                    <span className="sidebar-root-badge">main</span>
-                                    {s.agent && atlasEnabled && getRuntimeState().atlasProjects[project.path] === true && (
-                                      <Cpu size={10} className="sidebar-session-atlas-badge" aria-label="Token Intelligence active" />
-                                    )}
-                                    {s.agent && <SidebarWorkBadge sessionId={s.id} />}
-                                  </button>
-                                  {renderSubSessions(s.id)}
-                                </div>
-                              );
-                            }
-                            const { key, session: ghost } = entry.ghost!;
-                            const resumeId = ghost.instanceId ?? rootSessionIdFromKey(key);
-                            return (
-                              <button
-                                key={key}
-                                className="sidebar-project-session sidebar-project-session--root sidebar-project-session--closed"
-                                onClick={() => {
-                                  openSession(ghost.name, project.path, project.id, ghost.agent, undefined, undefined, ghost.agent ? ghost.conversationId : undefined, true, ghost.noGit, false, resumeId).catch(() => {});
-                                }}
-                                onContextMenu={(e) =>
-                                  openCtxMenu(e, null, project.path, project.id, null, false, true, key)
-                                }
+                          {/* Root sessions — expandable row */}
+                          {canonRoots.size > 0 && (
+                            <div className="sb-worktree">
+                              <div
+                                className="sb-worktree-row"
+                                onClick={() => toggleWorktree(rootKey)}
+                                onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, null, false, true)}
                               >
-                                <SquareSlash size={12} />
-                                <span className="sidebar-session-name">{ghost.name}</span>
-                                <span className="sidebar-root-badge">main</span>
-                              </button>
-                            );
-                          })}
-                          {/* Worktree sessions */}
-                          {project.worktrees.map((wt) => {
-                            const session = sessions.find((s) => s.cwd === wt.path && !s.parentSessionId);
-                            const savedMeta = !session ? getWorktreeSession(wt.path) : null;
-                            const isAgent = !!(session?.agent || savedMeta?.agent);
-                            const isActive = session?.id === activeSessionId;
-                            return (
-                              <div key={wt.path} className="sidebar-session-group">
+                                <ChevronRight size={9} className={`sb-worktree-chevron${rootExpanded ? " open" : ""}`} />
+                                <span className="sb-worktree-label">main</span>
+                                <GitBranch size={10} className="sb-worktree-branch-icon" />
+                                {primaryRootAgent && <SidebarWorkBadge sessionId={primaryRootAgent.id} />}
                                 <button
-                                  className={`sidebar-project-session${isActive ? " sidebar-project-session--active" : ""}`}
-                                  onClick={() => {
-                                    if (session) {
-                                      setActiveSessionId(session.id);
-                                    } else {
-                                      const saved = savedMeta ?? getWorktreeSession(wt.path);
-                                      if (saved) {
-                                        openSession(saved.name, wt.path, project.id, saved.agent, undefined, undefined, saved.agent ? saved.conversationId : undefined).catch(() => {});
-                                        markWorktreeSessionOpen(wt.path);
-                                      } else {
-                                        openSession("Terminal", wt.path, project.id).catch(() => {});
-                                      }
-                                    }
-                                  }}
-                                  onContextMenu={(e) =>
-                                    openCtxMenu(e, wt, project.path, project.id, session?.id ?? null)
-                                  }
+                                  className="sb-worktree-add"
+                                  onClick={(e) => { e.stopPropagation(); openSessionMenu(e, project.id, "right"); }}
                                 >
-                                  {isAgent ? <AgentIcon hint={session?.agent ?? savedMeta?.agent} size={12} /> : <TerminalSquare size={12} />}
-                                  <span>{wt.name}</span>
-                                  {isAgent && atlasEnabled && getRuntimeState().atlasProjects[project.path] === true && (
-                                    <Cpu size={10} className="sidebar-session-atlas-badge" aria-label="Token Intelligence active" />
-                                  )}
-                                  {session?.agent && <SidebarWorkBadge sessionId={session.id} />}
+                                  <Plus size={10} />
                                 </button>
-                                {session && renderSubSessions(session.id)}
+                              </div>
+                              {rootExpanded && (
+                                <div className="sb-worktree-dropdown">
+                                  {rootAgents.length > 0 && (
+                                    <div className="sb-dropdown-section">
+                                      <span className="sb-dropdown-label">Agent Sessions</span>
+                                      {rootAgents.map((s) => (
+                                        <button
+                                          key={s.id}
+                                          className={`sb-dropdown-item${s.id === activeSessionId ? " sb-dropdown-item--active" : ""}`}
+                                          onClick={() => setActiveSessionId(s.id)}
+                                          onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, s.id, false, true, s.storeKey)}
+                                        >
+                                          <AgentIcon hint={s.agent} size={11} />
+                                          <span className="sb-dropdown-item-name">{s.name}</span>
+                                          {s.agent && atlasEnabled && getRuntimeState().atlasProjects[project.path] === true && (
+                                            <Cpu size={10} className="sidebar-session-atlas-badge" />
+                                          )}
+                                          <SidebarWorkBadge sessionId={s.id} />
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {rootTerminals.length > 0 && (
+                                    <div className="sb-dropdown-section">
+                                      <span className="sb-dropdown-label">Terminals</span>
+                                      {rootTerminals.map((s) => (
+                                        <button
+                                          key={s.id}
+                                          className={`sb-dropdown-item${s.id === activeSessionId ? " sb-dropdown-item--active" : ""}`}
+                                          onClick={() => setActiveSessionId(s.id)}
+                                          onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, s.id, false, true, s.storeKey)}
+                                        >
+                                          <TerminalSquare size={11} />
+                                          <span className="sb-dropdown-item-name">{s.name}</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {ghostRoots.map((entry) => {
+                                    const { key, session: ghost } = entry.ghost!;
+                                    const resumeId = ghost.instanceId ?? rootSessionIdFromKey(key);
+                                    return (
+                                      <button
+                                        key={key}
+                                        className="sb-dropdown-item sb-dropdown-item--ghost"
+                                        onClick={() => openSession(ghost.name, project.path, project.id, ghost.agent, undefined, undefined, ghost.agent ? ghost.conversationId : undefined, true, ghost.noGit, false, resumeId).catch(() => {})}
+                                        onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, null, false, true, key)}
+                                      >
+                                        {ghost.agent ? <AgentIcon hint={ghost.agent} size={11} /> : <TerminalSquare size={11} />}
+                                        <span className="sb-dropdown-item-name">{ghost.name}</span>
+                                      </button>
+                                    );
+                                  })}
+                                  {liveRoots.length === 0 && ghostRoots.length === 0 && (
+                                    <span className="sb-dropdown-empty">No active sessions</span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Worktree rows — one expandable row per branch */}
+                          {project.worktrees.map((wt) => {
+                            const wtSessions = projectSessions.filter((s) => s.cwd === wt.path && !s.parentSessionId);
+                            const subSessions = projectSessions.filter((s) => s.parentSessionId && wtSessions.some((ws) => ws.id === s.parentSessionId));
+                            const allAtPath = [...wtSessions, ...subSessions];
+                            const wtAgents = allAtPath.filter((s) => s.agent);
+                            const wtTerminals = allAtPath.filter((s) => !s.agent);
+                            const primaryAgent = wtAgents[0] ?? null;
+                            const savedMeta = wtSessions.length === 0 ? getWorktreeSession(wt.path) : null;
+                            const showGhost = savedMeta && savedMeta.closed !== true;
+                            const wtExpanded = expandedWorktrees.has(wt.path);
+
+                            return (
+                              <div key={wt.path} className="sb-worktree">
+                                <div
+                                  className="sb-worktree-row"
+                                  onClick={() => toggleWorktree(wt.path)}
+                                  onContextMenu={(e) => openCtxMenu(e, wt, project.path, project.id, wtSessions[0]?.id ?? null)}
+                                >
+                                  <ChevronRight size={9} className={`sb-worktree-chevron${wtExpanded ? " open" : ""}`} />
+                                  <span className="sb-worktree-label">{wt.name}</span>
+                                  <GitBranch size={10} className="sb-worktree-branch-icon" />
+                                  {primaryAgent && <SidebarWorkBadge sessionId={primaryAgent.id} />}
+                                  <button
+                                    className="sb-worktree-add"
+                                    onClick={(e) => { e.stopPropagation(); openSessionMenu(e, project.id, "right"); }}
+                                  >
+                                    <Plus size={10} />
+                                  </button>
+                                </div>
+                                {wtExpanded && (
+                                  <div className="sb-worktree-dropdown">
+                                    {wtAgents.length > 0 && (
+                                      <div className="sb-dropdown-section">
+                                        <span className="sb-dropdown-label">Agent Sessions</span>
+                                        {wtAgents.map((s) => (
+                                          <button
+                                            key={s.id}
+                                            className={`sb-dropdown-item${s.id === activeSessionId ? " sb-dropdown-item--active" : ""}`}
+                                            onClick={() => setActiveSessionId(s.id)}
+                                            onContextMenu={(e) => openCtxMenu(e, wt, project.path, project.id, s.id)}
+                                          >
+                                            <AgentIcon hint={s.agent} size={11} />
+                                            <span className="sb-dropdown-item-name">{s.name}</span>
+                                            {s.agent && atlasEnabled && getRuntimeState().atlasProjects[project.path] === true && (
+                                              <Cpu size={10} className="sidebar-session-atlas-badge" />
+                                            )}
+                                            <SidebarWorkBadge sessionId={s.id} />
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {wtTerminals.length > 0 && (
+                                      <div className="sb-dropdown-section">
+                                        <span className="sb-dropdown-label">Terminals</span>
+                                        {wtTerminals.map((s) => (
+                                          <button
+                                            key={s.id}
+                                            className={`sb-dropdown-item${s.id === activeSessionId ? " sb-dropdown-item--active" : ""}`}
+                                            onClick={() => setActiveSessionId(s.id)}
+                                            onContextMenu={(e) => openCtxMenu(e, wt, project.path, project.id, s.id)}
+                                          >
+                                            <TerminalSquare size={11} />
+                                            <span className="sb-dropdown-item-name">{s.name}</span>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {showGhost && (
+                                      <button
+                                        className="sb-dropdown-item sb-dropdown-item--ghost"
+                                        onClick={() => {
+                                          openSession(savedMeta!.name, wt.path, project.id, savedMeta!.agent, undefined, undefined, savedMeta!.agent ? savedMeta!.conversationId : undefined).catch(() => {});
+                                          markWorktreeSessionOpen(wt.path);
+                                        }}
+                                        onContextMenu={(e) => openCtxMenu(e, wt, project.path, project.id, null)}
+                                      >
+                                        {savedMeta!.agent ? <AgentIcon hint={savedMeta!.agent} size={11} /> : <TerminalSquare size={11} />}
+                                        <span className="sb-dropdown-item-name">{savedMeta!.name}</span>
+                                      </button>
+                                    )}
+                                    {allAtPath.length === 0 && !showGhost && (
+                                      <span className="sb-dropdown-empty">No active sessions</span>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
-                          {/* Diff tabs and other non-root non-worktree sessions */}
+
+                          {/* Non-worktree tabs (diff, preview, editor, chat) */}
                           {projectSessions
                             .filter((s) => !s.isRootSession && !s.parentSessionId && !project.worktrees.some((w) => w.path === s.cwd))
                             .map((s) => (
@@ -2100,18 +2199,16 @@ export function WorkspaceView({ zen, name, path }: Props) {
                                 <button
                                   className={`sidebar-project-session${s.id === activeSessionId ? " sidebar-project-session--active" : ""}`}
                                   onClick={() => setActiveSessionId(s.id)}
-                                  onContextMenu={(e) =>
-                                    openCtxMenu(e, null, project.path, project.id, s.id)
-                                  }
+                                  onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, s.id)}
                                 >
                                   {s.kind === "diff" ? <Eye size={12} /> : s.kind === "preview" ? <Globe size={12} /> : s.kind === "editor" ? <FileCode size={12} /> : s.kind === "chat" ? <MessageSquare size={12} /> : s.agent ? <AgentIcon hint={s.agent} size={12} /> : <TerminalSquare size={12} />}
                                   <span>{s.name}</span>
                                   {s.agent && <SidebarWorkBadge sessionId={s.id} />}
                                 </button>
-                                {renderSubSessions(s.id)}
                               </div>
                             ))}
-                          {/* Chat ghost — shown when a chat tab exists in runtime state but isn't open */}
+
+                          {/* Chat ghost */}
                           {getRuntimeState().tabs.some((t) => t.kind === "chat" && t.projectId === project.id) &&
                             !projectSessions.some((s) => s.kind === "chat") && (
                             <div className="sidebar-session-group">
@@ -2129,7 +2226,8 @@ export function WorkspaceView({ zen, name, path }: Props) {
                       )}
                     </div>
                   );
-                })
+                })}
+                </div>
               )}
             </>
           )}
@@ -2138,220 +2236,100 @@ export function WorkspaceView({ zen, name, path }: Props) {
           <div className={`sidebar-fade-bottom${sidebarAtBottom ? " sidebar-fade--hidden" : ""}`} />
           </div>{/* end sidebar-scroll-wrap */}
 
-          <div className="sidebar-bottom">
-            <button className="sidebar-nav-btn" onClick={() => openUrl("https://github.com/tempestai-dev/tempest/issues")}>
-              <Bug size={16} />
-              <span>Report a Bug</span>
-            </button>
-            <button className="sidebar-nav-btn" onClick={() => openUrl("mailto:tempestai.dev@gmail.com")}>
-              <Mail size={16} />
-              <span>Email Us</span>
-            </button>
-            <button className="sidebar-nav-btn" onClick={() => setSettingsOpen(true)}>
-              <Settings size={16} />
-              <span>Settings</span>
-            </button>
-            {zen ? (
-              <div className="zen-project-label">
-                <FolderOpen size={14} />
-                <span>{name}</span>
+          <div className="sidebar-bottom-wrap">
+            <div className="sidebar-bottom-sep" />
+            <div className="sidebar-bottom">
+              <div className="sidebar-bottom-group">
+                <Tooltip content="Report a bug" placement="top">
+                  <Bug size={16} className="sidebar-bottom-icon" onClick={() => openUrl("https://github.com/tempestai-dev/tempest/issues")} />
+                </Tooltip>
+                <Tooltip content="Email us" placement="top">
+                  <Mail size={16} className="sidebar-bottom-icon" onClick={() => openUrl("mailto:tempestai.dev@gmail.com")} />
+                </Tooltip>
               </div>
-            ) : (
-              <button className="sidebar-nav-btn sidebar-add-workspace" onClick={addWorkspace}>
-                <FolderPlus size={16} />
-                <span>Add Project</span>
-              </button>
-            )}
+              <div className="sidebar-bottom-group">
+                <Tooltip content="Toggle theme" placement="top">
+                  <SunMoon size={16} className="sidebar-bottom-icon" onClick={toggleTheme} />
+                </Tooltip>
+                <Tooltip content="Settings" placement="top">
+                  <Settings size={16} className="sidebar-bottom-icon" onClick={() => setSettingsOpen(true)} />
+                </Tooltip>
+                {zen ? (
+                  <Tooltip content={name ?? "Project"} placement="top">
+                    <FolderOpen size={16} className="sidebar-bottom-icon" />
+                  </Tooltip>
+                ) : (
+                  <Tooltip content="Add project" placement="top">
+                    <FolderPlus size={16} className="sidebar-bottom-icon" onClick={addWorkspace} />
+                  </Tooltip>
+                )}
+              </div>
+            </div>
           </div>
         </aside>
 
-        <main className="workspace-main">
-          {sessions.length > 0 && (
-            <div
-              className="session-tab-bar"
-              onDragLeave={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                  setDragOverTabId(null);
-                }
-              }}
-            >
-              <div className="session-tab-scroll">
-              {sessions.filter((s) => !s.parentSessionId).map((s) => {
-                const isActive = s.id === activeSessionId;
-                const isDragging = dragTabId === s.id;
-                const isDropTarget = dragOverTabId === s.id && !isDragging;
-                const tabClass = [
-                  "session-tab",
-                  isActive ? "session-tab--active" : "",
-                  isDragging ? "session-tab--dragging" : "",
-                  isDropTarget && dragOverSide === "before" ? "session-tab--drop-before" : "",
-                  isDropTarget && dragOverSide === "after" ? "session-tab--drop-after" : "",
-                ].filter(Boolean).join(" ");
+        <div className="workspace">
+          <div className="canvas-wrap">
+            <div className="canvas">
+              {(() => {
+                const isOverview = !activeSessionId && activeSection === "overview";
                 return (
-                  <button
-                    key={s.id}
-                    draggable
-                    className={tabClass}
-                    onDragStart={(e) => {
-                      setDragTabId(s.id);
-                      dragTabIdRef.current = s.id;
-                      e.dataTransfer.effectAllowed = "move";
-                      e.dataTransfer.setData("text/plain", s.id);
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = "move";
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const side = e.clientX < rect.left + rect.width / 2 ? "before" : "after";
-                      setDragOverTabId(s.id);
-                      setDragOverSide(side);
-                      dragOverTabIdRef.current = s.id;
-                      dragOverSideRef.current = side;
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const fromId = dragTabIdRef.current;
-                      const side = dragOverSideRef.current;
-                      if (!fromId || fromId === s.id) { clearTabDrag(); return; }
-                      setSessions((prev) => {
-                        const from = prev.findIndex((x) => x.id === fromId);
-                        let to = prev.findIndex((x) => x.id === s.id);
-                        if (from === -1 || to === -1) return prev;
-                        if (side === "after") to += 1;
-                        const next = [...prev];
-                        const [tab] = next.splice(from, 1);
-                        next.splice(to > from ? to - 1 : to, 0, tab);
-                        return next;
-                      });
-                      clearTabDrag();
-                    }}
-                    onDragEnd={clearTabDrag}
-                    onClick={() => {
-                      if (activeSplitIds && !activeSplitIds.has(s.id)) {
-                        // Tab not in the current split → exit split mode, show full screen
-                        setPaneLayout(null);
-                      }
-                      setActiveSessionId(s.id);
-                      if (isActive && s.agent) setWorkState(s.id, "idle");
-                    }}
-                  >
-                    {s.kind === "diff" ? <Eye size={12} /> : s.kind === "preview" ? <Globe size={12} /> : s.kind === "editor" ? <FileCode size={12} /> : s.kind === "chat" ? <MessageSquare size={12} /> : s.agent ? <AgentIcon hint={s.agent} size={12} /> : <TerminalSquare size={12} />}
-                    {renamingSessionId === s.id ? (
-                      <input
-                        className="session-tab-rename"
-                        value={renameValue}
-                        onChange={(e) => setRenameValue(e.target.value)}
-                        onBlur={commitRename}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") commitRename();
-                          if (e.key === "Escape") setRenamingSessionId(null);
-                          e.stopPropagation();
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        autoFocus
-                      />
-                    ) : (
-                      <span
-                        className="session-tab-name"
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          startRename(s.id, s.name);
-                        }}
-                      >
-                        {s.name}
-                      </span>
-                    )}
-                    {s.agent && <WorkStateBadge sessionId={s.id} />}
-                    {s.agent && (
-                      <QueueBadge
-                        sessionId={s.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setQueueOpenSessionId((prev) => prev === s.id ? null : s.id);
-                        }}
-                      />
-                    )}
-                    <Tooltip content="Close tab" placement="top">
-                      <span
-                        className="session-tab-close"
-                        role="button"
-                        tabIndex={0}
-                        aria-label={`Close ${s.name}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          closeSession(s.id);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.stopPropagation();
-                            closeSession(s.id);
-                          }
-                        }}
-                      >
-                        <X size={11} />
-                      </span>
-                    </Tooltip>
-                  </button>
-                );
-              })}
-                <Tooltip content="New tab" placement="top" className="tt--stretch">
-                  <button
-                    className="session-tab-add"
-                    onClick={(e) => openSessionMenu(e, activeSession?.projectId ?? null, "below")}
-                    aria-label="New tab"
-                  >
-                    <Plus size={13} />
-                  </button>
-                </Tooltip>
-              </div>
-              <div className="session-tab-actions">
-                {activeSession && !activeSession.kind && (
-                  <>
-                    <Tooltip content="Split vertical" placement="top" className="tt--stretch">
-                      <button
-                        className="session-tab-split-btn session-tab-split-btn--v"
-                        onClick={() => splitPane("v")}
-                        aria-label="Split pane vertically"
-                      >
-                        <Columns2 size={13} />
-                      </button>
-                    </Tooltip>
-                    <Tooltip content="Split horizontal" placement="top" className="tt--stretch">
-                      <button
-                        className="session-tab-split-btn session-tab-split-btn--h"
-                        onClick={() => splitPane("h")}
-                        aria-label="Split pane horizontally"
-                      >
-                        <Rows2 size={13} />
-                      </button>
-                    </Tooltip>
-                  </>
-                )}
-                {activeSession?.agent && (
-                  <Tooltip content="Message queue" placement="top" className="tt--stretch">
-                    <button
-                      className="session-tab-queue-btn"
-                      onClick={() => setQueueOpenSessionId((prev) => prev === activeSession.id ? null : activeSession.id)}
-                      aria-label="Message queue"
-                    >
-                      <ListOrdered size={13} />
+                <div className={`bar${tabsMode === "tabbed" ? " tabs-tabbed" : tabsMode === "ver1" ? " tabs-ver1" : tabsMode === "designer" ? " tabs-designer" : ""}`}>
+                  <div className="bar-end">
+                    <button className="sub-bar-icon-btn" onClick={() => setSidebarOpen((o) => !o)} title="Toggle sidebar">
+                      <PanelLeft size={15} />
                     </button>
-                  </Tooltip>
-                )}
-                <Tooltip content="Broadcast to agents" placement="top" className="tt--stretch">
-                  <button
-                    className="session-tab-broadcast"
-                    onClick={() => setBroadcastOpen(true)}
-                    aria-label="Broadcast to agents"
-                  >
-                    <Megaphone size={13} />
-                  </button>
-                </Tooltip>
-              </div>
-            </div>
-          )}
-
-          <div className="workspace-content" ref={workspaceContentRef}>
+                    {!isOverview && <div className="sep" />}
+                  </div>
+                  {!isOverview && <AgentTabs
+                    sessions={sessions.filter((s) => !s.parentSessionId)}
+                    activeSessionId={activeSessionId}
+                    tabsMode={tabsMode}
+                    onTabClick={handleTabClick}
+                    onTabClose={(id) => closeSession(id)}
+                    dragTabId={dragTabId}
+                    dragOverTabId={dragOverTabId}
+                    dragOverSide={dragOverSide}
+                    onDragStart={handleTabDragStart}
+                    onDragOver={handleTabDragOver}
+                    onDrop={handleTabDrop}
+                    onDragEnd={clearTabDrag}
+                    onDragLeave={handleTabDragLeave}
+                    renamingSessionId={renamingSessionId}
+                    renameValue={renameValue}
+                    onRenameChange={setRenameValue}
+                    onRenameCommit={commitRename}
+                    onRenameClear={() => setRenamingSessionId(null)}
+                    onRenameStart={startRename}
+                    onQueueClick={(id, e) => { e.stopPropagation(); setQueueOpenSessionId((prev) => (prev === id ? null : id)); }}
+                  />}
+                  <div className="bar-end">
+                    {!isOverview && (
+                      <>
+                        <div className="collapse-btn-wrap">
+                          <button className="collapse-btn" onClick={() => setCompactOpen((o) => !o)} title="Actions">
+                            {compactOpen ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
+                          </button>
+                        </div>
+                        <IconCapsule
+                          open={compactOpen}
+                          onSplitV={() => splitPane("v")}
+                          onSplitH={() => splitPane("h")}
+                          onQueue={() => { if (activeSession?.agent) setQueueOpenSessionId((p) => p === activeSession.id ? null : activeSession.id); }}
+                          onBroadcast={() => setBroadcastOpen(true)}
+                        />
+                        <div className="sep" />
+                        <button className="sub-bar-icon-btn" onClick={() => setRightSidebarOpen((o) => !o)} title="Toggle right sidebar">
+                          <PanelRight size={15} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+                );
+              })()}
+          <div className="workspace-content">
+            <div className="panes-viewport" ref={workspaceContentRef}>
             {sessions.map((s) => {
               const rect = paneRects?.get(s.id);
               const isInSplit = !!(activeSplitIds?.has(s.id));
@@ -2474,6 +2452,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
                 />
               );
             })}
+            </div>
             {!activeSessionId && activeSection === "knowledge-base" && (
               <KnowledgeBasePage />
             )}
@@ -2584,22 +2563,6 @@ export function WorkspaceView({ zen, name, path }: Props) {
             )}
           </div>
 
-          <StatusBar
-            sandboxed={activeSession?.sandboxed}
-            atlasIndexed={atlasEnabled && isAtlasIndexed ? true : undefined}
-            atlasIndexing={atlasEnabled && isAtlasIndexing ? true : undefined}
-            onSyncAtlas={atlasEnabled && isAtlasIndexed && !isAtlasIndexing && activeProjectPath ? () => {
-              const decided = getRuntimeState().atlasProjects ?? {};
-              setRuntimeState({ atlasProjects: { ...decided, [activeProjectPath]: true } });
-              invoke("start_atlas_index", { projectPath: activeProjectPath })
-                .then(() => invoke("start_atlas_daemon", { projectPath: activeProjectPath }).catch(() => {}))
-                .catch((e) => console.error("[Atlas] sync failed:", e));
-              setAtlasIndexingPaths((prev) =>
-                prev.includes(activeProjectPath) ? prev : [...prev, activeProjectPath]
-              );
-            } : undefined}
-          />
-
           {atlasIndexingPaths.length > 0 && (() => {
             const activePath = atlasIndexingPaths[0];
             const dismiss = () => setAtlasIndexingPaths((prev) => prev.filter((x) => x !== activePath));
@@ -2623,7 +2586,28 @@ export function WorkspaceView({ zen, name, path }: Props) {
               />
             );
           })()}
-        </main>
+            </div>{/* canvas */}
+            {activeSessionId && (
+              <div className="canvas-wrap-footer">
+                <StatusBar
+                  sandboxed={activeSession?.sandboxed}
+                  atlasIndexed={atlasEnabled && isAtlasIndexed ? true : undefined}
+                  atlasIndexing={atlasEnabled && isAtlasIndexing ? true : undefined}
+                  onSyncAtlas={atlasEnabled && isAtlasIndexed && !isAtlasIndexing && activeProjectPath ? () => {
+                    const decided = getRuntimeState().atlasProjects ?? {};
+                    setRuntimeState({ atlasProjects: { ...decided, [activeProjectPath]: true } });
+                    invoke("start_atlas_index", { projectPath: activeProjectPath })
+                      .then(() => invoke("start_atlas_daemon", { projectPath: activeProjectPath }).catch(() => {}))
+                      .catch((e) => console.error("[Atlas] sync failed:", e));
+                    setAtlasIndexingPaths((prev) =>
+                      prev.includes(activeProjectPath) ? prev : [...prev, activeProjectPath]
+                    );
+                  } : undefined}
+                />
+              </div>
+            )}
+          </div>{/* canvas-wrap */}
+        </div>{/* workspace */}
 
         {activeSession && (
           <RightSidebar

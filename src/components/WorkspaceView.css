@@ -1,11 +1,8 @@
-.workspace-layout {
+.app {
   height: 100%;
   display: flex;
   flex-direction: column;
-}
-
-.workspace-layout .topbar {
-  border-bottom: 1px solid var(--tempest-border-default);
+  background: var(--tempest-bg-base);
 }
 
 .sub-bar {
@@ -288,13 +285,13 @@
   opacity: 0.85;
 }
 
-.workspace-body {
+.body {
   flex: 1;
   display: flex;
   overflow: hidden;
 }
 
-.sidebar {
+.sidebar-left {
   width: 220px;
   flex-shrink: 0;
   background: var(--tempest-bg-sidebar);
@@ -306,17 +303,61 @@
   opacity: 1;
 }
 
-.sidebar--collapsed {
+.sidebar-left--collapsed {
   width: 0;
   border-color: transparent;
   opacity: 0;
 }
 
-/* Nav buttons */
-
-.sidebar > .sidebar-nav-btn:first-of-type {
-  margin-top: 8px;
+/* Center workspace column */
+.workspace {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--tempest-bg-base);
+  overflow: hidden;
+  padding: 0 8px 15px;
 }
+
+/* Canvas wrapper — contains the rounded canvas + footer badge row */
+.canvas-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--tempest-bg-canvas-wrap);
+  border-radius: 20px;
+}
+
+/* Empty bar at top of canvas — transparent chrome strip */
+.canvas > .bar {
+  background: transparent;
+}
+
+/* Rounded canvas that holds all pane content */
+.canvas {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--tempest-bg-editor);
+  border: 1px solid var(--tempest-canvas-border);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+/* Footer below the canvas — status badges */
+.canvas-wrap-footer {
+  flex-shrink: 0;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 20px;
+}
+
+/* Nav buttons */
 
 /* Wrapper that holds the scroll area + fade overlays */
 .sidebar-scroll-wrap {
@@ -374,20 +415,30 @@
   border-radius: 2px;
 }
 
+.sidebar-nav {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 8px 4px;
+}
+
 .sidebar-nav-btn {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   width: 100%;
-  padding: 8px 14px;
+  padding: 6px 10px;
   background: transparent;
   border: none;
+  border-radius: 6px;
   color: var(--tempest-fg-muted);
-  font-size: var(--sidebar-fs, 14px);
+  font-size: 13px;
+  font-weight: 450;
   font-family: inherit;
   cursor: pointer;
   text-align: left;
-  transition: background 0.1s, color 0.1s;
+  transition: background 0.15s, color 0.15s;
   user-select: none;
 }
 
@@ -405,9 +456,9 @@
 /* Agents section */
 
 .sidebar-section-label {
-  padding: 16px 14px 6px;
-  font-size: 11px;
-  font-weight: 600;
+  padding: 10px 10px 4px;
+  font-size: 10.5px;
+  font-weight: 650;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--tempest-fg-subtle);
@@ -480,14 +531,206 @@
 
 /* Project switcher */
 
-.sidebar-bottom {
+/* ── Bottom icon tray ─────────────────────────────────────────── */
+
+.sidebar-bottom-wrap {
   flex-shrink: 0;
-  padding: 0 0 10px;
 }
 
-.sidebar-bottom .project-switcher {
-  margin: 8px 10px 0;
-  width: calc(100% - 20px);
+.sidebar-bottom-sep {
+  margin: 0 12px;
+  border: none;
+  border-top: 1px dashed var(--tempest-border-subtle);
+}
+
+.sidebar-bottom {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 16px;
+}
+
+.sidebar-bottom-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.sidebar-bottom-icon {
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+
+.sidebar-bottom-icon:hover {
+  color: var(--tempest-fg-default);
+}
+
+/* ── Expandable worktree rows (sb-*) ──────────────────────────── */
+
+.sb-worktree {
+  display: flex;
+  flex-direction: column;
+}
+
+.sb-worktree-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s;
+  min-width: 0;
+  user-select: none;
+}
+
+.sb-worktree-row:hover {
+  background: var(--tempest-bg-hover);
+}
+
+.sb-worktree-chevron {
+  flex-shrink: 0;
+  color: var(--tempest-fg-subtle);
+  transition: transform 0.15s;
+}
+
+.sb-worktree-chevron.open {
+  transform: rotate(90deg);
+}
+
+.sb-worktree-label {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--tempest-fg-muted);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.sb-worktree-branch-icon {
+  flex-shrink: 0;
+  color: var(--tempest-fg-subtle);
+  opacity: 0.55;
+}
+
+.sb-worktree-add {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+  padding: 0;
+}
+
+.sb-worktree-row:hover .sb-worktree-add {
+  opacity: 1;
+}
+
+.sb-worktree-add:hover {
+  background: var(--tempest-bg-active);
+  color: var(--tempest-fg-default);
+}
+
+.sb-worktree-dropdown {
+  display: flex;
+  flex-direction: column;
+  margin: 2px 0 4px 18px;
+  border-left: 1px solid var(--tempest-border-subtle);
+  padding-left: 10px;
+  gap: 2px;
+}
+
+.sb-dropdown-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sb-dropdown-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tempest-fg-subtle);
+  padding: 4px 6px 2px;
+  user-select: none;
+}
+
+.sb-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 11.5px;
+  color: var(--tempest-fg-muted);
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  width: 100%;
+  text-align: left;
+  transition: background 0.12s;
+  min-width: 0;
+}
+
+.sb-dropdown-item:hover {
+  background: var(--tempest-bg-hover);
+}
+
+.sb-dropdown-item--active {
+  background: var(--tempest-bg-active);
+  color: var(--tempest-fg-default);
+}
+
+.sb-dropdown-item--active:hover {
+  background: var(--tempest-bg-hover);
+}
+
+.sb-dropdown-item--ghost {
+  opacity: 0.5;
+}
+
+.sb-dropdown-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-dropdown-empty {
+  font-size: 11px;
+  color: var(--tempest-fg-subtle);
+  padding: 4px 6px;
+  user-select: none;
+}
+
+/* Project branch count pill */
+
+.sidebar-project-count {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--tempest-fg-subtle);
+  background: var(--tempest-bg-hover);
+  padding: 1px 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  line-height: 1.6;
 }
 
 .project-switcher {
@@ -1056,16 +1299,7 @@
   cursor: not-allowed;
 }
 
-/* Main area */
-
-.workspace-main {
-  flex: 1;
-  min-width: 0;
-  background: var(--tempest-bg-editor);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
+/* Session tab bar sits at the top of the canvas */
 
 /* Session tab bar */
 
@@ -1296,6 +1530,12 @@
 
 /* Project tree (default mode) */
 
+.sidebar-proj-list {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 4px 0;
+}
+
 .sidebar-project {
   display: flex;
   flex-direction: column;
@@ -1305,31 +1545,32 @@
   display: flex;
   align-items: center;
   width: 100%;
+  border-radius: 6px;
+  transition: background 0.12s;
 }
 
+.sidebar-project-header:hover {
+  background: var(--tempest-bg-hover);
+}
 
 .sidebar-project-toggle {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   flex: 1;
   min-width: 0;
-  padding: 6px 6px 6px 14px;
+  padding: 5px 4px 5px 6px;
   background: transparent;
   border: none;
-  color: var(--tempest-fg-muted);
-  font-size: var(--sidebar-fs, 14px);
+  color: var(--tempest-fg-default);
+  font-size: 12.5px;
+  font-weight: 550;
   font-family: inherit;
   cursor: pointer;
   text-align: left;
-  transition: background 0.1s, color 0.1s;
+  transition: color 0.1s;
   user-select: none;
   overflow: hidden;
-}
-
-.sidebar-project-toggle:hover {
-  background: var(--tempest-bg-hover);
-  color: var(--tempest-fg-default);
 }
 
 .sidebar-project-toggle svg {
@@ -1448,6 +1689,8 @@
 .sidebar-project-sessions {
   display: flex;
   flex-direction: column;
+  padding: 1px 0 5px 22px;
+  gap: 1px;
 }
 
 .sidebar-project-session {
@@ -1516,7 +1759,7 @@
   overflow-y: auto;
   display: flex;
   justify-content: center;
-  padding: 48px 24px 64px;
+  padding: 16px 24px 64px;
 }
 
 .overview-container {
@@ -1779,12 +2022,29 @@
 
 /* ─── Split pane slots ─────────────────────────────────────────────────────── */
 
-/* Wrapper div around each session. In single-pane mode fills the content area so
-   the terminal container has real dimensions at mount. In split mode the inline
-   top/left/width/height percentages override inset. */
+/* Inset viewport that hosts all pane-slots + split handles. Positioned 14px in
+   from the left/right of the content area (inside .workspace-content's border) so
+   every pane — single or split — is framed by a 14px gap. It is the positioning
+   context for the absolutely-positioned pane-slots and split handles below, and
+   the element measured by workspaceContentRef for pane sizing + split drags. */
+.panes-viewport {
+  position: absolute;
+  inset: 0 14px;
+  /* Transparent container must not intercept clicks. On the overview (no active
+     sessions) it has no children, so it would otherwise sit on top of
+     .overview-page and swallow every click. Interactive children below re-enable
+     pointer events on themselves. */
+  pointer-events: none;
+}
+
+/* Wrapper div around each session. In single-pane mode fills the viewport so the
+   terminal container has real dimensions at mount. In split mode the inline
+   top/left/width/height percentages (fractions of the viewport) override inset. */
 .pane-slot {
   position: absolute;
   inset: 0;
+  /* Re-enable clicks disabled on the .panes-viewport container. */
+  pointer-events: auto;
 }
 
 .pane-slot--split:not(.pane-slot--focused) {
@@ -1831,6 +2091,8 @@
   z-index: 20;
   background: var(--tempest-border-subtle);
   transition: background 0.15s;
+  /* Re-enable drag interaction disabled on the .panes-viewport container. */
+  pointer-events: auto;
 }
 
 .pane-split-handle:hover,

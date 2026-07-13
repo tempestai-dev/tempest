@@ -1,7 +1,13 @@
+/* ─── Topbar (window chrome only) ─────────────────────────────────────────── */
+
 .topbar {
   position: relative;
   height: 32px;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  background: var(--tempest-bg-base);
   user-select: none;
 }
 
@@ -11,58 +17,17 @@
   -webkit-app-region: drag;
 }
 
-.topbar-left {
-  position: absolute;
-  left: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  -webkit-app-region: no-drag;
-  z-index: 1;
-}
-
-.topbar-zen-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  color: var(--tempest-fg-subtle);
-  cursor: pointer;
-  transition: background 0.1s, color 0.1s;
-}
-
-.topbar-zen-btn:hover {
-  background: var(--tempest-bg-hover);
-  color: var(--tempest-fg-default);
-}
-
-.topbar-zen-btn--disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-.topbar-zen-btn--disabled:hover {
-  background: transparent;
-  color: var(--tempest-fg-subtle);
-}
-
-.topbar-controls {
-  position: absolute;
-  right: 6px;
-  top: 50%;
-  transform: translateY(-50%);
+.topbar-right {
   display: flex;
   align-items: center;
   gap: 2px;
+  padding-right: 6px;
   -webkit-app-region: no-drag;
   z-index: 1;
+  flex-shrink: 0;
 }
+
+/* ─── Window chrome buttons ────────────────────────────────────────────────── */
 
 .win-btn {
   width: 28px;
@@ -88,4 +53,65 @@
 .win-btn--close:hover {
   background: var(--tempest-accent-red);
   color: #ffffff;
+}
+
+/* ─── Avatar, slash, title, icons — used inside .bar (Toolbar) ────────────── */
+
+.topbar-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--tempest-fg-default);
+  color: var(--tempest-bg-base);
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  letter-spacing: 0;
+  user-select: none;
+}
+
+.topbar-slash {
+  width: 1.5px;
+  height: 17px;
+  background: var(--tempest-border-subtle);
+  flex-shrink: 0;
+  transform: rotate(20deg);
+}
+
+.topbar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tempest-fg-default);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.topbar-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--tempest-fg-default);
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.topbar-icon:hover {
+  opacity: 1;
+}
+
+.topbar-icon.active {
+  opacity: 1;
+}
+
+/* ─── Prompt picker anchor ─────────────────────────────────────────────────── */
+
+.topbar-prompt-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
 }
