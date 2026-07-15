@@ -133,7 +133,6 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [showBranchMenu, setShowBranchMenu] = useState(false);
   const [branchTab, setBranchTab] = useState<"local" | "remote">("local");
-  const branchMenuRef = useRef<HTMLDivElement>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleteAlsoRemote, setDeleteAlsoRemote] = useState(true);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -338,17 +337,6 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
 
   // ── Branch menu ───────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    if (!showBranchMenu) return;
-    const handler = (e: MouseEvent) => {
-      if (branchMenuRef.current && !branchMenuRef.current.contains(e.target as Node)) {
-        setShowBranchMenu(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [showBranchMenu]);
-
   const switchBranch = async (name: string) => {
     setShowBranchMenu(false);
     try {
@@ -431,7 +419,7 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
       <div className="dv-root">
 
         {/* ── Left: staging + commit panel ── */}
-        <div className="dv-panel">
+        <div className="dv-panel" style={showBranchMenu ? { display: "none" } : {}}>
 
           <div className="dv-panel-actions">
             <button
@@ -523,11 +511,11 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
         </div>
 
         {/* ── Right: branch bar + diff viewer ── */}
-        <div className="dv-right">
+        <div className="dv-right" style={showBranchMenu ? { paddingLeft: 0 } : {}}>
 
           {/* Branch bar */}
           <div className="dv-branch-bar">
-            <div className="dv-branch-group" ref={branchMenuRef}>
+            <div className="dv-branch-group">
               <button
                 className={`dv-branch-pill${showBranchMenu ? " open" : ""}`}
                 onClick={() => setShowBranchMenu((v) => !v)}
@@ -536,46 +524,6 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
                 <span className="dv-branch-name">{currentBranch || "branch"}</span>
                 <ChevronDown size={10} className={`dv-pill-chevron${showBranchMenu ? " open" : ""}`} />
               </button>
-
-              {showBranchMenu && (
-                <div className="dv-branch-dd">
-                  <div className="dv-branch-dd-tabs">
-                    <button className={`dv-bdt${branchTab === "local" ? " active" : ""}`} onClick={() => setBranchTab("local")}>
-                      Local
-                    </button>
-                    <button className={`dv-bdt${branchTab === "remote" ? " active" : ""}`} onClick={() => setBranchTab("remote")}>
-                      Remote
-                    </button>
-                  </div>
-                  <div className="dv-branch-dd-list">
-                    {branchList.length === 0 ? (
-                      <div className="dv-branch-empty">No branches</div>
-                    ) : branchList.map((b) => (
-                      <div key={b.name} className={`dv-branch-item-row${b.is_current ? " current" : ""}`}>
-                        <button
-                          className="dv-branch-item"
-                          onClick={() => !b.is_current && switchBranch(b.name)}
-                          disabled={b.is_current}
-                        >
-                          <GitBranch size={10} />
-                          <span>{b.name}</span>
-                          {b.is_current && <Check size={10} className="dv-branch-check" />}
-                        </button>
-                        {!b.is_current && !b.is_remote && (
-                          <Tooltip content="Delete branch" placement="left">
-                            <button
-                              className="dv-branch-del"
-                              onClick={(e) => { e.stopPropagation(); setDeleteTarget(b.name); setShowBranchMenu(false); }}
-                            >
-                              <Trash2 size={10} />
-                            </button>
-                          </Tooltip>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
 
             <div className="dv-branch-push">
@@ -636,9 +584,43 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
             </div>
           </div>
 
-          {/* Diff viewer */}
+          {/* Diff viewer / branch list */}
           <div className="dv-viewer">
-            {selected && activeFile ? (
+            {showBranchMenu ? (
+              <>
+                <div className="dv-branch-view-tabs">
+                  <button className={`dv-bdt${branchTab === "local" ? " active" : ""}`} onClick={() => setBranchTab("local")}>Local</button>
+                  <button className={`dv-bdt${branchTab === "remote" ? " active" : ""}`} onClick={() => setBranchTab("remote")}>Remote</button>
+                </div>
+                <div className="dv-branch-view-list">
+                  {branchList.length === 0 ? (
+                    <div className="dv-branch-empty">No branches</div>
+                  ) : branchList.map((b) => (
+                    <div key={b.name} className={`dv-branch-item-row${b.is_current ? " current" : ""}`}>
+                      <button
+                        className="dv-branch-item"
+                        onClick={() => !b.is_current && switchBranch(b.name)}
+                        disabled={b.is_current}
+                      >
+                        <GitBranch size={11} />
+                        <span>{b.name}</span>
+                        {b.is_current && <Check size={11} className="dv-branch-check" />}
+                      </button>
+                      {!b.is_current && !b.is_remote && (
+                        <Tooltip content="Delete branch" placement="left">
+                          <button
+                            className="dv-branch-del"
+                            onClick={(e) => { e.stopPropagation(); setDeleteTarget(b.name); setShowBranchMenu(false); }}
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        </Tooltip>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : selected && activeFile ? (
               <>
                 <div className="dv-viewer-hdr">
                   <span className="dv-viewer-path">{selected.path}</span>
