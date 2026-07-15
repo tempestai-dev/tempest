@@ -423,55 +423,63 @@
 
 .dv-right {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  min-width: 0;
+  padding-left: 10px;
 }
 
 /* ── Branch bar ─────────────────────────────────────────────────────────── */
 
 .dv-branch-bar {
+  height: 36px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
   padding: 0 12px;
-  height: 38px;
-  border-bottom: 1px solid var(--tempest-border-default);
-  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
 }
 
 .dv-branch-group {
   position: relative;
-  flex-shrink: 0;
+  display: flex;
+  align-items: center;
 }
 
 .dv-branch-pill {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 8px;
-  border: 1px solid var(--tempest-border-subtle);
+  gap: 6px;
+  padding: 5px 9px;
   border-radius: 5px;
-  background: var(--tempest-bg-active);
-  color: var(--tempest-fg-muted);
-  font-size: 11px;
-  font-family: "Geist Mono", monospace;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: #0a0a0a;
   cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
-  max-width: 180px;
+  letter-spacing: -0.01em;
+  transition: background 0.15s, color 0.15s;
 }
 
 .dv-branch-pill:hover,
 .dv-branch-pill.open {
-  background: var(--tempest-bg-hover);
-  color: var(--tempest-fg-default);
-  border-color: var(--tempest-border-default);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="dark"] .dv-branch-pill {
+  color: #e4e4e7;
+}
+
+[data-theme="dark"] .dv-branch-pill:hover,
+[data-theme="dark"] .dv-branch-pill.open {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .dv-branch-name {
-  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -479,11 +487,15 @@
 }
 
 .dv-pill-chevron {
+  opacity: 0.5;
   flex-shrink: 0;
-  transition: transform 0.15s ease;
+  transition: transform 0.2s cubic-bezier(0.34, 1.2, 0.64, 1), opacity 0.15s;
 }
 
-.dv-pill-chevron.open { transform: rotate(180deg); }
+.dv-branch-pill.open .dv-pill-chevron {
+  transform: rotate(180deg);
+  opacity: 1;
+}
 
 .dv-branch-dd {
   position: absolute;
@@ -725,189 +737,240 @@
 
 .dv-viewer {
   flex: 1;
+  min-width: 0;
+  overflow: auto;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
+}
+
+[data-theme="dark"] .dv-viewer {
+  scrollbar-color: rgba(255, 255, 255, 0.07) transparent;
 }
 
 .dv-viewer-hdr {
-  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  height: 34px;
-  border-bottom: 1px solid var(--tempest-border-subtle);
+  justify-content: space-between;
+  padding: 8px 16px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  background: var(--canvas-bg);
+  z-index: 5;
 }
 
 .dv-viewer-path {
-  flex: 1;
-  font-size: 12px;
   font-family: "Geist Mono", monospace;
-  color: var(--tempest-fg-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
+  font-size: 12px;
+  color: #6b7280;
+  letter-spacing: -0.01em;
 }
 
-.dv-viewer-badge {
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: var(--tempest-bg-active);
-  color: var(--tempest-fg-muted);
+[data-theme="dark"] .dv-viewer-path {
+  color: #71717a;
 }
 
 .dv-file-stage-btn {
-  flex-shrink: 0;
-  padding: 3px 8px;
-  border: 1px solid var(--tempest-border-subtle);
-  border-radius: 4px;
-  background: transparent;
-  color: var(--tempest-fg-muted);
-  font-size: 10px;
+  font-family: inherit;
+  font-size: 11px;
   font-weight: 500;
+  color: #ffffff;
+  background: #000000;
+  border: none;
+  border-radius: 4px;
+  padding: 3px 10px;
   cursor: pointer;
-  transition: background 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+  letter-spacing: -0.01em;
+  transition: background 0.12s, color 0.12s;
 }
 
-.dv-file-stage-btn:hover {
-  background: var(--tempest-bg-hover);
-  color: var(--tempest-fg-default);
-  border-color: var(--tempest-border-default);
+.dv-file-stage-btn:hover { background: #1a1a1a; }
+
+.dv-file-stage-btn.staged {
+  background: #f0f0f0;
+  color: #444444;
 }
 
-.dv-hunks-scroll {
-  flex: 1;
-  overflow: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--tempest-border-subtle) transparent;
+.dv-file-stage-btn.staged:hover {
+  background: #fee2e2;
+  color: #dc2626;
 }
 
-.dv-hunks-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
-.dv-hunks-scroll::-webkit-scrollbar-thumb { background: var(--tempest-border-subtle); border-radius: 4px; }
+[data-theme="dark"] .dv-file-stage-btn {
+  background: #ffffff;
+  color: #000000;
+}
+
+[data-theme="dark"] .dv-file-stage-btn:hover { background: #e6e6e6; }
+
+[data-theme="dark"] .dv-file-stage-btn.staged {
+  background: #1f1f1f;
+  color: #a1a1aa;
+}
+
+[data-theme="dark"] .dv-file-stage-btn.staged:hover {
+  background: rgba(220, 38, 38, 0.18);
+  color: #f87171;
+}
 
 .dv-diff-center {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100%;
-  min-height: 120px;
 }
 
 .dv-diff-empty {
-  font-size: 12px;
-  color: var(--tempest-fg-subtle);
-  opacity: 0.55;
+  font-size: 12.5px;
+  color: #b4b4b4;
+  letter-spacing: -0.01em;
 }
 
+[data-theme="dark"] .dv-diff-empty { color: #4a4a4a; }
+
 .dv-hunks {
-  min-width: max-content;
-  padding: 4px 0 8px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .dv-hunk {
-  margin: 8px 12px;
   border-radius: 6px;
   overflow: hidden;
-  box-shadow: 0 0 0 1px rgba(0,0,0,0.06);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+.dv-hunk.staged {
+  box-shadow: 0 0 0 1px rgba(22, 163, 74, 0.3);
 }
 
 [data-theme="dark"] .dv-hunk {
-  box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .dv-hunk.staged {
+  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.25);
 }
 
 .dv-hunk-hdr {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 3px 12px;
+  justify-content: space-between;
+  padding: 5px 12px;
   background: #fafafa;
-  border-bottom: 1px solid rgba(0,0,0,0.06);
 }
 
-[data-theme="dark"] .dv-hunk-hdr {
-  background: #141414;
-  border-bottom-color: rgba(255,255,255,0.06);
-}
+.dv-hunk.staged .dv-hunk-hdr { background: #f0fdf4; }
+
+[data-theme="dark"] .dv-hunk-hdr { background: #141414; }
+
+[data-theme="dark"] .dv-hunk.staged .dv-hunk-hdr { background: #0d1f12; }
 
 .dv-hunk-range {
-  flex: 1;
-  font-size: 11px;
   font-family: "Geist Mono", monospace;
+  font-size: 11px;
   color: #6b7280;
   font-style: italic;
 }
 
+[data-theme="dark"] .dv-hunk-range { color: #71717a; }
+
 .dv-hunk-btn {
-  flex-shrink: 0;
-  padding: 2px 8px;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: #ffffff;
+  background: #18794e;
   border: none;
   border-radius: 4px;
-  background: #18794e;
-  color: #ffffff;
-  font-size: 10px;
-  font-weight: 500;
+  padding: 2px 8px;
   cursor: pointer;
-  transition: background 0.1s ease;
+  letter-spacing: -0.01em;
+  transition: background 0.12s, color 0.12s;
 }
 
 .dv-hunk-btn:hover { background: #136740; }
 
+.dv-hunk-btn.staged {
+  background: #f5f5f5;
+  color: #444444;
+}
+
+.dv-hunk-btn.staged:hover {
+  background: #fff0f0;
+  color: #cc0000;
+}
+
+[data-theme="dark"] .dv-hunk-btn { background: #18794e; color: #ffffff; }
 [data-theme="dark"] .dv-hunk-btn:hover { background: #1f8f5c; }
 
-.dv-hunk-body { font-family: "Geist Mono", monospace; }
+[data-theme="dark"] .dv-hunk-btn.staged {
+  background: #1f1f1f;
+  color: #a1a1aa;
+}
+
+[data-theme="dark"] .dv-hunk-btn.staged:hover {
+  background: rgba(220, 38, 38, 0.16);
+  color: #f87171;
+}
+
+.dv-hunk-body {
+  font-family: "Geist Mono", monospace;
+  font-size: 11px;
+  line-height: 1.6;
+}
 
 /* ── Diff line styles ─────────────────────────────────────────────────────── */
 
 .diff-line {
   display: flex;
   align-items: stretch;
-  font-family: "Geist Mono", monospace;
-  font-size: 12.5px;
-  line-height: 20px;
-  min-width: max-content;
+  white-space: pre;
+  line-height: 1.6;
 }
 
-.diff-hunk    { background: rgba(59,130,246,0.06); }
-.diff-added   { background: rgba(22,163,74,0.08); }
-.diff-removed { background: rgba(220,38,38,0.06); }
+.diff-hunk    { background: rgba(59, 130, 246, 0.06); }
+.diff-added   { background: rgba(22, 163, 74, 0.08); }
+.diff-removed { background: rgba(220, 38, 38, 0.06); }
 .diff-context { background: transparent; }
 
-[data-theme="dark"] .diff-added   { background: rgba(22,163,74,0.12); }
-[data-theme="dark"] .diff-removed { background: rgba(220,38,38,0.10); }
+[data-theme="dark"] .diff-added   { background: rgba(22, 163, 74, 0.12); }
+[data-theme="dark"] .diff-removed { background: rgba(220, 38, 38, 0.10); }
 
 .diff-num {
-  flex-shrink: 0;
-  width: 44px;
-  padding: 0 8px;
+  width: 28px;
+  padding: 0 4px;
   text-align: right;
-  color: var(--tempest-fg-subtle);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
+  color: #aaaaaa;
+  flex-shrink: 0;
   user-select: none;
-  opacity: 0.45;
-  border-right: 1px solid var(--tempest-border-subtle);
+  background: rgba(0, 0, 0, 0.02);
+  font-size: 9.5px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
 }
 
-.diff-num:first-child { border-right: none; }
+[data-theme="dark"] .diff-num {
+  color: #555555;
+  background: rgba(255, 255, 255, 0.02);
+}
 
-.diff-added   .diff-num:first-child { opacity: 0; }
-.diff-removed .diff-num:last-of-type { opacity: 0; }
+.diff-hunk .diff-num { background: rgba(59, 130, 246, 0.06); }
 
 .diff-content {
+  padding: 0 6px;
   flex: 1;
-  padding: 0 16px;
-  white-space: pre;
-  color: var(--tempest-fg-default);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
 }
 
-.diff-hunk    .diff-content { color: #6b7280; font-style: italic; opacity: 0.9; }
+.diff-hunk    .diff-content { color: #6b7280; font-style: italic; }
 .diff-added   .diff-content { color: #15803d; }
 .diff-removed .diff-content { color: #dc2626; }
 .diff-context .diff-content { color: #6b7280; }

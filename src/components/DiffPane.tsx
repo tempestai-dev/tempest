@@ -642,20 +642,18 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
               <>
                 <div className="dv-viewer-hdr">
                   <span className="dv-viewer-path">{selected.path}</span>
-                  <span className={`dv-viewer-badge dv-viewer-badge--${selected.section}`}>{selected.section}</span>
                   <button
-                    className="dv-file-stage-btn"
+                    className={`dv-file-stage-btn${selected.section === "staged" ? " staged" : ""}`}
                     onClick={() => selected.section === "staged" ? unstageFile(selected.path) : stageFile(selected.path)}
                   >
                     {selected.section === "staged" ? "Unstage file" : "Stage file"}
                   </button>
                 </div>
-                <div className="dv-hunks-scroll">
-                  {diffLoading ? (
-                    <div className="dv-diff-center"><Loader size={16} className="dp-spin" /></div>
-                  ) : hunks.length === 0 ? (
-                    <div className="dv-diff-center dv-diff-empty">No diff to display</div>
-                  ) : (
+                {diffLoading ? (
+                  <div className="dv-diff-center"><Loader size={16} className="dp-spin" /></div>
+                ) : hunks.length === 0 ? (
+                  <div className="dv-diff-center dv-diff-empty">No diff to display</div>
+                ) : (
                     <div className="dv-hunks">
                       {hunks.map((hunk, i) => (
                         <div key={i} className="dv-hunk">
@@ -756,7 +754,6 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
                       ))}
                     </div>
                   )}
-                </div>
               </>
             ) : (
               <div className="dv-diff-center dv-diff-empty">Select a file to view its diff</div>
