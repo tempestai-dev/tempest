@@ -58,12 +58,12 @@
 /* ── Left panel: staging + commit ────────────────────────────────────────── */
 
 .dv-panel {
-  width: 256px;
+  width: 230px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--tempest-border-default);
   overflow: hidden;
+  padding-right: 6px;
 }
 
 .dv-panel-actions {
@@ -81,12 +81,12 @@
   align-items: center;
   justify-content: center;
   gap: 5px;
-  padding: 5px 10px;
+  padding: 8px 10px;
   border: none;
   border-radius: 5px;
   background: #000000;
   color: #ffffff;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: opacity 0.12s ease;
@@ -194,71 +194,88 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px 4px 10px;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  font-size: 11.5px;
+  color: #6b7280;
   cursor: pointer;
-  transition: background 0.1s ease;
+  border-radius: 4px;
+  text-align: left;
+  width: 100%;
   min-width: 0;
+  transition: background 0.12s, color 0.12s;
 }
 
-.dv-file-row:hover { background: var(--tempest-bg-hover); }
-.dv-file-row.active { background: var(--tempest-bg-active); }
+.dv-file-row:hover {
+  background: rgba(0, 0, 0, 0.035);
+  color: #0a0a0a;
+}
+
+.dv-file-row.active {
+  background: rgba(0, 0, 0, 0.05);
+  color: #0a0a0a;
+}
+
+[data-theme="dark"] .dv-file-row { color: #a1a1aa; }
+[data-theme="dark"] .dv-file-row:hover { background: rgba(255, 255, 255, 0.04); color: #e4e4e7; }
+[data-theme="dark"] .dv-file-row.active { background: rgba(255, 255, 255, 0.06); color: #e4e4e7; }
 
 .dv-fstatus {
-  font-size: 10px;
-  font-family: "Geist Mono", monospace;
-  font-weight: 700;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   flex-shrink: 0;
-  width: 12px;
-  text-align: center;
-}
-
-.dp-status--modified  { color: var(--tempest-git-modified); }
-.dp-status--added     { color: var(--tempest-git-added); }
-.dp-status--deleted   { color: var(--tempest-git-deleted); }
-.dp-status--renamed   { color: var(--tempest-accent-blue); }
-.dp-status--untracked { color: var(--tempest-git-untracked, var(--tempest-fg-subtle)); }
-
-.dv-fpath {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.dv-fdir {
-  font-size: 9px;
-  color: var(--tempest-fg-subtle);
-  font-family: "Geist Mono", monospace;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.2;
-}
-
-.dv-fname {
-  font-size: 11px;
-  font-family: "Geist Mono", monospace;
-  color: var(--tempest-fg-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  padding: 1px 4px;
+  border-radius: 3px;
   line-height: 1.4;
 }
 
-.dv-file-row.active .dv-fname { color: var(--tempest-fg-default); }
+.status-m { color: #ffffff; background: #d97706; }
+.status-a { color: #ffffff; background: #16a34a; }
+.status-d { color: #ffffff; background: #dc2626; }
+.status-r { color: #ffffff; background: #7c3aed; }
+.status-u { color: #ffffff; background: #6b7280; }
+
+.dv-fpath {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+}
+
+.dv-fdir {
+  font-size: 10.5px;
+  color: #a1a1aa;
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-theme="dark"] .dv-fdir { color: #52525b; }
+
+.dv-fname {
+  font-size: 11.5px;
+  font-weight: 450;
+  flex-shrink: 0;
+  color: inherit;
+}
 
 .dv-fstats {
   display: flex;
-  gap: 4px;
-  font-size: 10px;
-  font-family: "Geist Mono", monospace;
-  font-variant-numeric: tabular-nums;
+  gap: 2px;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
-.dv-adds { color: var(--tempest-git-added); }
-.dv-dels { color: var(--tempest-git-deleted); }
+.dv-adds { font-size: 10px; font-weight: 600; color: #16a34a; }
+.dv-dels { font-size: 10px; font-weight: 600; color: #dc2626; }
 
 .dv-file-actions {
   display: flex;

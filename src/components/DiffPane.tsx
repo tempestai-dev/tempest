@@ -67,11 +67,11 @@ function buildPrUrl(remoteUrl: string, branch: string): string {
 }
 
 function statusClass(s: string) {
-  if (s === "M") return "dp-status--modified";
-  if (s === "A") return "dp-status--added";
-  if (s === "D") return "dp-status--deleted";
-  if (s === "R") return "dp-status--renamed";
-  return "dp-status--untracked";
+  if (s === "M") return "status-m";
+  if (s === "A") return "status-a";
+  if (s === "D") return "status-d";
+  if (s === "R") return "status-r";
+  return "status-u";
 }
 
 function groupHunks(lines: DiffLine[]): Hunk[] {
@@ -410,28 +410,6 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
             {stats.adds > 0 && <span className="dv-adds">+{stats.adds}</span>}
             {stats.dels > 0 && <span className="dv-dels">-{stats.dels}</span>}
           </span>
-        )}
-        {section === "unstaged" ? (
-          <div className="dv-file-actions">
-            <Tooltip content="Stage" placement="left">
-              <button className="dv-file-btn dv-file-btn--stage" onClick={(e) => { e.stopPropagation(); stageFile(f.path); }}>
-                <Plus size={10} />
-              </button>
-            </Tooltip>
-            <Tooltip content="Discard" placement="left">
-              <button className="dv-file-btn dv-file-btn--discard" onClick={(e) => { e.stopPropagation(); setDiscardTarget(f.path); }}>
-                <X size={10} />
-              </button>
-            </Tooltip>
-          </div>
-        ) : (
-          <div className="dv-file-actions">
-            <Tooltip content="Unstage" placement="left">
-              <button className="dv-file-btn dv-file-btn--unstage" onClick={(e) => { e.stopPropagation(); unstageFile(f.path); }}>
-                <Minus size={10} />
-              </button>
-            </Tooltip>
-          </div>
         )}
       </div>
     );
