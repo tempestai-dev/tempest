@@ -11,6 +11,7 @@ import {
   WrapText,
   ChevronsUpDown,
   ChevronsDownUp,
+  Eye,
 } from "lucide-react";
 import { Tooltip } from "./Tooltip";
 import "./RightSidebar.css";
@@ -167,7 +168,7 @@ const MIN_WIDTH = 180;
 const MAX_WIDTH = 560;
 const DEFAULT_WIDTH = 260;
 
-export function RightSidebar({ cwd, rootPath, open, gitRevision, noGit, onOpenFile }: Props) {
+export function RightSidebar({ cwd, rootPath, open, gitRevision, noGit, onOpenDiff, onOpenFile }: Props) {
   const [activeTab, setActiveTab] = useState<RightTab>("files");
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [changes, setChanges] = useState<GitChange[]>([]);
@@ -423,6 +424,13 @@ export function RightSidebar({ cwd, rootPath, open, gitRevision, noGit, onOpenFi
                       </button>
                     </Tooltip>
                   </>
+                )}
+                {onOpenDiff && (
+                  <Tooltip content="Open in Diff tab" placement="top">
+                    <button className="rs-toolbar-btn" onClick={onOpenDiff}>
+                      <Eye size={13} />
+                    </button>
+                  </Tooltip>
                 )}
                 <Tooltip content="Reload" placement="top">
                   <button

@@ -51,7 +51,7 @@ import { useKeybindings, matchesEvent, formatShortcut } from "../store/keybindin
 import { useAttribution, getAttribution, COAUTHOR_LINE } from "../store/attribution";
 import { useSettings, getSettings, updateSetting } from "../store/appSettings";
 import { TerminalPane } from "./TerminalPane";
-import { DiffPane } from "./DiffPane";
+import { DiffViewNew } from "./DiffViewNew";
 import { PreviewPane } from "./PreviewPane";
 import { CodeMirrorPane } from "./CodeMirrorPane";
 import { ChatPane } from "./ChatPane";
@@ -100,6 +100,7 @@ interface Session {
   sandboxed?: boolean; // true when session is running inside a Hephaestus isolation sandbox
   parentSessionId?: string; // set when this session was spawned via a split from another
   storeKey?: string; // the sessions.ts key this session was saved under; undefined = not persisted
+  initialDiffPath?: string; // set when opened from Changes tab — skips the project picker
   metadata: {
     resumeCount: number;
     hasBeenResumed: boolean;
@@ -200,7 +201,6 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const [activeSection, setActiveSection] = useState<NavSection>("overview");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [tabsMode] = useState<"designed" | "tabbed" | "ver1" | "designer">("designer");
-  const [canvasMode, setCanvasMode] = useState<"agents" | "diff">("agents");
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
   const [sessionMenuRect, setSessionMenuRect] = useState<DOMRect | null>(null);
   const [sessionMenuPlacement, setSessionMenuPlacement] = useState<NewSessionPlacement>("below");
@@ -1092,7 +1092,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
     }
   }
 
-  function openDiffTab(cwd: string, projectId: string) {
+  function openDiffTab(cwd: string, projectId: string, initialDiffPath?: string) {
     // If a diff tab for this cwd is already open, just focus it.
     const existing = sessionsRef.current.find((s) => s.kind === "diff" && s.cwd === cwd);
     if (existing) { setActiveSessionId(existing.id); return; }
@@ -1102,6 +1102,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
     setRuntimeState({ tabs: [...st.tabs.filter((t) => !(t.kind === "diff" && t.cwd === cwd)), tab] });
     setSessions((prev) => [...prev, {
       id: sessionId, instanceId: sessionId, name: "Diff", cwd, projectId, kind: "diff",
+      initialDiffPath,
       createdAt: new Date().toISOString(),
       metadata: { resumeCount: 0, hasBeenResumed: false },
     }]);
@@ -1806,8 +1807,11 @@ export function WorkspaceView({ zen, name, path }: Props) {
           <>
             <Tooltip content="Toggle diff view" placement="bottom">
               <SplitSquareHorizontal
-                className={`topbar-icon${canvasMode === "diff" ? " active" : ""}`}
-                onClick={() => setCanvasMode((m) => m === "diff" ? "agents" : "diff")}
+                className={`topbar-icon${sessions.some(s => s.kind === "diff") ? " active" : ""}`}
+                onClick={() => {
+                  const proj = activeSessionProject ?? projects[0];
+                  if (proj) openDiffTab(proj.path, proj.id);
+                }}
               />
             </Tooltip>
             <Tooltip content="Keyboard shortcuts" placement="bottom">
@@ -2441,7 +2445,20 @@ export function WorkspaceView({ zen, name, path }: Props) {
                     />
                   )}
                   {s.kind === "diff" ? (
-                    <DiffPane sessionId={s.id} cwd={s.cwd} hidden={hidden} gitRevision={gitRevision} />
+                    <DiffViewNew
+                      sessionId={s.id}
+                      hidden={hidden}
+                      projects={projects}
+                      initialPath={s.initialDiffPath}
+                      onSendToAgent={async (message) => {
+                        const agentSession = sessions.find(
+                          (sess) => !sess.kind && sess.agent && sess.projectId === s.projectId
+                        );
+                        if (!agentSession) return;
+                        const bytes = Array.from(new TextEncoder().encode(message + "\r"));
+                        await invoke("write_to_pty", { sessionId: agentSession.id, data: bytes }).catch(() => {});
+                      }}
+                    />
                   ) : s.kind === "preview" ? (
                     <PreviewPane
                       sessionId={s.id}
@@ -2687,7 +2704,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
             open={rightSidebarOpen}
             gitRevision={gitRevision}
             noGit={activeSession.noGit}
-            onOpenDiff={activeSession.kind !== "diff" && activeSession.kind !== "preview" ? () => openDiffTab(activeSession.kind === "editor" ? (projects.find((p) => p.id === activeSession.projectId)?.path ?? activeSession.cwd) : activeSession.cwd, activeSession.projectId) : undefined}
+            onOpenDiff={activeSession.kind !== "diff" && activeSession.kind !== "preview" ? () => { const p = activeSession.kind === "editor" ? (projects.find((p) => p.id === activeSession.projectId)?.path ?? activeSession.cwd) : activeSession.cwd; openDiffTab(p, activeSession.projectId, p); } : undefined}
             onOpenFile={(filePath) => openEditorTab(filePath, activeSession.projectId)}
           />
         )}
