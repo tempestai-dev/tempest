@@ -2444,50 +2444,63 @@ export function WorkspaceView({ zen, name, path }: Props) {
           <div className="workspace-content">
             {diffPickerOpen && (
               <div className="diff-screen">
-                <div className="diff-screen-left">
-                  <div className="diff-screen-actions">
-                    <button className="diff-screen-back" onClick={() => setDiffPickerOpen(false)}>
-                      <ChevronLeft size={16} />
-                    </button>
-                  </div>
-                </div>
                 <div className="diff-screen-body">
-                  {diffPickerProjects.length === 0 ? (
-                    <div className="diff-screen-no-projects">No projects open</div>
-                  ) : diffPickerProjects.map((project) => {
-                    const branches = diffPickerBranches[project.id] ?? [];
-                    return (
-                      <div key={project.id} className="diff-screen-project">
-                        <div className="diff-screen-project-name">{project.name}</div>
-                        <div className="diff-screen-branches">
-                          {diffPickerLoading && branches.length === 0 ? (
-                            <div className="diff-screen-loading">Loading branches...</div>
-                          ) : branches.length === 0 ? (
-                            <div className="diff-screen-empty">No branches found</div>
-                          ) : branches.map((branch) => {
-                            const canOpen = !!branch.worktree_path || branch.is_current;
-                            return (
-                              <button
-                                key={`${project.id}:${branch.name}:${branch.is_remote ? "remote" : "local"}`}
-                                className="diff-screen-branch"
-                                disabled={!canOpen}
-                                onMouseDown={(e) => { e.preventDefault(); openDiffForBranch(project, branch); }}
-                                title={branch.worktree_path ?? (branch.is_current ? project.path : "Open this branch in a worktree to view its diff")}
-                              >
-                                <GitBranch size={13} />
-                                <span className="diff-screen-branch-name">{branch.name}</span>
-                                {(branch.worktree_path || branch.is_remote) && (
-                                  <span className="diff-screen-branch-meta">
-                                    {branch.worktree_path ? "worktree" : "remote"}
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
+                  <div className="diff-screen-inner">
+                    <header className="diff-screen-header">
+                      <h1 className="diff-screen-title">Open a diff</h1>
+                      <p className="diff-screen-subtitle">Choose a branch to review its changes</p>
+                    </header>
+
+                    {diffPickerProjects.length === 0 ? (
+                      <div className="diff-screen-empty-state">
+                        <GitBranch size={22} />
+                        <p>No projects open</p>
                       </div>
-                    );
-                  })}
+                    ) : diffPickerProjects.map((project) => {
+                      const branches = diffPickerBranches[project.id] ?? [];
+                      return (
+                        <section key={project.id} className="diff-screen-project">
+                          <div className="diff-screen-project-header">
+                            <span className="diff-screen-project-name">{project.name}</span>
+                            {branches.length > 0 && (
+                              <span className="diff-screen-project-count">{branches.length}</span>
+                            )}
+                          </div>
+                          <div className="diff-screen-branches">
+                            {diffPickerLoading && branches.length === 0 ? (
+                              <div className="diff-screen-loading">Loading branches…</div>
+                            ) : branches.length === 0 ? (
+                              <div className="diff-screen-empty">No branches found</div>
+                            ) : branches.map((branch) => {
+                              const canOpen = !!branch.worktree_path || branch.is_current;
+                              const kind = branch.is_current
+                                ? "head"
+                                : branch.worktree_path
+                                  ? "worktree"
+                                  : branch.is_remote
+                                    ? "remote"
+                                    : "local";
+                              return (
+                                <button
+                                  key={`${project.id}:${branch.name}:${branch.is_remote ? "remote" : "local"}`}
+                                  className={`diff-screen-branch diff-screen-branch--${kind}`}
+                                  disabled={!canOpen}
+                                  onMouseDown={(e) => { e.preventDefault(); openDiffForBranch(project, branch); }}
+                                  title={branch.worktree_path ?? (branch.is_current ? project.path : "Open this branch in a worktree to view its diff")}
+                                >
+                                  <GitBranch size={14} className="diff-screen-branch-icon" />
+                                  <span className="diff-screen-branch-name">{branch.name}</span>
+                                  <span className={`diff-screen-branch-meta diff-screen-branch-meta--${kind}`}>
+                                    {kind}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </section>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}

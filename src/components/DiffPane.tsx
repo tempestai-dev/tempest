@@ -31,6 +31,14 @@ interface FileStats {
   dels: number;
 }
 
+interface FileDiff {
+  status: string;
+  path: string;
+  adds: number;
+  dels: number;
+  lines: DiffLine[];
+}
+
 type FileSection = "staged" | "unstaged";
 
 interface BranchInfo {
@@ -109,6 +117,8 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
   const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
   const [diffLoading, setDiffLoading] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [allDiffs, setAllDiffs] = useState<FileDiff[]>([]);
+  const [allDiffsLoading, setAllDiffsLoading] = useState(false);
 
   const [lineComments, setLineComments] = useState<Record<string, string[]>>({});
   const [commentingLine, setCommentingLine] = useState<string | null>(null);
@@ -193,9 +203,26 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
     }
   }, [cwd]);
 
+  const loadAllDiffs = useCallback(async () => {
+    setAllDiffsLoading(true);
+    try {
+      const files = await invoke<FileDiff[]>("git_diff", { path: cwd });
+      setAllDiffs(files);
+    } catch {
+      setAllDiffs([]);
+    } finally {
+      setAllDiffsLoading(false);
+    }
+  }, [cwd]);
+
   useEffect(() => {
     if (!hidden) load();
   }, [cwd, gitRevision, hidden]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (hidden || selected || showBranchMenu) return;
+    loadAllDiffs();
+  }, [hidden, selected, showBranchMenu, cwd, gitRevision, loadAllDiffs]);
 
   useEffect(() => {
     setLineComments({});
@@ -737,8 +764,57 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
                     </div>
                   )}
               </>
+            ) : allDiffsLoading && allDiffs.length === 0 ? (
+              <div className="dv-diff-center"><Loader size={16} className="dp-spin" /></div>
+            ) : allDiffs.length === 0 ? (
+              <div className="dv-diff-center dv-diff-empty">No changes</div>
             ) : (
-              <div className="dv-diff-center dv-diff-empty">Select a file to view its diff</div>
+              <div className="dv-all-files">
+                {allDiffs.map((file) => {
+                  const fileHunks = groupHunks(file.lines);
+                  return (
+                    <div key={file.path} className="dv-file-block">
+                      <div className="dv-file-block-hdr">
+                        <span className={`dv-fstatus ${statusClass(file.status)}`}>{file.status}</span>
+                        <span className="dv-file-block-path">{file.path}</span>
+                        <span className="dv-file-block-stats">
+                          {file.adds > 0 && <span className="dv-adds">+{file.adds}</span>}
+                          {file.dels > 0 && <span className="dv-dels">-{file.dels}</span>}
+                        </span>
+                        <button
+                          className="dv-file-stage-btn"
+                          onClick={() => {
+                            const entry = [...staged, ...unstaged].find((f) => f.path === file.path);
+                            if (entry) selectFile(file.path, staged.some((s) => s.path === file.path) ? "staged" : "unstaged", entry);
+                          }}
+                        >
+                          View
+                        </button>
+                      </div>
+                      <div className="dv-hunks">
+                        {fileHunks.map((hunk, i) => (
+                          <div key={i} className="dv-hunk">
+                            <div className="dv-hunk-hdr">
+                              <span className="dv-hunk-range">{hunk.header.content}</span>
+                            </div>
+                            <div className="dv-hunk-body">
+                              {hunk.lines.map((line, li) => (
+                                <div key={li} className="diff-line-wrap">
+                                  <div className={`diff-line diff-${line.kind}`}>
+                                    <span className="diff-num">{line.line_old ?? ""}</span>
+                                    <span className="diff-num">{line.line_new ?? ""}</span>
+                                    <span className="diff-content">{line.content}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>
