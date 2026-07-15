@@ -2444,9 +2444,12 @@ export function WorkspaceView({ zen, name, path }: Props) {
           <div className="workspace-content">
             {diffPickerOpen && (
               <div className="diff-screen">
-                <div className="diff-screen-header">
-                  <span className="diff-screen-title">Open Diff View</span>
-                  <button className="diff-screen-close" onClick={() => setDiffPickerOpen(false)}><X size={14} /></button>
+                <div className="diff-screen-left">
+                  <div className="diff-screen-actions">
+                    <button className="diff-screen-back" onClick={() => setDiffPickerOpen(false)}>
+                      <ChevronLeft size={16} />
+                    </button>
+                  </div>
                 </div>
                 <div className="diff-screen-body">
                   {diffPickerProjects.length === 0 ? (
@@ -2466,16 +2469,18 @@ export function WorkspaceView({ zen, name, path }: Props) {
                             return (
                               <button
                                 key={`${project.id}:${branch.name}:${branch.is_remote ? "remote" : "local"}`}
-                                className={`diff-screen-branch${branch.is_current ? " diff-screen-branch--current" : ""}`}
+                                className="diff-screen-branch"
                                 disabled={!canOpen}
                                 onMouseDown={(e) => { e.preventDefault(); openDiffForBranch(project, branch); }}
                                 title={branch.worktree_path ?? (branch.is_current ? project.path : "Open this branch in a worktree to view its diff")}
                               >
                                 <GitBranch size={13} />
                                 <span className="diff-screen-branch-name">{branch.name}</span>
-                                <span className="diff-screen-branch-meta">
-                                  {branch.is_current ? "current" : branch.worktree_path ? "worktree" : branch.is_remote ? "remote" : "branch"}
-                                </span>
+                                {(branch.worktree_path || branch.is_remote) && (
+                                  <span className="diff-screen-branch-meta">
+                                    {branch.worktree_path ? "worktree" : "remote"}
+                                  </span>
+                                )}
                               </button>
                             );
                           })}

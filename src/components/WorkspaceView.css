@@ -104,150 +104,198 @@
 
 /* ── Diff screen (full workspace overlay) ────────────────────────────────── */
 
+/* ── Diff screen — exact copy of mockup proj-list / sess-row pattern ──── */
+
 .diff-screen {
   position: absolute;
   inset: 0;
   z-index: 20;
-  background: var(--tempest-bg-base);
+  background: #ffffff;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
+[data-theme="dark"] .diff-screen {
+  background: #0f0f10;
+}
+
+/* Header — toolbar-height row, back button only */
 .diff-screen-header {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 14px 20px 12px;
-  border-bottom: 1px solid var(--tempest-border-default);
+  padding: 4px 6px;
 }
 
-.diff-screen-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--tempest-fg-default);
-}
-
-.diff-screen-close {
+/* Back button — .changes-toolbar-btn from mockup */
+.diff-screen-back {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 24px;
   height: 24px;
   border: none;
-  border-radius: 5px;
   background: transparent;
-  color: var(--tempest-fg-subtle);
+  border-radius: 5px;
+  color: #8a8a8a;
   cursor: pointer;
-  transition: background 0.1s ease, color 0.1s ease;
+  transition: background 0.12s, color 0.12s;
 }
 
-.diff-screen-close:hover {
-  background: var(--tempest-bg-hover);
-  color: var(--tempest-fg-default);
+.diff-screen-back:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #3a3a3a;
 }
 
+[data-theme="dark"] .diff-screen-back {
+  color: #5a5a5a;
+}
+
+[data-theme="dark"] .diff-screen-back:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #c4c4cc;
+}
+
+/* Body — .proj-list from mockup */
 .diff-screen-body {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 20px;
+  padding: 2px 4px 0;
   display: flex;
   flex-direction: column;
-  gap: 20px;
   scrollbar-width: thin;
-  scrollbar-color: var(--tempest-border-subtle) transparent;
+  scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
+}
+
+[data-theme="dark"] .diff-screen-body {
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
 }
 
 .diff-screen-no-projects {
+  padding: 8px 6px;
   font-size: 12px;
-  color: var(--tempest-fg-subtle);
-  opacity: 0.55;
-  padding: 8px 0;
+  color: #a1a1aa;
 }
 
+/* Project group — .proj-item from mockup */
 .diff-screen-project {
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 
+/* Project name — .proj-header + .proj-name from mockup (non-interactive) */
 .diff-screen-project-name {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--tempest-fg-subtle);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 6px;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: #1a1a1a;
+  letter-spacing: -0.01em;
 }
 
+[data-theme="dark"] .diff-screen-project-name {
+  color: #d4d4d8;
+}
+
+/* Branches — .proj-sessions from mockup */
 .diff-screen-branches {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  padding: 1px 0 5px 22px;
+  gap: 1px;
 }
 
+/* Branch row — .sess-row from mockup */
 .diff-screen-branch {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border: 1px solid var(--tempest-border-subtle);
-  border-radius: 7px;
-  background: var(--tempest-bg-panel);
-  color: var(--tempest-fg-muted);
+  gap: 6px;
+  padding: 4px 8px 4px 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-family: inherit;
   font-size: 12px;
-  font-family: "Geist Mono", monospace;
-  text-align: left;
+  color: #5a5a5a;
   cursor: pointer;
-  transition: background 0.1s ease, border-color 0.1s ease, color 0.1s ease;
+  text-align: left;
+  width: 100%;
+  min-width: 0;
+  transition: background 0.12s;
 }
 
 .diff-screen-branch:hover:not(:disabled) {
-  background: var(--tempest-bg-hover);
-  border-color: var(--tempest-border-default);
-  color: var(--tempest-fg-default);
-}
-
-.diff-screen-branch--current {
-  border-color: var(--tempest-accent-blue);
-  color: var(--tempest-fg-default);
-}
-
-.diff-screen-branch--current:hover:not(:disabled) {
-  border-color: var(--tempest-accent-blue);
+  background: rgba(0, 0, 0, 0.05);
 }
 
 .diff-screen-branch:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
+[data-theme="dark"] .diff-screen-branch {
+  color: #71717a;
+}
+
+[data-theme="dark"] .diff-screen-branch:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Branch icon — .sess-branch-icon from mockup */
+.diff-screen-branch svg {
+  flex-shrink: 0;
+  color: #a1a1aa;
+}
+
+[data-theme="dark"] .diff-screen-branch svg {
+  color: #52525b;
+}
+
+/* Branch name — .sess-label from mockup */
 .diff-screen-branch-name {
+  font-size: 12px;
+  font-weight: 400;
+  color: #5a5a5a;
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 0;
 }
 
+[data-theme="dark"] .diff-screen-branch-name {
+  color: #71717a;
+}
+
+/* Meta badge — .sess-branch from mockup */
 .diff-screen-branch-meta {
+  font-size: 9.5px;
+  font-weight: 500;
+  color: #a0a0a0;
+  background: rgba(0, 0, 0, 0.05);
+  padding: 1px 5px;
+  border-radius: 4px;
   flex-shrink: 0;
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--tempest-fg-subtle);
+  max-width: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.diff-screen-branch--current .diff-screen-branch-meta {
-  color: var(--tempest-accent-blue);
+[data-theme="dark"] .diff-screen-branch-meta {
+  color: #52525b;
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .diff-screen-loading,
 .diff-screen-empty {
   font-size: 11px;
-  color: var(--tempest-fg-subtle);
-  opacity: 0.55;
-  padding: 6px 0;
+  color: #a1a1aa;
+  padding: 4px 6px;
 }
 
 .sub-bar-prompt-picker {

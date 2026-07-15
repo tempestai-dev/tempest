@@ -475,57 +475,89 @@
 
 .dv-branch-dd {
   position: absolute;
-  top: calc(100% + 5px);
+  top: calc(100% + 6px);
   left: 0;
-  min-width: 220px;
+  min-width: 248px;
   background: var(--tempest-bg-panel);
   border: 1px solid var(--tempest-border-default);
   border-radius: 8px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06);
   z-index: 100;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
+[data-theme="dark"] .dv-branch-dd {
+  box-shadow: 0 4px 24px rgba(0,0,0,0.55);
+}
+
+/* Tab strip – shadcn inline-tabs pill style */
 .dv-branch-dd-tabs {
   display: flex;
+  gap: 2px;
+  padding: 4px;
+  background: var(--tempest-bg-active);
   border-bottom: 1px solid var(--tempest-border-subtle);
 }
 
 .dv-bdt {
   flex: 1;
-  padding: 6px 10px;
+  padding: 4px 10px;
   border: none;
+  border-radius: 5px;
   background: transparent;
   color: var(--tempest-fg-subtle);
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 500;
   cursor: pointer;
-  transition: color 0.1s ease, background 0.1s ease;
+  transition: color 0.1s ease, background 0.1s ease, box-shadow 0.1s ease;
+  white-space: nowrap;
 }
 
-.dv-bdt:hover { color: var(--tempest-fg-default); background: var(--tempest-bg-hover); }
-.dv-bdt.active { color: var(--tempest-fg-default); font-weight: 600; }
+.dv-bdt:hover { color: var(--tempest-fg-muted); }
 
+.dv-bdt.active {
+  background: var(--tempest-bg-panel);
+  color: var(--tempest-fg-default);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.10), 0 0 0 0.5px rgba(0,0,0,0.06);
+}
+
+[data-theme="dark"] .dv-bdt.active {
+  box-shadow: 0 1px 4px rgba(0,0,0,0.45), 0 0 0 0.5px rgba(255,255,255,0.06);
+}
+
+/* Branch list */
 .dv-branch-dd-list {
-  max-height: 240px;
+  max-height: 216px;
   overflow-y: auto;
-  padding: 4px 0;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
   scrollbar-width: thin;
   scrollbar-color: var(--tempest-border-subtle) transparent;
 }
 
+.dv-branch-dd-list::-webkit-scrollbar { width: 4px; }
+.dv-branch-dd-list::-webkit-scrollbar-thumb { background: var(--tempest-border-subtle); border-radius: 2px; }
+
 .dv-branch-empty {
-  padding: 8px 12px;
-  font-size: 11px;
+  padding: 10px 10px;
+  font-size: 12px;
   color: var(--tempest-fg-subtle);
-  opacity: 0.6;
+  opacity: 0.55;
+  text-align: center;
 }
 
+/* Branch item row – shadcn Command item style */
 .dv-branch-item-row {
   display: flex;
   align-items: center;
-  padding: 0 6px 0 4px;
-  transition: background 0.1s ease;
+  border-radius: 5px;
+  padding-right: 2px;
+  transition: background 0.08s ease;
 }
 
 .dv-branch-item-row:hover { background: var(--tempest-bg-hover); }
@@ -535,25 +567,27 @@
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
+  gap: 7px;
+  padding: 5px 8px;
   background: none;
   border: none;
-  color: var(--tempest-fg-muted);
+  color: var(--tempest-fg-subtle);
   font-size: 12px;
   font-family: "Geist Mono", monospace;
   text-align: left;
   cursor: pointer;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  min-width: 0;
+  border-radius: 4px;
   transition: color 0.1s ease;
 }
+
+.dv-branch-item > svg:first-child { flex-shrink: 0; }
+.dv-branch-item > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 
 .dv-branch-item:hover:not(:disabled) { color: var(--tempest-fg-default); }
 .dv-branch-item-row.current .dv-branch-item { color: var(--tempest-fg-default); font-weight: 500; cursor: default; }
 
-.dv-branch-check { color: var(--tempest-accent-blue); flex-shrink: 0; }
+.dv-branch-check { color: var(--tempest-accent-blue); flex-shrink: 0; margin-left: auto; }
 
 .dv-branch-del {
   flex-shrink: 0;
@@ -568,11 +602,15 @@
   color: var(--tempest-fg-subtle);
   cursor: pointer;
   opacity: 0;
+  margin-right: 2px;
   transition: opacity 0.1s ease, background 0.1s ease, color 0.1s ease;
 }
 
 .dv-branch-item-row:hover .dv-branch-del { opacity: 1; }
-.dv-branch-del:hover { background: var(--tempest-git-deleted); color: #fff; }
+.dv-branch-del:hover {
+  background: color-mix(in srgb, var(--tempest-git-deleted) 12%, transparent);
+  color: var(--tempest-git-deleted);
+}
 
 /* ── Push actions ─────────────────────────────────────────────────────────── */
 
