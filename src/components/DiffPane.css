@@ -12,7 +12,6 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--tempest-bg-editor);
 }
 
 .diff-pane button { font-family: inherit; }
@@ -64,7 +63,6 @@
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--tempest-border-default);
-  background: var(--tempest-bg-panel);
   overflow: hidden;
 }
 
@@ -157,7 +155,6 @@
   letter-spacing: 0.07em;
   color: var(--tempest-fg-subtle);
   flex-shrink: 0;
-  background: var(--tempest-bg-panel);
 }
 
 .dv-panel-count {
@@ -304,7 +301,6 @@
   gap: 6px;
   padding: 10px;
   border-top: 1px solid var(--tempest-border-default);
-  background: var(--tempest-bg-panel);
 }
 
 .dv-commit-msg {
@@ -425,7 +421,6 @@
   padding: 0 12px;
   height: 38px;
   border-bottom: 1px solid var(--tempest-border-default);
-  background: var(--tempest-bg-panel);
   flex-shrink: 0;
 }
 
@@ -716,7 +711,6 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--tempest-bg-editor);
 }
 
 .dv-viewer-hdr {
@@ -727,7 +721,6 @@
   padding: 0 12px;
   height: 34px;
   border-bottom: 1px solid var(--tempest-border-subtle);
-  background: var(--tempest-bg-panel);
 }
 
 .dv-viewer-path {
