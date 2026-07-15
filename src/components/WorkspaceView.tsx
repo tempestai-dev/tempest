@@ -51,7 +51,7 @@ import { useKeybindings, matchesEvent, formatShortcut } from "../store/keybindin
 import { useAttribution, getAttribution, COAUTHOR_LINE } from "../store/attribution";
 import { useSettings, getSettings, updateSetting } from "../store/appSettings";
 import { TerminalPane } from "./TerminalPane";
-import { DiffViewNew } from "./DiffViewNew";
+import { DiffPane } from "./DiffPane";
 import { PreviewPane } from "./PreviewPane";
 import { CodeMirrorPane } from "./CodeMirrorPane";
 import { ChatPane } from "./ChatPane";
@@ -249,6 +249,9 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const [promptPickerItems, setPromptPickerItems] = useState<PromptEntry[]>([]);
   const [promptSentId, setPromptSentId] = useState<string | null>(null);
   const promptPickerRef = useRef<HTMLDivElement>(null);
+  const [diffPickerOpen, setDiffPickerOpen] = useState(false);
+  const [diffPickerBranches, setDiffPickerBranches] = useState<Record<string, BranchInfo[]>>({});
+  const [diffPickerLoading, setDiffPickerLoading] = useState(false);
   const [sidebarAtTop, setSidebarAtTop] = useState(true);
   const [sidebarAtBottom, setSidebarAtBottom] = useState(false);
   const sidebarScrollRef = useRef<HTMLDivElement>(null);
@@ -1109,6 +1112,39 @@ export function WorkspaceView({ zen, name, path }: Props) {
     setActiveSessionId(sessionId);
   }
 
+  async function openDiffPicker() {
+    setDiffPickerOpen((open) => !open);
+    setPromptPickerOpen(false);
+    if (diffPickerLoading || Object.keys(diffPickerBranches).length > 0) return;
+    const pickerProjects = zen && path
+      ? [{ id: "zen", name: name ?? folderName(path), path, expanded: true, worktrees: zenWorktrees }]
+      : projects;
+    if (pickerProjects.length === 0) return;
+    setDiffPickerLoading(true);
+    try {
+      const pairs = await Promise.all(
+        pickerProjects.map(async (project) => {
+          try {
+            const branches = await invoke<BranchInfo[]>("git_list_branches", { repoPath: project.path });
+            return [project.id, branches] as const;
+          } catch {
+            return [project.id, []] as const;
+          }
+        })
+      );
+      setDiffPickerBranches(Object.fromEntries(pairs));
+    } finally {
+      setDiffPickerLoading(false);
+    }
+  }
+
+  function openDiffForBranch(project: Project, branch: BranchInfo) {
+    const cwd = branch.worktree_path ?? (branch.is_current ? project.path : null);
+    if (!cwd) return;
+    setDiffPickerOpen(false);
+    openDiffTab(cwd, project.id);
+  }
+
   function openPreviewTab(projectId: string) {
     const sessionId = crypto.randomUUID();
     const tab: PersistedTab = { instanceId: sessionId, kind: "preview", projectId, cwd: "", name: "Live Preview" };
@@ -1663,6 +1699,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
     return () => document.removeEventListener("mousedown", onDown);
   }, [promptPickerOpen]);
 
+
   // Re-check sidebar scroll fades after layout settles (rAF ensures DOM is measured post-paint)
   useEffect(() => { requestAnimationFrame(checkSidebarScroll); }, [projects, sessions]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1776,6 +1813,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
     await openProjectByPath(selected);
   }
 
+  const diffPickerProjects: Project[] = zen && path
+    ? [{ id: "zen", name: name ?? folderName(path), path, expanded: true, worktrees: zenWorktrees }]
+    : projects;
+
   // Build the workspace list shown in OverviewPage from live session state.
   return (
     <div className="app">
@@ -1805,13 +1846,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
         projectName={activeSessionProject?.name ?? projects[0]?.name ?? ""}
         rightActions={
           <>
-            <Tooltip content="Toggle diff view" placement="bottom">
+            <Tooltip content="Open diff view" placement="bottom">
               <SplitSquareHorizontal
-                className={`topbar-icon${sessions.some(s => s.kind === "diff") ? " active" : ""}`}
-                onClick={() => {
-                  const proj = activeSessionProject ?? projects[0];
-                  if (proj) openDiffTab(proj.path, proj.id);
-                }}
+                className={`topbar-icon${diffPickerOpen || sessions.some(s => s.kind === "diff") ? " active" : ""}`}
+                onClick={openDiffPicker}
               />
             </Tooltip>
             <Tooltip content="Keyboard shortcuts" placement="bottom">
@@ -2404,6 +2442,50 @@ export function WorkspaceView({ zen, name, path }: Props) {
                 );
               })()}
           <div className="workspace-content">
+            {diffPickerOpen && (
+              <div className="diff-screen">
+                <div className="diff-screen-header">
+                  <span className="diff-screen-title">Open Diff View</span>
+                  <button className="diff-screen-close" onClick={() => setDiffPickerOpen(false)}><X size={14} /></button>
+                </div>
+                <div className="diff-screen-body">
+                  {diffPickerProjects.length === 0 ? (
+                    <div className="diff-screen-no-projects">No projects open</div>
+                  ) : diffPickerProjects.map((project) => {
+                    const branches = diffPickerBranches[project.id] ?? [];
+                    return (
+                      <div key={project.id} className="diff-screen-project">
+                        <div className="diff-screen-project-name">{project.name}</div>
+                        <div className="diff-screen-branches">
+                          {diffPickerLoading && branches.length === 0 ? (
+                            <div className="diff-screen-loading">Loading branches...</div>
+                          ) : branches.length === 0 ? (
+                            <div className="diff-screen-empty">No branches found</div>
+                          ) : branches.map((branch) => {
+                            const canOpen = !!branch.worktree_path || branch.is_current;
+                            return (
+                              <button
+                                key={`${project.id}:${branch.name}:${branch.is_remote ? "remote" : "local"}`}
+                                className={`diff-screen-branch${branch.is_current ? " diff-screen-branch--current" : ""}`}
+                                disabled={!canOpen}
+                                onMouseDown={(e) => { e.preventDefault(); openDiffForBranch(project, branch); }}
+                                title={branch.worktree_path ?? (branch.is_current ? project.path : "Open this branch in a worktree to view its diff")}
+                              >
+                                <GitBranch size={13} />
+                                <span className="diff-screen-branch-name">{branch.name}</span>
+                                <span className="diff-screen-branch-meta">
+                                  {branch.is_current ? "current" : branch.worktree_path ? "worktree" : branch.is_remote ? "remote" : "branch"}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className="panes-viewport" ref={workspaceContentRef}>
             {sessions.map((s) => {
               const rect = paneRects?.get(s.id);
@@ -2445,19 +2527,11 @@ export function WorkspaceView({ zen, name, path }: Props) {
                     />
                   )}
                   {s.kind === "diff" ? (
-                    <DiffViewNew
+                    <DiffPane
                       sessionId={s.id}
+                      cwd={s.cwd}
                       hidden={hidden}
-                      projects={projects}
-                      initialPath={s.initialDiffPath}
-                      onSendToAgent={async (message) => {
-                        const agentSession = sessions.find(
-                          (sess) => !sess.kind && sess.agent && sess.projectId === s.projectId
-                        );
-                        if (!agentSession) return;
-                        const bytes = Array.from(new TextEncoder().encode(message + "\r"));
-                        await invoke("write_to_pty", { sessionId: agentSession.id, data: bytes }).catch(() => {});
-                      }}
+                      gitRevision={gitRevision}
                     />
                   ) : s.kind === "preview" ? (
                     <PreviewPane
@@ -2704,7 +2778,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
             open={rightSidebarOpen}
             gitRevision={gitRevision}
             noGit={activeSession.noGit}
-            onOpenDiff={activeSession.kind !== "diff" && activeSession.kind !== "preview" ? () => { const p = activeSession.kind === "editor" ? (projects.find((p) => p.id === activeSession.projectId)?.path ?? activeSession.cwd) : activeSession.cwd; openDiffTab(p, activeSession.projectId, p); } : undefined}
+            onOpenDiff={activeSession.kind !== "diff" && activeSession.kind !== "preview" ? () => { const p = activeSession.kind === "editor" ? (projects.find((p) => p.id === activeSession.projectId)?.path ?? activeSession.cwd) : activeSession.cwd; openDiffTab(p, activeSession.projectId); } : undefined}
             onOpenFile={(filePath) => openEditorTab(filePath, activeSession.projectId)}
           />
         )}

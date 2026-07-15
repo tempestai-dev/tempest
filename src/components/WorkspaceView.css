@@ -102,6 +102,154 @@
   position: relative;
 }
 
+/* ── Diff screen (full workspace overlay) ────────────────────────────────── */
+
+.diff-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: var(--tempest-bg-base);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.diff-screen-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px 12px;
+  border-bottom: 1px solid var(--tempest-border-default);
+}
+
+.diff-screen-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tempest-fg-default);
+}
+
+.diff-screen-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.diff-screen-close:hover {
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
+}
+
+.diff-screen-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tempest-border-subtle) transparent;
+}
+
+.diff-screen-no-projects {
+  font-size: 12px;
+  color: var(--tempest-fg-subtle);
+  opacity: 0.55;
+  padding: 8px 0;
+}
+
+.diff-screen-project {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.diff-screen-project-name {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--tempest-fg-subtle);
+}
+
+.diff-screen-branches {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.diff-screen-branch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--tempest-border-subtle);
+  border-radius: 7px;
+  background: var(--tempest-bg-panel);
+  color: var(--tempest-fg-muted);
+  font-size: 12px;
+  font-family: "Geist Mono", monospace;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s ease, border-color 0.1s ease, color 0.1s ease;
+}
+
+.diff-screen-branch:hover:not(:disabled) {
+  background: var(--tempest-bg-hover);
+  border-color: var(--tempest-border-default);
+  color: var(--tempest-fg-default);
+}
+
+.diff-screen-branch--current {
+  border-color: var(--tempest-accent-blue);
+  color: var(--tempest-fg-default);
+}
+
+.diff-screen-branch--current:hover:not(:disabled) {
+  border-color: var(--tempest-accent-blue);
+}
+
+.diff-screen-branch:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.diff-screen-branch-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.diff-screen-branch-meta {
+  flex-shrink: 0;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--tempest-fg-subtle);
+}
+
+.diff-screen-branch--current .diff-screen-branch-meta {
+  color: var(--tempest-accent-blue);
+}
+
+.diff-screen-loading,
+.diff-screen-empty {
+  font-size: 11px;
+  color: var(--tempest-fg-subtle);
+  opacity: 0.55;
+  padding: 6px 0;
+}
+
 .sub-bar-prompt-picker {
   position: absolute;
   top: calc(100% + 6px);

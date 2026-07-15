@@ -1,4 +1,4 @@
-/* ── Theme: green button text flips dark/light ───────────────────────────── */
+/* ── Theme vars ─────────────────────────────────────────────────────────────── */
 
 :root                { --dp-green-text: #ffffff; }
 [data-theme="dark"]  { --dp-green-text: #000000; }
@@ -17,353 +17,14 @@
 
 .diff-pane button { font-family: inherit; }
 
-/* ── Shared: status badge ───────────────────────────────────────────────────── */
+/* ── Error banner ─────────────────────────────────────────────────────────── */
 
-.dp-status {
-  font-size: 11px;
-  font-family: "Geist Mono", monospace;
-  font-weight: 700;
-  flex-shrink: 0;
-  width: 14px;
-  text-align: center;
-}
-
-.dp-status--modified  { color: var(--tempest-git-modified); }
-.dp-status--added     { color: var(--tempest-git-added); }
-.dp-status--deleted   { color: var(--tempest-git-deleted); }
-.dp-status--renamed   { color: var(--tempest-accent-blue); }
-.dp-status--untracked { color: var(--tempest-git-untracked, var(--tempest-fg-subtle)); }
-
-/* ── Shared: diff lines ─────────────────────────────────────────────────────── */
-
-.dp-line {
-  display: flex;
-  align-items: stretch;
-  font-family: "Geist Mono", monospace;
-  font-size: 12.5px;
-  line-height: 20px;
-  min-width: max-content;
-}
-
-.dp-line--hunk    { background: color-mix(in srgb, var(--tempest-accent-blue) 8%, transparent); }
-.dp-line--added   { background: color-mix(in srgb, var(--tempest-git-added) 10%, transparent); }
-.dp-line--removed { background: color-mix(in srgb, var(--tempest-git-deleted) 10%, transparent); }
-.dp-line--context { background: transparent; }
-
-.dp-ln {
-  flex-shrink: 0;
-  width: 44px;
-  padding: 0 8px;
-  text-align: right;
-  color: var(--tempest-fg-subtle);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  user-select: none;
-  opacity: 0.45;
-  border-right: 1px solid var(--tempest-border-subtle);
-}
-
-.dp-ln--old { border-right: none; }
-
-.dp-line--added   .dp-ln--old,
-.dp-line--removed .dp-ln--new { opacity: 0; }
-
-.dp-line-content {
-  flex: 1;
-  padding: 0 16px;
-  white-space: pre;
-  color: var(--tempest-fg-default);
-}
-
-.dp-line--hunk    .dp-line-content { color: var(--tempest-accent-blue); opacity: 0.85; }
-.dp-line--added   .dp-line-content { color: var(--tempest-git-added); }
-.dp-line--removed .dp-line-content { color: var(--tempest-git-deleted); }
-
-/* ── Header ─────────────────────────────────────────────────────────────────── */
-
-.dp-header {
+.dp-error-banner {
   flex-shrink: 0;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  padding: 0 10px 0 12px;
-  height: 36px;
-  border-bottom: 1px solid var(--tempest-border-default);
-  background: var(--tempest-bg-panel);
-}
-
-.dp-header-title {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--tempest-fg-subtle);
-  flex: 1;
-}
-
-.dp-reload-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border: none;
-  border-radius: 4px;
-  background: var(--tempest-bg-active);
-  color: var(--tempest-fg-muted);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: color 0.12s ease, background 0.12s ease;
-}
-
-.dp-reload-btn:hover:not(:disabled) {
-  color: var(--tempest-fg-default);
-  background: var(--tempest-bg-hover);
-}
-
-.dp-reload-btn:disabled { opacity: 0.4; cursor: default; }
-
-.dp-reload-btn--spinning svg {
-  animation: dp-spin 0.8s linear infinite;
-}
-
-.dp-header-push {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.dp-push-btn {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  background: var(--tempest-git-added);
-  color: var(--dp-green-text);
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: opacity 0.12s ease, background 0.12s ease;
-}
-
-.dp-push-btn:hover:not(:disabled) {
-  opacity: 0.88;
-}
-
-.dp-push-btn:disabled { opacity: 0.4; cursor: default; }
-
-.dp-push-btn--outline {
-  background: transparent;
-  border-color: var(--tempest-border-subtle);
-  color: var(--tempest-fg-muted);
-}
-
-.dp-push-btn--outline:hover:not(:disabled) {
-  background: var(--tempest-bg-hover);
-  border-color: var(--tempest-border-default);
-  color: var(--tempest-fg-default);
-  opacity: 1;
-}
-
-.dp-branch-row {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.dp-branch-cancel {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--tempest-fg-subtle);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: color 0.1s ease, background 0.1s ease;
-}
-
-.dp-branch-cancel:hover {
-  background: var(--tempest-bg-hover);
-  color: var(--tempest-fg-default);
-}
-
-.dp-branch-input {
-  width: 130px;
-  height: 26px;
-  border: 1px solid var(--tempest-border-subtle);
-  border-radius: 5px;
-  background: var(--tempest-bg-editor);
-  color: var(--tempest-fg-default);
-  font-size: 11px;
-  font-family: "Geist Mono", monospace;
-  padding: 0 8px;
-  outline: none;
-  transition: border-color 0.12s ease;
-}
-
-.dp-branch-input:focus { border-color: var(--tempest-accent-blue); }
-.dp-branch-input::placeholder { color: var(--tempest-fg-subtle); opacity: 0.6; }
-
-/* ── Branch picker ──────────────────────────────────────────────────────────── */
-
-.dp-branch-picker {
-  position: relative;
-  flex-shrink: 0;
-}
-
-.dp-branch-pill {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 8px;
-  border: 1px solid var(--tempest-border-subtle);
-  border-radius: 5px;
-  background: var(--tempest-bg-active);
-  color: var(--tempest-fg-muted);
-  font-size: 11px;
-  font-family: "Geist Mono", monospace;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
-  max-width: 160px;
-}
-
-.dp-branch-pill:hover {
-  background: var(--tempest-bg-hover);
-  color: var(--tempest-fg-default);
-  border-color: var(--tempest-border-default);
-}
-
-.dp-branch-pill-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.dp-chevron--open {
-  transform: rotate(180deg);
-  transition: transform 0.15s ease;
-}
-
-.dp-branch-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  min-width: 200px;
-  background: var(--tempest-bg-panel);
-  border: 1px solid var(--tempest-border-default);
-  border-radius: 7px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
-  z-index: 100;
-  overflow: hidden;
-  padding: 4px 0;
-}
-
-.dp-branch-menu-empty {
-  padding: 8px 12px;
-  font-size: 11px;
-  color: var(--tempest-fg-subtle);
-  opacity: 0.6;
-}
-
-.dp-branch-menu-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 6px 0 8px;
-  height: 30px;
-  transition: background 0.1s ease;
-}
-
-.dp-branch-menu-row:hover { background: var(--tempest-bg-hover); }
-
-.dp-branch-menu-row--current { background: var(--tempest-bg-active); }
-.dp-branch-menu-row--current:hover { background: var(--tempest-bg-active); }
-
-.dp-branch-menu-row--remote .dp-branch-menu-name { color: var(--tempest-fg-muted); }
-
-.dp-branch-menu-check {
-  flex-shrink: 0;
-  width: 16px;
-  color: var(--tempest-accent-blue);
-  display: flex;
-  align-items: center;
-}
-
-.dp-branch-menu-name {
-  flex: 1;
-  background: none;
-  border: none;
-  padding: 0;
-  text-align: left;
-  font-size: 12px;
-  font-family: "Geist Mono", monospace;
-  color: var(--tempest-fg-muted);
-  cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.dp-branch-menu-row--current .dp-branch-menu-name {
-  color: var(--tempest-fg-default);
-  font-weight: 500;
-  cursor: default;
-}
-
-.dp-branch-menu-name:hover:not(:disabled) { color: var(--tempest-fg-default); }
-
-.dp-branch-menu-del {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--tempest-fg-subtle);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.1s ease, background 0.1s ease, color 0.1s ease;
-}
-
-.dp-branch-menu-row:hover .dp-branch-menu-del { opacity: 1; }
-.dp-branch-menu-del:hover { background: var(--tempest-git-deleted); color: #fff; }
-
-/* ── Delete branch dialog extras ─────────────────────────────────────────────── */
-
-.dp-dialog-icon--delete { color: var(--tempest-git-deleted); }
-
-.dp-dialog-warn--error {
-  color: var(--tempest-git-deleted);
-  font-size: 11px;
-  text-align: center;
-  max-width: 240px;
-  word-break: break-word;
-}
-
-.dp-delete-remote-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  padding: 2px 0;
-}
-
-.dp-push-error {
-  flex-shrink: 0;
   padding: 6px 12px;
   background: color-mix(in srgb, var(--tempest-git-deleted) 15%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--tempest-git-deleted) 40%, transparent);
@@ -371,74 +32,125 @@
   font-size: 12px;
 }
 
-@keyframes dp-spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
+.dp-error-banner button {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 2px;
+  border-radius: 3px;
 }
 
-.dp-spin { animation: dp-spin 0.7s linear infinite; }
+.dp-error-banner button:hover { opacity: 0.7; }
+.dp-error-banner--push { background: color-mix(in srgb, var(--tempest-git-deleted) 12%, transparent); }
 
-/* ── Body layout ─────────────────────────────────────────────────────────────── */
+/* ── Two-panel layout root ────────────────────────────────────────────────── */
 
-.dp-body {
-  flex: 1;
+.dv-root {
   display: flex;
+  flex: 1;
   overflow: hidden;
   min-height: 0;
 }
 
-/* ── Left: file lists + commit ───────────────────────────────────────────────── */
+/* ── Left panel: staging + commit ────────────────────────────────────────── */
 
-.dp-files {
-  width: 280px;
+.dv-panel {
+  width: 256px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   border-right: 1px solid var(--tempest-border-default);
   background: var(--tempest-bg-panel);
+  overflow: hidden;
 }
 
-.dp-file-lists {
-  flex: 1;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--tempest-border-subtle) transparent;
-}
-
-.dp-file-lists::-webkit-scrollbar { width: 5px; }
-.dp-file-lists::-webkit-scrollbar-thumb { background: var(--tempest-border-subtle); border-radius: 3px; }
-
-/* ── Section ─────────────────────────────────────────────────────────────────── */
-
-.dp-section {
+.dv-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--tempest-border-subtle);
+  flex-shrink: 0;
 }
 
-.dp-section-hdr {
+.dv-stage-all-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 5px;
+  background: var(--tempest-git-added);
+  color: var(--dp-green-text);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.12s ease;
+}
+
+.dv-stage-all-btn.unstage {
+  background: var(--tempest-bg-active);
+  color: var(--tempest-fg-muted);
+}
+
+.dv-stage-all-btn:hover:not(:disabled) { opacity: 0.85; }
+.dv-stage-all-btn:disabled { opacity: 0.4; cursor: default; }
+
+.dv-reload-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.dv-reload-btn:hover:not(:disabled) {
+  color: var(--tempest-fg-default);
+  background: var(--tempest-bg-hover);
+}
+
+.dv-reload-btn:disabled { opacity: 0.4; cursor: default; }
+.dv-reload-btn.spinning svg { animation: dp-spin 0.8s linear infinite; }
+
+/* ── Panel sections (unstaged / staged) ──────────────────────────────────── */
+
+.dv-panel-sec {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--tempest-border-subtle);
+  min-height: 52px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.dv-panel-label {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 6px 10px 5px;
-  position: sticky;
-  top: 0;
-  background: var(--tempest-bg-panel);
-  z-index: 1;
-}
-
-.dp-section-label {
-  flex: 1;
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--tempest-fg-subtle);
-  display: flex;
-  align-items: center;
-  gap: 5px;
+  flex-shrink: 0;
+  background: var(--tempest-bg-panel);
 }
 
-.dp-section-count {
+.dv-panel-count {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -450,48 +162,28 @@
   color: var(--tempest-fg-muted);
   font-size: 10px;
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
 }
 
-.dp-action-all {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  padding: 2px 7px;
-  border: none;
-  border-radius: 4px;
-  background: var(--tempest-bg-active);
-  color: var(--tempest-fg-muted);
-  font-size: 10px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 0.1s ease;
+.dv-panel-list {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tempest-border-subtle) transparent;
 }
 
-.dp-action-all:hover:not(:disabled) {
-  opacity: 0.8;
-}
+.dv-panel-list::-webkit-scrollbar { width: 4px; }
+.dv-panel-list::-webkit-scrollbar-thumb { background: var(--tempest-border-subtle); border-radius: 2px; }
 
-.dp-action-all:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.dp-action-all--stage {
-  background: var(--tempest-git-added);
-  color: var(--dp-green-text);
-}
-
-.dp-empty-section {
-  padding: 8px 12px 10px;
+.dv-panel-empty {
+  padding: 6px 12px 8px;
   font-size: 11px;
   color: var(--tempest-fg-subtle);
-  opacity: 0.55;
+  opacity: 0.45;
 }
 
-/* ── File row ─────────────────────────────────────────────────────────────────── */
+/* ── File rows ────────────────────────────────────────────────────────────── */
 
-.dp-file-row {
+.dv-file-row {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -501,77 +193,101 @@
   min-width: 0;
 }
 
-.dp-file-row:hover { background: var(--tempest-bg-hover); }
+.dv-file-row:hover { background: var(--tempest-bg-hover); }
+.dv-file-row.active { background: var(--tempest-bg-active); }
 
-.dp-file-row--active {
-  background: var(--tempest-bg-active);
-}
-
-.dp-file-row--active:hover {
-  background: var(--tempest-bg-hover);
-}
-
-.dp-fpath {
-  flex: 1;
-  font-size: 12px;
+.dv-fstatus {
+  font-size: 10px;
   font-family: "Geist Mono", monospace;
-  color: var(--tempest-fg-muted);
+  font-weight: 700;
+  flex-shrink: 0;
+  width: 12px;
+  text-align: center;
+}
+
+.dp-status--modified  { color: var(--tempest-git-modified); }
+.dp-status--added     { color: var(--tempest-git-added); }
+.dp-status--deleted   { color: var(--tempest-git-deleted); }
+.dp-status--renamed   { color: var(--tempest-accent-blue); }
+.dp-status--untracked { color: var(--tempest-git-untracked, var(--tempest-fg-subtle)); }
+
+.dv-fpath {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dv-fdir {
+  font-size: 9px;
+  color: var(--tempest-fg-subtle);
+  font-family: "Geist Mono", monospace;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
+  line-height: 1.2;
 }
 
-.dp-file-row--active .dp-fpath { color: var(--tempest-fg-default); }
-
-.dp-file-stats {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.dv-fname {
+  font-size: 11px;
   font-family: "Geist Mono", monospace;
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
+  color: var(--tempest-fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
 }
 
-.dp-stat-adds { color: var(--tempest-git-added); }
-.dp-stat-dels { color: var(--tempest-git-deleted); }
+.dv-file-row.active .dv-fname { color: var(--tempest-fg-default); }
 
-.dp-file-btn {
-  flex-shrink: 0;
+.dv-fstats {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.1s ease, background 0.1s ease, color 0.1s ease;
+  gap: 4px;
+  font-size: 10px;
+  font-family: "Geist Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 }
 
-.dp-file-row:hover .dp-file-btn { opacity: 1; }
-.dp-file-row--active .dp-file-btn { opacity: 1; }
+.dv-adds { color: var(--tempest-git-added); }
+.dv-dels { color: var(--tempest-git-deleted); }
 
-.dp-file-btn--stage   { color: var(--tempest-git-added); }
-.dp-file-btn--unstage { color: var(--tempest-fg-muted); }
-.dp-file-btn--discard { color: var(--tempest-git-deleted); }
-
-.dp-file-btn--stage:hover   { background: var(--tempest-git-added); color: var(--dp-green-text); }
-.dp-file-btn--unstage:hover { background: var(--tempest-bg-active); color: var(--tempest-fg-default); }
-.dp-file-btn--discard:hover { background: var(--tempest-git-deleted); color: #ffffff; }
-
-.dp-file-btns {
+.dv-file-actions {
   display: flex;
   gap: 2px;
   flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.1s ease;
 }
 
-/* ── Commit form ─────────────────────────────────────────────────────────────── */
+.dv-file-row:hover .dv-file-actions,
+.dv-file-row.active .dv-file-actions { opacity: 1; }
 
-.dp-commit {
+.dv-file-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.dv-file-btn--stage   { color: var(--tempest-git-added); }
+.dv-file-btn--unstage { color: var(--tempest-fg-muted); }
+.dv-file-btn--discard { color: var(--tempest-git-deleted); }
+
+.dv-file-btn--stage:hover   { background: var(--tempest-git-added); color: var(--dp-green-text); }
+.dv-file-btn--unstage:hover { background: var(--tempest-bg-active); color: var(--tempest-fg-default); }
+.dv-file-btn--discard:hover { background: var(--tempest-git-deleted); color: #fff; }
+
+/* ── Commit form ──────────────────────────────────────────────────────────── */
+
+.dv-commit {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -581,7 +297,7 @@
   background: var(--tempest-bg-panel);
 }
 
-.dp-commit-title {
+.dv-commit-msg {
   width: 100%;
   border: 1px solid var(--tempest-border-subtle);
   border-radius: 6px;
@@ -596,10 +312,10 @@
   transition: border-color 0.12s ease;
 }
 
-.dp-commit-title:focus { border-color: var(--tempest-accent-blue); }
-.dp-commit-title::placeholder { color: var(--tempest-fg-subtle); opacity: 0.6; }
+.dv-commit-msg:focus { border-color: var(--tempest-accent-blue); }
+.dv-commit-msg::placeholder { color: var(--tempest-fg-subtle); opacity: 0.6; }
 
-.dp-commit-msg {
+.dv-commit-desc {
   width: 100%;
   resize: none;
   border: 1px solid var(--tempest-border-subtle);
@@ -615,23 +331,506 @@
   transition: border-color 0.12s ease;
 }
 
-.dp-commit-msg:focus {
-  border-color: var(--tempest-accent-blue);
-}
+.dv-commit-desc:focus { border-color: var(--tempest-accent-blue); }
+.dv-commit-desc::placeholder { color: var(--tempest-fg-subtle); opacity: 0.6; }
 
-.dp-commit-msg::placeholder { color: var(--tempest-fg-subtle); opacity: 0.6; }
-
-.dp-coauthor-row {
+.dv-coauthor-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1px 0;
 }
 
-.dp-coauthor-label {
+.dv-coauthor-label {
   font-size: 11px;
   color: var(--tempest-fg-muted);
 }
+
+.dv-commit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 12px;
+  border: none;
+  border-radius: 6px;
+  background: var(--tempest-bg-active);
+  color: var(--tempest-fg-subtle);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: default;
+  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+.dv-commit-btn.ready {
+  background: var(--tempest-fg-default);
+  color: var(--tempest-bg-editor);
+  cursor: pointer;
+}
+
+.dv-commit-btn.ready:hover { opacity: 0.88; }
+
+.dv-amend-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: transparent;
+  border: none;
+  color: var(--tempest-fg-subtle);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 4px;
+  transition: color 0.1s ease, background 0.1s ease;
+  width: 100%;
+}
+
+.dv-amend-btn:hover {
+  color: var(--tempest-fg-muted);
+  background: var(--tempest-bg-hover);
+}
+
+/* ── Right panel: branch bar + diff viewer ──────────────────────────────── */
+
+.dv-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* ── Branch bar ─────────────────────────────────────────────────────────── */
+
+.dv-branch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 38px;
+  border-bottom: 1px solid var(--tempest-border-default);
+  background: var(--tempest-bg-panel);
+  flex-shrink: 0;
+}
+
+.dv-branch-group {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.dv-branch-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border: 1px solid var(--tempest-border-subtle);
+  border-radius: 5px;
+  background: var(--tempest-bg-active);
+  color: var(--tempest-fg-muted);
+  font-size: 11px;
+  font-family: "Geist Mono", monospace;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  max-width: 180px;
+}
+
+.dv-branch-pill:hover,
+.dv-branch-pill.open {
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
+  border-color: var(--tempest-border-default);
+}
+
+.dv-branch-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.dv-pill-chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.dv-pill-chevron.open { transform: rotate(180deg); }
+
+.dv-branch-dd {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  min-width: 220px;
+  background: var(--tempest-bg-panel);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.dv-branch-dd-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--tempest-border-subtle);
+}
+
+.dv-bdt {
+  flex: 1;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: var(--tempest-fg-subtle);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.1s ease, background 0.1s ease;
+}
+
+.dv-bdt:hover { color: var(--tempest-fg-default); background: var(--tempest-bg-hover); }
+.dv-bdt.active { color: var(--tempest-fg-default); font-weight: 600; }
+
+.dv-branch-dd-list {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tempest-border-subtle) transparent;
+}
+
+.dv-branch-empty {
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--tempest-fg-subtle);
+  opacity: 0.6;
+}
+
+.dv-branch-item-row {
+  display: flex;
+  align-items: center;
+  padding: 0 6px 0 4px;
+  transition: background 0.1s ease;
+}
+
+.dv-branch-item-row:hover { background: var(--tempest-bg-hover); }
+.dv-branch-item-row.current { background: var(--tempest-bg-active); }
+
+.dv-branch-item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  color: var(--tempest-fg-muted);
+  font-size: 12px;
+  font-family: "Geist Mono", monospace;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition: color 0.1s ease;
+}
+
+.dv-branch-item:hover:not(:disabled) { color: var(--tempest-fg-default); }
+.dv-branch-item-row.current .dv-branch-item { color: var(--tempest-fg-default); font-weight: 500; cursor: default; }
+
+.dv-branch-check { color: var(--tempest-accent-blue); flex-shrink: 0; }
+
+.dv-branch-del {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s ease, background 0.1s ease, color 0.1s ease;
+}
+
+.dv-branch-item-row:hover .dv-branch-del { opacity: 1; }
+.dv-branch-del:hover { background: var(--tempest-git-deleted); color: #fff; }
+
+/* ── Push actions ─────────────────────────────────────────────────────────── */
+
+.dv-branch-push {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.dv-push-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: var(--tempest-git-added);
+  color: var(--dp-green-text);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.12s ease;
+}
+
+.dv-push-btn:hover:not(:disabled) { opacity: 0.85; }
+.dv-push-btn:disabled { opacity: 0.4; cursor: default; }
+
+.dv-push-btn--outline {
+  background: transparent;
+  border-color: var(--tempest-border-subtle);
+  color: var(--tempest-fg-muted);
+}
+
+.dv-push-btn--outline:hover:not(:disabled) {
+  background: var(--tempest-bg-hover);
+  border-color: var(--tempest-border-default);
+  color: var(--tempest-fg-default);
+  opacity: 1;
+}
+
+.dv-new-branch-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dv-branch-cancel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.1s ease, background 0.1s ease;
+}
+
+.dv-branch-cancel:hover { background: var(--tempest-bg-hover); color: var(--tempest-fg-default); }
+
+.dv-branch-input {
+  width: 120px;
+  height: 26px;
+  border: 1px solid var(--tempest-border-subtle);
+  border-radius: 5px;
+  background: var(--tempest-bg-editor);
+  color: var(--tempest-fg-default);
+  font-size: 11px;
+  font-family: "Geist Mono", monospace;
+  padding: 0 8px;
+  outline: none;
+  transition: border-color 0.12s ease;
+}
+
+.dv-branch-input:focus { border-color: var(--tempest-accent-blue); }
+.dv-branch-input::placeholder { color: var(--tempest-fg-subtle); opacity: 0.6; }
+
+.dv-branch-meta {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--tempest-fg-subtle);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.dv-remote-label { opacity: 0.7; }
+.dv-meta-sep { opacity: 0.4; }
+.dv-staged-label { color: var(--tempest-fg-subtle); }
+.dv-staged-label.has-staged { color: var(--tempest-git-added); }
+
+/* ── Diff viewer ──────────────────────────────────────────────────────────── */
+
+.dv-viewer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--tempest-bg-editor);
+}
+
+.dv-viewer-hdr {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 34px;
+  border-bottom: 1px solid var(--tempest-border-subtle);
+  background: var(--tempest-bg-panel);
+}
+
+.dv-viewer-path {
+  flex: 1;
+  font-size: 12px;
+  font-family: "Geist Mono", monospace;
+  color: var(--tempest-fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.dv-viewer-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--tempest-bg-active);
+  color: var(--tempest-fg-muted);
+}
+
+.dv-file-stage-btn {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--tempest-border-subtle);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tempest-fg-muted);
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+}
+
+.dv-file-stage-btn:hover {
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
+  border-color: var(--tempest-border-default);
+}
+
+.dv-hunks-scroll {
+  flex: 1;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tempest-border-subtle) transparent;
+}
+
+.dv-hunks-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.dv-hunks-scroll::-webkit-scrollbar-thumb { background: var(--tempest-border-subtle); border-radius: 4px; }
+
+.dv-diff-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 120px;
+}
+
+.dv-diff-empty {
+  font-size: 12px;
+  color: var(--tempest-fg-subtle);
+  opacity: 0.55;
+}
+
+.dv-hunks {
+  min-width: max-content;
+}
+
+.dv-hunk {
+  border-bottom: 1px solid var(--tempest-border-subtle);
+}
+
+.dv-hunk-hdr {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 12px;
+  background: color-mix(in srgb, var(--tempest-accent-blue) 6%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--tempest-accent-blue) 15%, transparent);
+}
+
+.dv-hunk-range {
+  flex: 1;
+  font-size: 11px;
+  font-family: "Geist Mono", monospace;
+  color: var(--tempest-accent-blue);
+  opacity: 0.8;
+}
+
+.dv-hunk-btn {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--tempest-accent-blue) 40%, transparent);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tempest-accent-blue);
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.dv-hunk-btn:hover { background: color-mix(in srgb, var(--tempest-accent-blue) 12%, transparent); }
+
+.dv-hunk-body { font-family: "Geist Mono", monospace; }
+
+/* ── Diff line styles ─────────────────────────────────────────────────────── */
+
+.diff-line {
+  display: flex;
+  align-items: stretch;
+  font-family: "Geist Mono", monospace;
+  font-size: 12.5px;
+  line-height: 20px;
+  min-width: max-content;
+}
+
+.diff-hunk    { background: color-mix(in srgb, var(--tempest-accent-blue) 8%, transparent); }
+.diff-added   { background: color-mix(in srgb, var(--tempest-git-added) 10%, transparent); }
+.diff-removed { background: color-mix(in srgb, var(--tempest-git-deleted) 10%, transparent); }
+.diff-context { background: transparent; }
+
+.diff-num {
+  flex-shrink: 0;
+  width: 44px;
+  padding: 0 8px;
+  text-align: right;
+  color: var(--tempest-fg-subtle);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  opacity: 0.45;
+  border-right: 1px solid var(--tempest-border-subtle);
+}
+
+.diff-num:first-child { border-right: none; }
+
+.diff-added   .diff-num:first-child { opacity: 0; }
+.diff-removed .diff-num:last-of-type { opacity: 0; }
+
+.diff-content {
+  flex: 1;
+  padding: 0 16px;
+  white-space: pre;
+  color: var(--tempest-fg-default);
+}
+
+.diff-hunk    .diff-content { color: var(--tempest-accent-blue); opacity: 0.85; }
+.diff-added   .diff-content { color: var(--tempest-git-added); }
+.diff-removed .diff-content { color: var(--tempest-git-deleted); }
+
+/* ── Toggle switch ────────────────────────────────────────────────────────── */
 
 .dp-toggle {
   appearance: none;
@@ -663,142 +862,16 @@
 
 .dp-toggle:checked::after { left: 14px; }
 
-.dp-commit-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  padding: 7px 12px;
-  border: none;
-  border-radius: 6px;
-  background: var(--tempest-fg-default);
-  color: var(--tempest-bg-editor);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 0.12s ease, background 0.12s ease;
+/* ── Spin animation ───────────────────────────────────────────────────────── */
+
+@keyframes dp-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
 
-.dp-commit-btn:hover:not(:disabled) {
-  opacity: 0.88;
-}
+.dp-spin { animation: dp-spin 0.7s linear infinite; }
 
-.dp-commit-btn:disabled {
-  background: var(--tempest-bg-active);
-  color: var(--tempest-fg-subtle);
-  cursor: default;
-}
-
-/* ── Divider ─────────────────────────────────────────────────────────────────── */
-
-.dp-divider {
-  width: 1px;
-  background: var(--tempest-border-default);
-  flex-shrink: 0;
-}
-
-/* ── Right: diff viewer ──────────────────────────────────────────────────────── */
-
-.dp-diff {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  min-width: 0;
-  min-height: 0;
-  background: var(--tempest-bg-editor);
-}
-
-.dp-diff-filehdr {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 14px;
-  height: 34px;
-  border-bottom: 1px solid var(--tempest-border-subtle);
-  background: var(--tempest-bg-panel);
-}
-
-.dp-diff-filepath {
-  flex: 1;
-  font-size: 12px;
-  font-family: "Geist Mono", monospace;
-  color: var(--tempest-fg-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.dp-diff-badge {
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
-.dp-diff-badge--staged {
-  background: var(--tempest-bg-active);
-  color: var(--tempest-fg-muted);
-}
-
-.dp-diff-badge--unstaged {
-  background: var(--tempest-bg-active);
-  color: var(--tempest-fg-muted);
-}
-
-.dp-diff-scroll {
-  flex: 1;
-  overflow: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--tempest-border-subtle) transparent;
-}
-
-.dp-diff-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
-.dp-diff-scroll::-webkit-scrollbar-thumb { background: var(--tempest-border-subtle); border-radius: 4px; }
-
-.dp-diff-lines {
-  min-width: max-content;
-}
-
-.dp-diff-center {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  min-height: 120px;
-}
-
-.dp-diff-empty {
-  font-size: 12px;
-  color: var(--tempest-fg-subtle);
-  opacity: 0.55;
-}
-
-/* ── Status / error ─────────────────────────────────────────────────────────── */
-
-.dp-status-msg {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  color: var(--tempest-fg-subtle);
-}
-
-.dp-status-msg--error {
-  color: var(--tempest-git-deleted);
-  padding: 16px;
-  text-align: center;
-}
-
-/* ── Discard overlay / dialog ───────────────────────────────────────────────── */
+/* ── Overlay / dialog ─────────────────────────────────────────────────────── */
 
 .dp-overlay {
   position: absolute;
@@ -823,10 +896,8 @@
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
 }
 
-.dp-dialog-icon {
-  color: var(--tempest-git-modified);
-  margin-bottom: 2px;
-}
+.dp-dialog-icon { color: var(--tempest-git-modified); margin-bottom: 2px; }
+.dp-dialog-icon--delete { color: var(--tempest-git-deleted); }
 
 .dp-dialog-title {
   margin: 0;
@@ -852,6 +923,14 @@
   color: var(--tempest-fg-subtle);
 }
 
+.dp-dialog-warn--error {
+  color: var(--tempest-git-deleted);
+  font-size: 11px;
+  text-align: center;
+  max-width: 240px;
+  word-break: break-word;
+}
+
 .dp-dialog-actions {
   display: flex;
   gap: 8px;
@@ -871,16 +950,16 @@
   transition: opacity 0.12s ease;
 }
 
-.dp-dialog-cancel {
-  background: var(--tempest-bg-active);
-  color: var(--tempest-fg-muted);
-}
-
+.dp-dialog-cancel { background: var(--tempest-bg-active); color: var(--tempest-fg-muted); }
 .dp-dialog-cancel:hover { opacity: 0.8; }
 
-.dp-dialog-confirm {
-  background: var(--tempest-git-deleted);
-  color: #ffffff;
-}
-
+.dp-dialog-confirm { background: var(--tempest-git-deleted); color: #ffffff; }
 .dp-dialog-confirm:hover { opacity: 0.88; }
+
+.dp-delete-remote-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 2px 0;
+}

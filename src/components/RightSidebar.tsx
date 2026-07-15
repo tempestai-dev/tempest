@@ -11,7 +11,7 @@ import {
   WrapText,
   ChevronsUpDown,
   ChevronsDownUp,
-  Eye,
+  SplitSquareHorizontal,
 } from "lucide-react";
 import { Tooltip } from "./Tooltip";
 import "./RightSidebar.css";
@@ -428,7 +428,7 @@ export function RightSidebar({ cwd, rootPath, open, gitRevision, noGit, onOpenDi
                 {onOpenDiff && (
                   <Tooltip content="Open in Diff tab" placement="top">
                     <button className="rs-toolbar-btn" onClick={onOpenDiff}>
-                      <Eye size={13} />
+                      <SplitSquareHorizontal size={13} />
                     </button>
                   </Tooltip>
                 )}

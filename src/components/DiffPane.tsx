@@ -4,6 +4,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   RefreshCw, GitBranch, GitPullRequest, Loader, Check,
   Plus, Minus, X, AlertTriangle, ChevronDown, Trash2,
+  RotateCcw,
 } from "lucide-react";
 import { Tooltip } from "./Tooltip";
 import { useAttribution, setAttribution, COAUTHOR_LINE } from "../store/attribution";
@@ -40,6 +41,11 @@ interface BranchInfo {
   worktree_path?: string;
 }
 
+interface Hunk {
+  header: DiffLine;
+  lines: DiffLine[];
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function buildPrUrl(remoteUrl: string, branch: string): string {
@@ -68,18 +74,19 @@ function statusClass(s: string) {
   return "dp-status--untracked";
 }
 
-function UnifiedDiff({ lines }: { lines: DiffLine[] }) {
-  return (
-    <>
-      {lines.map((line, i) => (
-        <div key={i} className={`dp-line dp-line--${line.kind}`}>
-          <span className="dp-ln dp-ln--old">{line.line_old ?? ""}</span>
-          <span className="dp-ln dp-ln--new">{line.line_new ?? ""}</span>
-          <span className="dp-line-content">{line.content}</span>
-        </div>
-      ))}
-    </>
-  );
+function groupHunks(lines: DiffLine[]): Hunk[] {
+  const hunks: Hunk[] = [];
+  let cur: Hunk | null = null;
+  for (const line of lines) {
+    if (line.kind === "hunk") {
+      if (cur) hunks.push(cur);
+      cur = { header: line, lines: [] };
+    } else if (cur) {
+      cur.lines.push(line);
+    }
+  }
+  if (cur) hunks.push(cur);
+  return hunks;
 }
 
 // ── Root ──────────────────────────────────────────────────────────────────────
@@ -121,11 +128,11 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
 
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [showBranchMenu, setShowBranchMenu] = useState(false);
+  const [branchTab, setBranchTab] = useState<"local" | "remote">("local");
   const branchMenuRef = useRef<HTMLDivElement>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleteAlsoRemote, setDeleteAlsoRemote] = useState(true);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-
   const [discardTarget, setDiscardTarget] = useState<string | null>(null);
 
   // ── Load file list ───────────────────────────────────────────────────────
@@ -200,7 +207,6 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
   const stageFile = async (path: string) => {
     try { await invoke("git_stage", { repoPath: cwd, filePath: path }); } catch { /* non-fatal */ }
     await load();
-    // Follow the file into the staged section
     if (selectedRef.current?.path === path) {
       setSelected({ path, section: "staged" });
       loadDiff(path, "staged", false);
@@ -342,330 +348,342 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
     }
   };
 
+  // ── Derived ──────────────────────────────────────────────────────────────
+
+  const allStaged = unstaged.length === 0 && staged.length > 0;
+  const activeFile = selected ? [...staged, ...unstaged].find((f) => f.path === selected.path) ?? null : null;
+  const hunks = groupHunks(diffLines);
+  const localBranches = branches.filter((b) => !b.is_remote);
+  const remoteBranches = branches.filter((b) => b.is_remote);
+  const branchList = branchTab === "local" ? localBranches : remoteBranches;
+  const canCommit = staged.length > 0 && commitTitle.trim().length > 0;
+
+  function renderFileRow(f: FileEntry, section: FileSection) {
+    const stats = statsMap[f.path];
+    const dir = f.path.includes("/") ? f.path.substring(0, f.path.lastIndexOf("/") + 1) : "";
+    const fname = f.path.split("/").pop() ?? f.path;
+    const isActive = selected?.path === f.path && selected?.section === section;
+    return (
+      <div
+        key={f.path}
+        className={`dv-file-row${isActive ? " active" : ""}`}
+        onClick={() => selectFile(f.path, section, f)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => e.key === "Enter" && selectFile(f.path, section, f)}
+      >
+        <span className={`dv-fstatus ${statusClass(f.status)}`}>{f.status}</span>
+        <span className="dv-fpath">
+          {dir && <span className="dv-fdir">{dir}</span>}
+          <span className="dv-fname">{fname}</span>
+        </span>
+        {stats && (
+          <span className="dv-fstats">
+            {stats.adds > 0 && <span className="dv-adds">+{stats.adds}</span>}
+            {stats.dels > 0 && <span className="dv-dels">-{stats.dels}</span>}
+          </span>
+        )}
+        {section === "unstaged" ? (
+          <div className="dv-file-actions">
+            <Tooltip content="Stage" placement="left">
+              <button className="dv-file-btn dv-file-btn--stage" onClick={(e) => { e.stopPropagation(); stageFile(f.path); }}>
+                <Plus size={10} />
+              </button>
+            </Tooltip>
+            <Tooltip content="Discard" placement="left">
+              <button className="dv-file-btn dv-file-btn--discard" onClick={(e) => { e.stopPropagation(); setDiscardTarget(f.path); }}>
+                <X size={10} />
+              </button>
+            </Tooltip>
+          </div>
+        ) : (
+          <div className="dv-file-actions">
+            <Tooltip content="Unstage" placement="left">
+              <button className="dv-file-btn dv-file-btn--unstage" onClick={(e) => { e.stopPropagation(); unstageFile(f.path); }}>
+                <Minus size={10} />
+              </button>
+            </Tooltip>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="diff-pane" style={hidden ? { display: "none" } : {}}>
 
-      {/* ── Header ── */}
-      <div className="dp-header">
-        <span className="dp-header-title">Changes</span>
-        <Tooltip content="Reload" placement="top">
-          <button
-            className={`dp-reload-btn${loading ? " dp-reload-btn--spinning" : ""}`}
-            disabled={loading}
-            onClick={load}
-          >
-            <RefreshCw size={13} />
-          </button>
-        </Tooltip>
-        {/* ── Branch picker ── */}
-        <div className="dp-branch-picker" ref={branchMenuRef}>
-          <button
-            className="dp-branch-pill"
-            onClick={() => setShowBranchMenu((v) => !v)}
-            title="Switch branch"
-          >
-            <GitBranch size={11} />
-            <span className="dp-branch-pill-name">{currentBranch || "branch"}</span>
-            <ChevronDown size={10} className={showBranchMenu ? "dp-chevron--open" : ""} />
-          </button>
-          {showBranchMenu && (
-            <div className="dp-branch-menu">
-              {branches.length === 0 ? (
-                <div className="dp-branch-menu-empty">No branches</div>
-              ) : (
-                branches.map((b) => (
-                  <div
-                    key={b.name}
-                    className={`dp-branch-menu-row${b.is_current ? " dp-branch-menu-row--current" : ""}${b.is_remote ? " dp-branch-menu-row--remote" : ""}`}
-                  >
-                    <span className="dp-branch-menu-check">{b.is_current ? <Check size={11} /> : null}</span>
-                    <button
-                      className="dp-branch-menu-name"
-                      onClick={() => !b.is_current && switchBranch(b.name)}
-                      disabled={b.is_current}
-                      title={b.is_current ? "Current branch" : `Switch to ${b.name}`}
-                    >
-                      {b.name}
+      {error && (
+        <div className="dp-error-banner">
+          <span>{error}</span>
+          <button onClick={() => setError(null)}><X size={12} /></button>
+        </div>
+      )}
+      {pushError && <div className="dp-error-banner dp-error-banner--push">{pushError}</div>}
+
+      <div className="dv-root">
+
+        {/* ── Left: staging + commit panel ── */}
+        <div className="dv-panel">
+
+          <div className="dv-panel-actions">
+            <button
+              className={`dv-stage-all-btn${allStaged ? " unstage" : ""}`}
+              onClick={allStaged ? unstageAll : stageAll}
+              disabled={stagingAll || unstagingAll || (staged.length === 0 && unstaged.length === 0)}
+            >
+              {(stagingAll || unstagingAll) && <Loader size={10} className="dp-spin" />}
+              {allStaged ? "Unstage All" : "Stage All"}
+            </button>
+            <Tooltip content="Reload" placement="top">
+              <button
+                className={`dv-reload-btn${loading ? " spinning" : ""}`}
+                disabled={loading}
+                onClick={load}
+              >
+                <RefreshCw size={12} />
+              </button>
+            </Tooltip>
+          </div>
+
+          {/* Unstaged section */}
+          <div className="dv-panel-sec">
+            <div className="dv-panel-label">
+              Unstaged
+              {unstaged.length > 0 && <span className="dv-panel-count">{unstaged.length}</span>}
+            </div>
+            <div className="dv-panel-list">
+              {unstaged.length > 0
+                ? unstaged.map((f) => renderFileRow(f, "unstaged"))
+                : <div className="dv-panel-empty">—</div>}
+            </div>
+          </div>
+
+          {/* Staged section */}
+          <div className="dv-panel-sec">
+            <div className="dv-panel-label">
+              Staged
+              {staged.length > 0 && <span className="dv-panel-count">{staged.length}</span>}
+            </div>
+            <div className="dv-panel-list">
+              {staged.length > 0
+                ? staged.map((f) => renderFileRow(f, "staged"))
+                : <div className="dv-panel-empty">—</div>}
+            </div>
+          </div>
+
+          {/* Commit form */}
+          <div className="dv-commit">
+            <input
+              className="dv-commit-msg"
+              placeholder="Commit message"
+              value={commitTitle}
+              onChange={(e) => setCommitTitle(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); commitStaged(); } }}
+              maxLength={72}
+            />
+            <textarea
+              className="dv-commit-desc"
+              placeholder="Description (optional)"
+              value={commitDesc}
+              onChange={(e) => setCommitDesc(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); commitStaged(); } }}
+              rows={2}
+            />
+            <div className="dv-coauthor-row">
+              <span className="dv-coauthor-label">Co-authored-by Tempest</span>
+              <input
+                type="checkbox"
+                className="dp-toggle"
+                checked={coauthor}
+                onChange={(e) => setAttribution(e.target.checked)}
+              />
+            </div>
+            <button
+              className={`dv-commit-btn${canCommit ? " ready" : ""}`}
+              disabled={!canCommit || commitState === "committing"}
+              onClick={commitStaged}
+            >
+              {commitState === "committing" && <Loader size={12} className="dp-spin" />}
+              {commitState === "done" && <Check size={12} />}
+              Commit{staged.length > 0 ? ` (${staged.length})` : ""}
+            </button>
+            <button className="dv-amend-btn" onClick={() => {}}>
+              <RotateCcw size={10} />
+              Amend last commit
+            </button>
+          </div>
+        </div>
+
+        {/* ── Right: branch bar + diff viewer ── */}
+        <div className="dv-right">
+
+          {/* Branch bar */}
+          <div className="dv-branch-bar">
+            <div className="dv-branch-group" ref={branchMenuRef}>
+              <button
+                className={`dv-branch-pill${showBranchMenu ? " open" : ""}`}
+                onClick={() => setShowBranchMenu((v) => !v)}
+              >
+                <GitBranch size={11} />
+                <span className="dv-branch-name">{currentBranch || "branch"}</span>
+                <ChevronDown size={10} className={`dv-pill-chevron${showBranchMenu ? " open" : ""}`} />
+              </button>
+
+              {showBranchMenu && (
+                <div className="dv-branch-dd">
+                  <div className="dv-branch-dd-tabs">
+                    <button className={`dv-bdt${branchTab === "local" ? " active" : ""}`} onClick={() => setBranchTab("local")}>
+                      Local
                     </button>
-                    {!b.is_current && !b.is_remote && (
-                      <Tooltip content="Delete branch" placement="left">
-                        <button
-                          className="dp-branch-menu-del"
-                          onClick={(e) => { e.stopPropagation(); setDeleteTarget(b.name); setDeleteError(null); }}
-                        >
-                          <Trash2 size={11} />
-                        </button>
-                      </Tooltip>
-                    )}
+                    <button className={`dv-bdt${branchTab === "remote" ? " active" : ""}`} onClick={() => setBranchTab("remote")}>
+                      Remote
+                    </button>
                   </div>
-                ))
+                  <div className="dv-branch-dd-list">
+                    {branchList.length === 0 ? (
+                      <div className="dv-branch-empty">No branches</div>
+                    ) : branchList.map((b) => (
+                      <div key={b.name} className={`dv-branch-item-row${b.is_current ? " current" : ""}`}>
+                        <button
+                          className="dv-branch-item"
+                          onClick={() => !b.is_current && switchBranch(b.name)}
+                          disabled={b.is_current}
+                        >
+                          <GitBranch size={10} />
+                          <span>{b.name}</span>
+                          {b.is_current && <Check size={10} className="dv-branch-check" />}
+                        </button>
+                        {!b.is_current && !b.is_remote && (
+                          <Tooltip content="Delete branch" placement="left">
+                            <button
+                              className="dv-branch-del"
+                              onClick={(e) => { e.stopPropagation(); setDeleteTarget(b.name); setShowBranchMenu(false); }}
+                            >
+                              <Trash2 size={10} />
+                            </button>
+                          </Tooltip>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
-          )}
-        </div>
 
-        <div className="dp-header-push">
-          {!showBranchInput ? (
-            <>
-              <button
-                className="dp-push-btn"
-                disabled={pushState === "pushing"}
-                onClick={pushToCurrent}
-                title={`Push commits to ${currentBranch || "current branch"}`}
-              >
-                {pushState === "pushing"
-                  ? <Loader size={12} className="dp-spin" />
-                  : pushState === "done"
-                  ? <Check size={12} />
-                  : <GitBranch size={12} />}
-                Push{currentBranch ? ` to ${currentBranch}` : ""}
-              </button>
-              <button
-                className="dp-push-btn dp-push-btn--outline"
-                onClick={() => setShowBranchInput(true)}
-                title="Create a new branch and push"
-              >
-                <GitPullRequest size={12} />
-                New Branch
-              </button>
-            </>
-          ) : (
-            <div className="dp-branch-row">
-              <Tooltip content="Cancel" placement="top">
-                <button
-                  className="dp-branch-cancel"
-                  onClick={() => { setShowBranchInput(false); setNewBranchName(""); }}
-                >
-                  <X size={12} />
-                </button>
-              </Tooltip>
-              <input
-                className="dp-branch-input"
-                placeholder="branch-name"
-                value={newBranchName}
-                onChange={(e) => setNewBranchName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") pushToNewBranch();
-                  if (e.key === "Escape") { setShowBranchInput(false); setNewBranchName(""); }
-                }}
-                autoFocus
-              />
-              <button
-                className="dp-push-btn"
-                disabled={!newBranchName.trim() || branchPushState === "pushing"}
-                onClick={pushToNewBranch}
-                title="Create branch, push, and open PR"
-              >
-                {branchPushState === "pushing"
-                  ? <Loader size={12} className="dp-spin" />
-                  : branchPushState === "done"
-                  ? <Check size={12} />
-                  : <GitPullRequest size={12} />}
-                Push & PR
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {pushError && <div className="dp-push-error">{pushError}</div>}
-
-      {/* ── Body ── */}
-      {error ? (
-        <div className="dp-status-msg dp-status-msg--error">{error}</div>
-      ) : (
-        <div className="dp-body">
-
-          {/* Left column: file lists + commit form */}
-          <div className="dp-files">
-            <div className="dp-file-lists">
-
-              {/* Staged */}
-              <div className="dp-section">
-                <div className="dp-section-hdr">
-                  <span className="dp-section-label">
-                    Staged
-                    {staged.length > 0 && (
-                      <span className="dp-section-count">{staged.length}</span>
-                    )}
-                  </span>
-                  {staged.length > 0 && (
-                    <button className="dp-action-all" onClick={unstageAll} disabled={unstagingAll} title="Unstage all">
-                      {unstagingAll ? <Loader size={10} className="dp-spin" /> : "Unstage All"}
-                    </button>
-                  )}
+            <div className="dv-branch-push">
+              {!showBranchInput ? (
+                <>
+                  <button
+                    className="dv-push-btn"
+                    disabled={pushState === "pushing"}
+                    onClick={pushToCurrent}
+                    title={`Push to ${currentBranch || "current branch"}`}
+                  >
+                    {pushState === "pushing" ? <Loader size={11} className="dp-spin" /> : pushState === "done" ? <Check size={11} /> : <GitBranch size={11} />}
+                    Push
+                  </button>
+                  <button
+                    className="dv-push-btn dv-push-btn--outline"
+                    onClick={() => setShowBranchInput(true)}
+                    title="Create new branch and push"
+                  >
+                    <GitPullRequest size={11} />
+                    PR
+                  </button>
+                </>
+              ) : (
+                <div className="dv-new-branch-row">
+                  <button className="dv-branch-cancel" onClick={() => { setShowBranchInput(false); setNewBranchName(""); }}>
+                    <X size={11} />
+                  </button>
+                  <input
+                    className="dv-branch-input"
+                    placeholder="branch-name"
+                    value={newBranchName}
+                    onChange={(e) => setNewBranchName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") pushToNewBranch();
+                      if (e.key === "Escape") { setShowBranchInput(false); setNewBranchName(""); }
+                    }}
+                    autoFocus
+                  />
+                  <button
+                    className="dv-push-btn"
+                    disabled={!newBranchName.trim() || branchPushState === "pushing"}
+                    onClick={pushToNewBranch}
+                  >
+                    {branchPushState === "pushing" ? <Loader size={11} className="dp-spin" /> : <GitPullRequest size={11} />}
+                    Push & PR
+                  </button>
                 </div>
-                {staged.length === 0 ? (
-                  <div className="dp-empty-section">No staged files</div>
-                ) : (
-                  staged.map((f) => (
-                    <div
-                      key={f.path}
-                      className={`dp-file-row${selected?.path === f.path && selected?.section === "staged" ? " dp-file-row--active" : ""}`}
-                      onClick={() => selectFile(f.path, "staged", f)}
-                    >
-                      <span className={`dp-status ${statusClass(f.status)}`}>{f.status}</span>
-                      <span className="dp-fpath" title={f.path}>{f.path}</span>
-                      {statsMap[f.path] && (
-                        <span className="dp-file-stats">
-                          <span className="dp-stat-adds">+{statsMap[f.path].adds}</span>
-                          <span className="dp-stat-dels">-{statsMap[f.path].dels}</span>
-                        </span>
-                      )}
-                      <Tooltip content="Unstage file" placement="left">
-                        <button
-                          className="dp-file-btn dp-file-btn--unstage"
-                          onClick={(e) => { e.stopPropagation(); unstageFile(f.path); }}
-                        >
-                          <Minus size={11} />
-                        </button>
-                      </Tooltip>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* Unstaged */}
-              <div className="dp-section">
-                <div className="dp-section-hdr">
-                  <span className="dp-section-label">
-                    Unstaged
-                    {unstaged.length > 0 && (
-                      <span className="dp-section-count">{unstaged.length}</span>
-                    )}
-                  </span>
-                  {unstaged.length > 0 && (
-                    <button className="dp-action-all dp-action-all--stage" onClick={stageAll} disabled={stagingAll} title="Stage all">
-                      {stagingAll ? <Loader size={10} className="dp-spin" /> : "Stage All"}
-                    </button>
-                  )}
-                </div>
-                {unstaged.length === 0 ? (
-                  <div className="dp-empty-section">No unstaged changes</div>
-                ) : (
-                  unstaged.map((f) => (
-                    <div
-                      key={f.path}
-                      className={`dp-file-row${selected?.path === f.path && selected?.section === "unstaged" ? " dp-file-row--active" : ""}`}
-                      onClick={() => selectFile(f.path, "unstaged", f)}
-                    >
-                      <span className={`dp-status ${statusClass(f.status)}`}>{f.status}</span>
-                      <span className="dp-fpath" title={f.path}>{f.path}</span>
-                      {statsMap[f.path] && (
-                        <span className="dp-file-stats">
-                          <span className="dp-stat-adds">+{statsMap[f.path].adds}</span>
-                          <span className="dp-stat-dels">-{statsMap[f.path].dels}</span>
-                        </span>
-                      )}
-                      <div className="dp-file-btns">
-                        <Tooltip content="Stage file" placement="left">
-                          <button
-                            className="dp-file-btn dp-file-btn--stage"
-                            onClick={(e) => { e.stopPropagation(); stageFile(f.path); }}
-                          >
-                            <Plus size={11} />
-                          </button>
-                        </Tooltip>
-                        <Tooltip content="Discard changes" placement="left">
-                          <button
-                            className="dp-file-btn dp-file-btn--discard"
-                            onClick={(e) => { e.stopPropagation(); setDiscardTarget(f.path); }}
-                          >
-                            <X size={11} />
-                          </button>
-                        </Tooltip>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-            </div>{/* /dp-file-lists */}
-
-            {/* Commit form */}
-            <div className="dp-commit">
-              <input
-                className="dp-commit-title"
-                placeholder="Commit title"
-                value={commitTitle}
-                onChange={(e) => setCommitTitle(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                    e.preventDefault();
-                    commitStaged();
-                  }
-                }}
-              />
-              <textarea
-                className="dp-commit-msg"
-                placeholder="Description (optional)"
-                value={commitDesc}
-                onChange={(e) => setCommitDesc(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                    e.preventDefault();
-                    commitStaged();
-                  }
-                }}
-                rows={3}
-              />
-              <div className="dp-coauthor-row">
-                <span className="dp-coauthor-label">Co-authored-by Tempest</span>
-                <input
-                  type="checkbox"
-                  className="dp-toggle"
-                  checked={coauthor}
-                  onChange={(e) => setAttribution(e.target.checked)}
-                />
-              </div>
-              <button
-                className="dp-commit-btn"
-                disabled={staged.length === 0 || !commitTitle.trim() || commitState === "committing"}
-                onClick={commitStaged}
-              >
-                {commitState === "committing" && <Loader size={12} className="dp-spin" />}
-                {commitState === "done" && <Check size={12} />}
-                Commit
-              </button>
+              )}
             </div>
-          </div>{/* /dp-files */}
 
-          {/* Divider */}
-          <div className="dp-divider" />
+            <div className="dv-branch-meta">
+              <span className="dv-remote-label">↑ origin/{currentBranch}</span>
+              <span className="dv-meta-sep">·</span>
+              <span className={`dv-staged-label${staged.length > 0 ? " has-staged" : ""}`}>
+                {staged.length}/{staged.length + unstaged.length} staged
+              </span>
+            </div>
+          </div>
 
-          {/* Right column: per-file diff */}
-          <div className="dp-diff">
-            {selected ? (
+          {/* Diff viewer */}
+          <div className="dv-viewer">
+            {selected && activeFile ? (
               <>
-                <div className="dp-diff-filehdr">
-                  <span className="dp-diff-filepath">{selected.path}</span>
-                  <span className={`dp-diff-badge dp-diff-badge--${selected.section}`}>
-                    {selected.section}
-                  </span>
+                <div className="dv-viewer-hdr">
+                  <span className="dv-viewer-path">{selected.path}</span>
+                  <span className={`dv-viewer-badge dv-viewer-badge--${selected.section}`}>{selected.section}</span>
+                  <button
+                    className="dv-file-stage-btn"
+                    onClick={() => selected.section === "staged" ? unstageFile(selected.path) : stageFile(selected.path)}
+                  >
+                    {selected.section === "staged" ? "Unstage file" : "Stage file"}
+                  </button>
                 </div>
-                <div className="dp-diff-scroll">
+                <div className="dv-hunks-scroll">
                   {diffLoading ? (
-                    <div className="dp-diff-center"><Loader size={16} className="dp-spin" /></div>
-                  ) : diffLines.length === 0 ? (
-                    <div className="dp-diff-center dp-diff-empty">No diff to display</div>
+                    <div className="dv-diff-center"><Loader size={16} className="dp-spin" /></div>
+                  ) : hunks.length === 0 ? (
+                    <div className="dv-diff-center dv-diff-empty">No diff to display</div>
                   ) : (
-                    <div className="dp-diff-lines">
-                      <UnifiedDiff lines={diffLines} />
+                    <div className="dv-hunks">
+                      {hunks.map((hunk, i) => (
+                        <div key={i} className="dv-hunk">
+                          <div className="dv-hunk-hdr">
+                            <span className="dv-hunk-range">{hunk.header.content}</span>
+                            <button
+                              className="dv-hunk-btn"
+                              onClick={() => selected.section === "staged" ? unstageFile(selected.path) : stageFile(selected.path)}
+                            >
+                              {selected.section === "staged" ? "Unstage hunk" : "Stage hunk"}
+                            </button>
+                          </div>
+                          <div className="dv-hunk-body">
+                            {hunk.lines.map((line, li) => (
+                              <div key={li} className={`diff-line diff-${line.kind}`}>
+                                <span className="diff-num">{line.line_old ?? ""}</span>
+                                <span className="diff-num">{line.line_new ?? ""}</span>
+                                <span className="diff-content">{line.content}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
               </>
             ) : (
-              <div className="dp-diff-center dp-diff-empty">
-                Select a file to view its diff
-              </div>
+              <div className="dv-diff-center dv-diff-empty">Select a file to view its diff</div>
             )}
           </div>
-
         </div>
-      )}
+
+      </div>
 
       {/* Discard confirmation */}
       {discardTarget && (
@@ -676,12 +694,8 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
             <code className="dp-dialog-path">{discardTarget}</code>
             <p className="dp-dialog-warn">This cannot be undone.</p>
             <div className="dp-dialog-actions">
-              <button className="dp-dialog-cancel" onClick={() => setDiscardTarget(null)}>
-                Cancel
-              </button>
-              <button className="dp-dialog-confirm" onClick={() => discardFile(discardTarget)}>
-                Discard
-              </button>
+              <button className="dp-dialog-cancel" onClick={() => setDiscardTarget(null)}>Cancel</button>
+              <button className="dp-dialog-confirm" onClick={() => discardFile(discardTarget)}>Discard</button>
             </div>
           </div>
         </div>
@@ -698,32 +712,19 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
               <>
                 <p className="dp-dialog-warn dp-dialog-warn--error">{deleteError}</p>
                 <div className="dp-dialog-actions">
-                  <button className="dp-dialog-cancel" onClick={() => { setDeleteTarget(null); setDeleteError(null); }}>
-                    Cancel
-                  </button>
-                  <button className="dp-dialog-confirm" onClick={() => confirmDelete(true)}>
-                    Force Delete
-                  </button>
+                  <button className="dp-dialog-cancel" onClick={() => { setDeleteTarget(null); setDeleteError(null); }}>Cancel</button>
+                  <button className="dp-dialog-confirm" onClick={() => confirmDelete(true)}>Force Delete</button>
                 </div>
               </>
             ) : (
               <>
                 <label className="dp-delete-remote-row">
-                  <input
-                    type="checkbox"
-                    className="dp-toggle"
-                    checked={deleteAlsoRemote}
-                    onChange={(e) => setDeleteAlsoRemote(e.target.checked)}
-                  />
-                  <span className="dp-coauthor-label">Also delete from remote</span>
+                  <input type="checkbox" className="dp-toggle" checked={deleteAlsoRemote} onChange={(e) => setDeleteAlsoRemote(e.target.checked)} />
+                  <span className="dv-coauthor-label">Also delete from remote</span>
                 </label>
                 <div className="dp-dialog-actions">
-                  <button className="dp-dialog-cancel" onClick={() => { setDeleteTarget(null); setDeleteError(null); }}>
-                    Cancel
-                  </button>
-                  <button className="dp-dialog-confirm" onClick={() => confirmDelete(false)}>
-                    Delete
-                  </button>
+                  <button className="dp-dialog-cancel" onClick={() => { setDeleteTarget(null); setDeleteError(null); }}>Cancel</button>
+                  <button className="dp-dialog-confirm" onClick={() => confirmDelete(false)}>Delete</button>
                 </div>
               </>
             )}
