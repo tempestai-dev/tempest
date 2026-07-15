@@ -109,6 +109,10 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
   const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
   const [diffLoading, setDiffLoading] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const [lineComments, setLineComments] = useState<Record<string, string[]>>({});
+  const [commentingLine, setCommentingLine] = useState<string | null>(null);
+  const [commentDraft, setCommentDraft] = useState("");
   const [stagingAll, setStagingAll] = useState(false);
   const [unstagingAll, setUnstagingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -193,6 +197,30 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
   useEffect(() => {
     if (!hidden) load();
   }, [cwd, gitRevision, hidden]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setLineComments({});
+    setCommentingLine(null);
+    setCommentDraft("");
+  }, [selected?.path, selected?.section]);
+
+  // ── Comments ─────────────────────────────────────────────────────────────
+
+  const submitComment = (key: string) => {
+    const text = commentDraft.trim();
+    if (!text) return;
+    setLineComments(prev => ({ ...prev, [key]: [...(prev[key] ?? []), text] }));
+    setCommentDraft("");
+    setCommentingLine(null);
+  };
+
+  const removeComment = (key: string, idx: number) => {
+    setLineComments(prev => {
+      const arr = [...(prev[key] ?? [])];
+      arr.splice(idx, 1);
+      return { ...prev, [key]: arr };
+    });
+  };
 
   // ── Selection ────────────────────────────────────────────────────────────
 
@@ -663,13 +691,88 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
                             </button>
                           </div>
                           <div className="dv-hunk-body">
-                            {hunk.lines.map((line, li) => (
-                              <div key={li} className={`diff-line diff-${line.kind}`}>
-                                <span className="diff-num">{line.line_old ?? ""}</span>
-                                <span className="diff-num">{line.line_new ?? ""}</span>
-                                <span className="diff-content">{line.content}</span>
-                              </div>
-                            ))}
+                            {hunk.lines.map((line, li) => {
+                              const lineKey = `h${i}l${li}`;
+                              const lineNotes = lineComments[lineKey] ?? [];
+                              const isCommenting = commentingLine === lineKey;
+                              return (
+                                <div key={li} className="diff-line-wrap">
+                                  <div className={`diff-line diff-${line.kind}`}>
+                                    <button
+                                      className="diff-comment-btn"
+                                      type="button"
+                                      title="Add comment"
+                                      onClick={() => {
+                                        setCommentingLine(isCommenting ? null : lineKey);
+                                        setCommentDraft("");
+                                      }}
+                                    >
+                                      <Plus size={9} />
+                                    </button>
+                                    <span className="diff-num">{line.line_old ?? ""}</span>
+                                    <span className="diff-num">{line.line_new ?? ""}</span>
+                                    <span className="diff-content">{line.content}</span>
+                                  </div>
+                                  {lineNotes.map((note, ni) => (
+                                    <div key={ni} className="diff-placed-comment">
+                                      <span className="diff-placed-comment-text">{note}</span>
+                                      <button
+                                        className="diff-placed-comment-remove"
+                                        type="button"
+                                        onClick={() => removeComment(lineKey, ni)}
+                                      >
+                                        <X size={9} />
+                                      </button>
+                                    </div>
+                                  ))}
+                                  {isCommenting && (
+                                    <div className="diff-comment-form" onClick={(e) => e.stopPropagation()}>
+                                      <div className="diff-comment-form-hdr">
+                                        <span className="diff-comment-form-who">You</span>
+                                        <span className="diff-comment-form-line">
+                                          · line {line.line_new ?? line.line_old ?? li + 1}
+                                        </span>
+                                      </div>
+                                      <textarea
+                                        className="diff-comment-textarea"
+                                        placeholder="Leave a comment…"
+                                        value={commentDraft}
+                                        onChange={(e) => setCommentDraft(e.target.value)}
+                                        autoFocus
+                                        rows={2}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                                            e.preventDefault();
+                                            submitComment(lineKey);
+                                          }
+                                          if (e.key === "Escape") {
+                                            setCommentingLine(null);
+                                            setCommentDraft("");
+                                          }
+                                        }}
+                                      />
+                                      <div className="diff-comment-form-actions">
+                                        <button
+                                          className="diff-comment-cancel"
+                                          type="button"
+                                          onClick={() => { setCommentingLine(null); setCommentDraft(""); }}
+                                        >
+                                          Cancel
+                                        </button>
+                                        <button
+                                          className={`diff-comment-submit${commentDraft.trim() ? " ready" : ""}`}
+                                          type="button"
+                                          disabled={!commentDraft.trim()}
+                                          onClick={() => submitComment(lineKey)}
+                                        >
+                                          Comment
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       ))}
