@@ -52,6 +52,10 @@
     "group.purple":   "#7200c4",
     "group.blue":     "#005ee9",
     "group.green":    "#397c3b",
+    "group.red":      "#c62128",
+    "group.orange":   "#9e5200",
+    "group.pink":     "#b32c62",
+    "group.cyan":     "#027d70",
 
     "island.bg-closed":     "#00000012",
     "island.border-closed": "#0000002e",
@@ -60,6 +64,16 @@
 
     "tooltip.bg": "#000000",
     "tooltip.fg": "#ffffff",
+
+    "ui.tab-active":          "#ffffff",
+    "ui.tab-pill-bg":         "rgba(0,0,0,0.05)",
+    "ui.tab-inactive-fg":     "#8a8a8a",
+    "ui.tab-hover-fg":        "#3a3a3a",
+    "ui.tab-badge-fg":        "#7a7a7a",
+    "ui.tab-active-badge-fg": "#3a3a3a",
+    "ui.shadow-sm":           "rgba(0,0,0,0.1)",
+    "ui.badge-on-git":        "#ffffff",
+    "ui.gutter-bg":           "rgba(0,0,0,0.02)",
 
     "semantic.error":   "#c62128",
     "semantic.warning": "#9e5200",

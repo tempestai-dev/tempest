@@ -26,6 +26,10 @@
   z-index: 2;
 }
 
+.bar-end--identity {
+  gap: 14px;
+}
+
 .bar .sep {
   width: 1px;
   height: 14px;
@@ -288,7 +292,8 @@
   background: color-mix(in srgb, var(--group-color) 35%, transparent);
 }
 
-.group-chip {
+/* Higher specificity (.tab-group .group-chip = 0,2,0) beats .bar button (0,1,1) */
+.tab-group .group-chip {
   display: inline-flex;
   align-items: center;
   font-size: 10px;
@@ -305,10 +310,11 @@
   line-height: 1.4;
   flex-shrink: 0;
   margin-right: 3px;
-  transform: translateY(-7px);
+  align-self: center;
+  margin-bottom: 6px;
 }
 
-.group-chip:hover { filter: brightness(1.12); }
+.tab-group .group-chip:hover { color: #fff; filter: brightness(1.12); }
 
 /* ─── Mode: tabbed (rounded pills) ──────────────────────────────────── */
 

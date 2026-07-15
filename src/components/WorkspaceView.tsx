@@ -1985,6 +1985,9 @@ export function WorkspaceView({ zen, name, path }: Props) {
                   const rootAgents = liveRoots.filter((s) => s.agent);
                   const rootTerminals = liveRoots.filter((s) => !s.agent);
                   const primaryRootAgent = rootAgents[0];
+                  const isGitProject = project.worktrees.length > 0 ||
+                    liveRootSessions.some((s) => !s.noGit) ||
+                    storedRootEntries.some((e) => !e.session.noGit);
 
                   return (
                     <div key={project.id} className="sidebar-project"
@@ -2002,11 +2005,11 @@ export function WorkspaceView({ zen, name, path }: Props) {
                           {project.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                           <span>{project.name}</span>
                         </button>
-                        {project.worktrees.length > 0 && (
-                          <span className="sidebar-project-count">{project.worktrees.length}</span>
-                        )}
                         {atlasEnabled && getRuntimeState().atlasProjects[project.path] === true && (
                           <Cpu size={11} className="sidebar-project-atlas-icon" aria-label="Token Intelligence indexed" />
+                        )}
+                        {isGitProject && (
+                          <span className="sidebar-project-count">{project.worktrees.length + 1}</span>
                         )}
                         <Tooltip content="New session" placement="right">
                           <button
@@ -2021,8 +2024,8 @@ export function WorkspaceView({ zen, name, path }: Props) {
 
                       {project.expanded && (
                         <div className="sidebar-project-sessions">
-                          {/* Root sessions — expandable row */}
-                          {canonRoots.size > 0 && (
+                          {/* Root sessions — expandable row (git projects only) */}
+                          {isGitProject && canonRoots.size > 0 && (
                             <div className="sb-worktree">
                               <div
                                 className="sb-worktree-row"
@@ -2040,64 +2043,94 @@ export function WorkspaceView({ zen, name, path }: Props) {
                                   <Plus size={10} />
                                 </button>
                               </div>
-                              {rootExpanded && (
-                                <div className="sb-worktree-dropdown">
-                                  {rootAgents.length > 0 && (
-                                    <div className="sb-dropdown-section">
-                                      <span className="sb-dropdown-label">Agent Sessions</span>
-                                      {rootAgents.map((s) => (
-                                        <button
-                                          key={s.id}
-                                          className={`sb-dropdown-item${s.id === activeSessionId ? " sb-dropdown-item--active" : ""}`}
-                                          onClick={() => setActiveSessionId(s.id)}
-                                          onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, s.id, false, true, s.storeKey)}
-                                        >
-                                          <AgentIcon hint={s.agent} size={11} />
-                                          <span className="sb-dropdown-item-name">{s.name}</span>
-                                          {s.agent && atlasEnabled && getRuntimeState().atlasProjects[project.path] === true && (
-                                            <Cpu size={10} className="sidebar-session-atlas-badge" />
+                              {rootExpanded && (() => {
+                                const rootAgentsEmpty = rootAgents.length === 0 && !ghostRoots.some((e) => !!e.ghost!.session.agent);
+                                const rootTerminalsEmpty = rootTerminals.length === 0 && !ghostRoots.some((e) => !e.ghost!.session.agent);
+                                return (
+                                  <div className="sb-worktree-dropdown">
+                                    {rootAgentsEmpty && rootTerminalsEmpty ? (
+                                      <div className="sb-dropdown-empty-box">
+                                        <span className="sb-dropdown-empty-text">No sessions open. Start one with +</span>
+                                      </div>
+                                    ) : (
+                                      <>
+                                        <div className="sb-dropdown-section">
+                                          <span className="sb-dropdown-label">Agent Sessions</span>
+                                          {rootAgents.map((s) => (
+                                            <button
+                                              key={s.id}
+                                              className={`sb-dropdown-item${s.id === activeSessionId ? " sb-dropdown-item--active" : ""}`}
+                                              onClick={() => setActiveSessionId(s.id)}
+                                              onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, s.id, false, true, s.storeKey)}
+                                            >
+                                              <AgentIcon hint={s.agent} size={11} />
+                                              <span className="sb-dropdown-item-name">{s.name}</span>
+                                              {s.agent && atlasEnabled && getRuntimeState().atlasProjects[project.path] === true && (
+                                                <Cpu size={10} className="sidebar-session-atlas-badge" />
+                                              )}
+                                              <SidebarWorkBadge sessionId={s.id} />
+                                            </button>
+                                          ))}
+                                          {ghostRoots.filter((e) => !!e.ghost!.session.agent).map((entry) => {
+                                            const { key, session: ghost } = entry.ghost!;
+                                            const resumeId = ghost.instanceId ?? rootSessionIdFromKey(key);
+                                            return (
+                                              <button
+                                                key={key}
+                                                className="sb-dropdown-item sb-dropdown-item--ghost"
+                                                onClick={() => openSession(ghost.name, project.path, project.id, ghost.agent, undefined, undefined, ghost.conversationId, true, ghost.noGit, false, resumeId).catch(() => {})}
+                                                onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, null, false, true, key)}
+                                              >
+                                                <AgentIcon hint={ghost.agent} size={11} />
+                                                <span className="sb-dropdown-item-name">{ghost.name}</span>
+                                              </button>
+                                            );
+                                          })}
+                                          {rootAgentsEmpty && (
+                                            <div className="sb-dropdown-empty-box">
+                                              <span className="sb-dropdown-empty-text">No agent sessions</span>
+                                            </div>
                                           )}
-                                          <SidebarWorkBadge sessionId={s.id} />
-                                        </button>
-                                      ))}
-                                    </div>
-                                  )}
-                                  {rootTerminals.length > 0 && (
-                                    <div className="sb-dropdown-section">
-                                      <span className="sb-dropdown-label">Terminals</span>
-                                      {rootTerminals.map((s) => (
-                                        <button
-                                          key={s.id}
-                                          className={`sb-dropdown-item${s.id === activeSessionId ? " sb-dropdown-item--active" : ""}`}
-                                          onClick={() => setActiveSessionId(s.id)}
-                                          onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, s.id, false, true, s.storeKey)}
-                                        >
-                                          <TerminalSquare size={11} />
-                                          <span className="sb-dropdown-item-name">{s.name}</span>
-                                        </button>
-                                      ))}
-                                    </div>
-                                  )}
-                                  {ghostRoots.map((entry) => {
-                                    const { key, session: ghost } = entry.ghost!;
-                                    const resumeId = ghost.instanceId ?? rootSessionIdFromKey(key);
-                                    return (
-                                      <button
-                                        key={key}
-                                        className="sb-dropdown-item sb-dropdown-item--ghost"
-                                        onClick={() => openSession(ghost.name, project.path, project.id, ghost.agent, undefined, undefined, ghost.agent ? ghost.conversationId : undefined, true, ghost.noGit, false, resumeId).catch(() => {})}
-                                        onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, null, false, true, key)}
-                                      >
-                                        {ghost.agent ? <AgentIcon hint={ghost.agent} size={11} /> : <TerminalSquare size={11} />}
-                                        <span className="sb-dropdown-item-name">{ghost.name}</span>
-                                      </button>
-                                    );
-                                  })}
-                                  {liveRoots.length === 0 && ghostRoots.length === 0 && (
-                                    <span className="sb-dropdown-empty">No active sessions</span>
-                                  )}
-                                </div>
-                              )}
+                                        </div>
+                                        <div className="sb-dropdown-section">
+                                          <span className="sb-dropdown-label">Terminals</span>
+                                          {rootTerminals.map((s) => (
+                                            <button
+                                              key={s.id}
+                                              className={`sb-dropdown-item${s.id === activeSessionId ? " sb-dropdown-item--active" : ""}`}
+                                              onClick={() => setActiveSessionId(s.id)}
+                                              onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, s.id, false, true, s.storeKey)}
+                                            >
+                                              <TerminalSquare size={11} />
+                                              <span className="sb-dropdown-item-name">{s.name}</span>
+                                            </button>
+                                          ))}
+                                          {ghostRoots.filter((e) => !e.ghost!.session.agent).map((entry) => {
+                                            const { key, session: ghost } = entry.ghost!;
+                                            const resumeId = ghost.instanceId ?? rootSessionIdFromKey(key);
+                                            return (
+                                              <button
+                                                key={key}
+                                                className="sb-dropdown-item sb-dropdown-item--ghost"
+                                                onClick={() => openSession(ghost.name, project.path, project.id, undefined, undefined, undefined, undefined, true, ghost.noGit, false, resumeId).catch(() => {})}
+                                                onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, null, false, true, key)}
+                                              >
+                                                <TerminalSquare size={11} />
+                                                <span className="sb-dropdown-item-name">{ghost.name}</span>
+                                              </button>
+                                            );
+                                          })}
+                                          {rootTerminalsEmpty && (
+                                            <div className="sb-dropdown-empty-box">
+                                              <span className="sb-dropdown-empty-text">No terminals</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           )}
 
@@ -2131,62 +2164,84 @@ export function WorkspaceView({ zen, name, path }: Props) {
                                     <Plus size={10} />
                                   </button>
                                 </div>
-                                {wtExpanded && (
-                                  <div className="sb-worktree-dropdown">
-                                    {wtAgents.length > 0 && (
-                                      <div className="sb-dropdown-section">
-                                        <span className="sb-dropdown-label">Agent Sessions</span>
-                                        {wtAgents.map((s) => (
-                                          <button
-                                            key={s.id}
-                                            className={`sb-dropdown-item${s.id === activeSessionId ? " sb-dropdown-item--active" : ""}`}
-                                            onClick={() => setActiveSessionId(s.id)}
-                                            onContextMenu={(e) => openCtxMenu(e, wt, project.path, project.id, s.id)}
-                                          >
-                                            <AgentIcon hint={s.agent} size={11} />
-                                            <span className="sb-dropdown-item-name">{s.name}</span>
-                                            {s.agent && atlasEnabled && getRuntimeState().atlasProjects[project.path] === true && (
-                                              <Cpu size={10} className="sidebar-session-atlas-badge" />
+                                {wtExpanded && (() => {
+                                  const wtAgentsEmpty = wtAgents.length === 0 && !(showGhost && savedMeta?.agent);
+                                  const wtTerminalsEmpty = wtTerminals.length === 0 && !(showGhost && !savedMeta?.agent);
+                                  return (
+                                    <div className="sb-worktree-dropdown">
+                                      {wtAgentsEmpty && wtTerminalsEmpty ? (
+                                        <div className="sb-dropdown-empty-box">
+                                          <span className="sb-dropdown-empty-text">No sessions open. Start one with +</span>
+                                        </div>
+                                      ) : (
+                                        <>
+                                          <div className="sb-dropdown-section">
+                                            <span className="sb-dropdown-label">Agent Sessions</span>
+                                            {wtAgents.map((s) => (
+                                              <button
+                                                key={s.id}
+                                                className={`sb-dropdown-item${s.id === activeSessionId ? " sb-dropdown-item--active" : ""}`}
+                                                onClick={() => setActiveSessionId(s.id)}
+                                                onContextMenu={(e) => openCtxMenu(e, wt, project.path, project.id, s.id)}
+                                              >
+                                                <AgentIcon hint={s.agent} size={11} />
+                                                <span className="sb-dropdown-item-name">{s.name}</span>
+                                                {s.agent && atlasEnabled && getRuntimeState().atlasProjects[project.path] === true && (
+                                                  <Cpu size={10} className="sidebar-session-atlas-badge" />
+                                                )}
+                                                <SidebarWorkBadge sessionId={s.id} />
+                                              </button>
+                                            ))}
+                                            {showGhost && savedMeta!.agent && (
+                                              <button
+                                                className="sb-dropdown-item sb-dropdown-item--ghost"
+                                                onClick={() => { openSession(savedMeta!.name, wt.path, project.id, savedMeta!.agent, undefined, undefined, savedMeta!.conversationId).catch(() => {}); markWorktreeSessionOpen(wt.path); }}
+                                                onContextMenu={(e) => openCtxMenu(e, wt, project.path, project.id, null)}
+                                              >
+                                                <AgentIcon hint={savedMeta!.agent} size={11} />
+                                                <span className="sb-dropdown-item-name">{savedMeta!.name}</span>
+                                              </button>
                                             )}
-                                            <SidebarWorkBadge sessionId={s.id} />
-                                          </button>
-                                        ))}
-                                      </div>
-                                    )}
-                                    {wtTerminals.length > 0 && (
-                                      <div className="sb-dropdown-section">
-                                        <span className="sb-dropdown-label">Terminals</span>
-                                        {wtTerminals.map((s) => (
-                                          <button
-                                            key={s.id}
-                                            className={`sb-dropdown-item${s.id === activeSessionId ? " sb-dropdown-item--active" : ""}`}
-                                            onClick={() => setActiveSessionId(s.id)}
-                                            onContextMenu={(e) => openCtxMenu(e, wt, project.path, project.id, s.id)}
-                                          >
-                                            <TerminalSquare size={11} />
-                                            <span className="sb-dropdown-item-name">{s.name}</span>
-                                          </button>
-                                        ))}
-                                      </div>
-                                    )}
-                                    {showGhost && (
-                                      <button
-                                        className="sb-dropdown-item sb-dropdown-item--ghost"
-                                        onClick={() => {
-                                          openSession(savedMeta!.name, wt.path, project.id, savedMeta!.agent, undefined, undefined, savedMeta!.agent ? savedMeta!.conversationId : undefined).catch(() => {});
-                                          markWorktreeSessionOpen(wt.path);
-                                        }}
-                                        onContextMenu={(e) => openCtxMenu(e, wt, project.path, project.id, null)}
-                                      >
-                                        {savedMeta!.agent ? <AgentIcon hint={savedMeta!.agent} size={11} /> : <TerminalSquare size={11} />}
-                                        <span className="sb-dropdown-item-name">{savedMeta!.name}</span>
-                                      </button>
-                                    )}
-                                    {allAtPath.length === 0 && !showGhost && (
-                                      <span className="sb-dropdown-empty">No active sessions</span>
-                                    )}
-                                  </div>
-                                )}
+                                            {wtAgentsEmpty && (
+                                              <div className="sb-dropdown-empty-box">
+                                                <span className="sb-dropdown-empty-text">No agent sessions</span>
+                                              </div>
+                                            )}
+                                          </div>
+                                          <div className="sb-dropdown-section">
+                                            <span className="sb-dropdown-label">Terminals</span>
+                                            {wtTerminals.map((s) => (
+                                              <button
+                                                key={s.id}
+                                                className={`sb-dropdown-item${s.id === activeSessionId ? " sb-dropdown-item--active" : ""}`}
+                                                onClick={() => setActiveSessionId(s.id)}
+                                                onContextMenu={(e) => openCtxMenu(e, wt, project.path, project.id, s.id)}
+                                              >
+                                                <TerminalSquare size={11} />
+                                                <span className="sb-dropdown-item-name">{s.name}</span>
+                                              </button>
+                                            ))}
+                                            {showGhost && !savedMeta!.agent && (
+                                              <button
+                                                className="sb-dropdown-item sb-dropdown-item--ghost"
+                                                onClick={() => { openSession(savedMeta!.name, wt.path, project.id, undefined).catch(() => {}); markWorktreeSessionOpen(wt.path); }}
+                                                onContextMenu={(e) => openCtxMenu(e, wt, project.path, project.id, null)}
+                                              >
+                                                <TerminalSquare size={11} />
+                                                <span className="sb-dropdown-item-name">{savedMeta!.name}</span>
+                                              </button>
+                                            )}
+                                            {wtTerminalsEmpty && (
+                                              <div className="sb-dropdown-empty-box">
+                                                <span className="sb-dropdown-empty-text">No terminals</span>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             );
                           })}
@@ -2222,6 +2277,21 @@ export function WorkspaceView({ zen, name, path }: Props) {
                               </button>
                             </div>
                           )}
+
+                          {/* Project-level empty state */}
+                          {(() => {
+                            const hasGitRows = isGitProject && (canonRoots.size > 0 || project.worktrees.length > 0);
+                            const hasOtherSessions = projectSessions.some((s) => !s.isRootSession && !s.parentSessionId && !project.worktrees.some((w) => w.path === s.cwd));
+                            const hasChatGhost = getRuntimeState().tabs.some((t) => t.kind === "chat" && t.projectId === project.id) && !projectSessions.some((s) => s.kind === "chat");
+                            if (!hasGitRows && !hasOtherSessions && !hasChatGhost) {
+                              return (
+                                <div className="sb-dropdown-empty-box">
+                                  <span className="sb-dropdown-empty-text">No sessions open. Start one with +</span>
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
                       )}
                     </div>
@@ -2272,16 +2342,16 @@ export function WorkspaceView({ zen, name, path }: Props) {
           <div className="canvas-wrap">
             <div className="canvas">
               {(() => {
-                const isOverview = !activeSessionId && activeSection === "overview";
+                const hasActiveSession = !!activeSessionId;
                 return (
                 <div className={`bar${tabsMode === "tabbed" ? " tabs-tabbed" : tabsMode === "ver1" ? " tabs-ver1" : tabsMode === "designer" ? " tabs-designer" : ""}`}>
                   <div className="bar-end">
                     <button className="sub-bar-icon-btn" onClick={() => setSidebarOpen((o) => !o)} title="Toggle sidebar">
                       <PanelLeft size={15} />
                     </button>
-                    {!isOverview && <div className="sep" />}
+                    {hasActiveSession && <div className="sep" />}
                   </div>
-                  {!isOverview && <AgentTabs
+                  {hasActiveSession && <AgentTabs
                     sessions={sessions.filter((s) => !s.parentSessionId)}
                     activeSessionId={activeSessionId}
                     tabsMode={tabsMode}
@@ -2302,9 +2372,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
                     onRenameClear={() => setRenamingSessionId(null)}
                     onRenameStart={startRename}
                     onQueueClick={(id, e) => { e.stopPropagation(); setQueueOpenSessionId((prev) => (prev === id ? null : id)); }}
+                    projects={projects.map((p) => ({ id: p.id, name: p.name }))}
                   />}
                   <div className="bar-end">
-                    {!isOverview && (
+                    {hasActiveSession && (
                       <>
                         <div className="collapse-btn-wrap">
                           <button className="collapse-btn" onClick={() => setCompactOpen((o) => !o)} title="Actions">

@@ -52,8 +52,8 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  background: var(--tempest-bg-hover);
-  border: 1px solid var(--tempest-border-subtle);
+  background: var(--tempest-ui-tab-pill-bg);
+  border: 1px solid var(--tempest-border-default);
   border-radius: 999px;
   padding: 2px;
   min-width: 0;
@@ -71,7 +71,7 @@
   font-family: inherit;
   font-size: 11.5px;
   font-weight: 450;
-  color: var(--tempest-fg-subtle);
+  color: var(--tempest-ui-tab-inactive-fg);
   cursor: pointer;
   border-radius: 999px;
   transition: color 0.15s, background 0.15s;
@@ -79,14 +79,14 @@
 }
 
 .rs-tab-pill:hover {
-  color: var(--tempest-fg-default);
+  color: var(--tempest-ui-tab-hover-fg);
 }
 
 .rs-tab-pill--active {
-  background: var(--tempest-bg-base);
+  background: var(--tempest-ui-tab-active);
   color: var(--tempest-fg-default);
   font-weight: 500;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 1px 3px var(--tempest-ui-shadow-sm);
 }
 
 .rs-tab-pill-badge {
@@ -100,7 +100,11 @@
   font-size: 9.5px;
   font-weight: 600;
   background: var(--tempest-bg-active);
-  color: var(--tempest-fg-muted);
+  color: var(--tempest-ui-tab-badge-fg);
+}
+
+.rs-tab-pill--active .rs-tab-pill-badge {
+  color: var(--tempest-ui-tab-active-badge-fg);
 }
 
 /* Icon buttons (eye + reload) */
@@ -156,7 +160,7 @@
   left: 0;
   right: 0;
   height: 100px;
-  background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.6) 60%, rgba(0,0,0,1));
+  background: linear-gradient(to bottom, transparent, var(--tempest-bg-sidebar));
   pointer-events: none;
   z-index: 2;
 }
@@ -378,7 +382,7 @@
   padding: 1px 4px;
   border-radius: 3px;
   line-height: 1.5;
-  color: #ffffff;
+  color: var(--tempest-ui-badge-on-git);
 }
 
 .rs-change-status--m { background: var(--tempest-git-modified); }
@@ -464,16 +468,12 @@
   color: var(--tempest-fg-subtle);
   flex-shrink: 0;
   user-select: none;
-  background: rgba(0, 0, 0, 0.02);
+  background: var(--tempest-ui-gutter-bg);
   font-size: 9.5px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   opacity: 0.7;
-}
-
-:root[data-theme="dark"] .rs-diff-num {
-  background: rgba(255, 255, 255, 0.02);
 }
 
 .rs-diff-content {

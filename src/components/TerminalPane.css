@@ -59,21 +59,27 @@
   height: 100%;
 }
 
+/* Hide the native browser scrollbar — xterm renders its own Monaco-style DOM scrollbar on top */
 .terminal-pane .xterm-viewport {
-  overflow-y: auto !important;
-  scrollbar-width: thin;
-  scrollbar-color: var(--tempest-border-subtle) transparent;
+  scrollbar-width: none !important;
 }
 
 .terminal-pane .xterm-viewport::-webkit-scrollbar {
-  width: 4px;
+  display: none !important;
 }
 
-.terminal-pane .xterm-viewport::-webkit-scrollbar-track {
-  background: transparent;
+/* Style xterm's custom DOM scrollbar to match the app's thin scrollbar */
+.terminal-pane .xterm .xterm-scrollable-element > .scrollbar {
+  width: 6px !important;
 }
 
-.terminal-pane .xterm-viewport::-webkit-scrollbar-thumb {
-  background: var(--tempest-border-subtle);
-  border-radius: 2px;
+.terminal-pane .xterm .xterm-scrollable-element > .scrollbar > .slider {
+  background: var(--tempest-border-subtle) !important;
+  border-radius: 2px !important;
+  left: 1px !important;
+}
+
+/* Remove the VSCode-style inset shadow xterm draws at the top/left edge */
+.terminal-pane .xterm .xterm-scrollable-element > .shadow {
+  display: none !important;
 }

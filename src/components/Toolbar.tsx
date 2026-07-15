@@ -1,3 +1,5 @@
+import { Mark } from "../assets/Mark";
+
 interface Props {
   tabsMode: "designed" | "tabbed" | "ver1" | "designer";
   projectName: string;
@@ -10,16 +12,14 @@ export function Toolbar({ tabsMode, projectName, rightActions }: Props) {
     : tabsMode === "designer"  ? " tabs-designer"
     : "";
 
-  const letter = projectName[0]?.toUpperCase() ?? "";
-
   return (
     <div className={`bar${modeClass}`}>
 
       {/* Left end — project identity */}
-      <div className="bar-end">
-        {letter && (
+      <div className="bar-end bar-end--identity">
+        <Mark size={16} color="var(--tempest-fg-default)" />
+        {projectName && (
           <>
-            <div className="topbar-avatar">{letter}</div>
             <div className="topbar-slash" />
             <span className="topbar-title">{projectName}</span>
           </>
