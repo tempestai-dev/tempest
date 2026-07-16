@@ -49,7 +49,7 @@ function resolveKindColors(): Record<string, string> {
   return {
     function:  v("accent-blue"),   method:    v("accent-blue"),
     class:     v("accent-yellow"), interface: v("accent-green"),
-    type:      "#9b59b6",          variable:  v("fg-muted"),
+    type:      v("accent-purple"),  variable:  v("fg-muted"),
     constant:  v("fg-muted"),      _default:  v("fg-subtle"),
   };
 }
@@ -186,8 +186,9 @@ export function KnowledgeBasePage() {
         const vwx1 = (cw - tx) / zoom,  vwy1 = (ch - ty) / zoom;
         const rx = wx2(vwx0), ry = wy2(vwy0);
         const rw = (vwx1 - vwx0) * scale, rh = (vwy1 - vwy0) * scale;
-        ctx.fillStyle   = "rgba(255,255,255,0.25)";
-        ctx.strokeStyle = "rgba(255,255,255,0.55)";
+        const cs = getComputedStyle(document.documentElement);
+        ctx.fillStyle   = cs.getPropertyValue("--tempest-minimap-overlay").trim();
+        ctx.strokeStyle = cs.getPropertyValue("--tempest-minimap-border").trim();
         ctx.lineWidth   = 1;
         ctx.fillRect(rx, ry, rw, rh);
         ctx.strokeRect(rx, ry, rw, rh);
@@ -310,7 +311,7 @@ export function KnowledgeBasePage() {
         if (isSel) {
           ctx.beginPath();
           ctx.arc(n.x, n.y, r + 4 / zoom, 0, Math.PI * 2);
-          ctx.strokeStyle = "#ffffff";
+          ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--tempest-fg-default").trim();
           ctx.lineWidth   = 1.5 / zoom;
           ctx.globalAlpha = 0.9;
           ctx.stroke();
@@ -331,7 +332,7 @@ export function KnowledgeBasePage() {
             const fs = Math.max(8, Math.min(13, 11 / zoom));
             ctx.font        = `${fs}px "Geist Mono", monospace`;
             ctx.textAlign   = "center";
-            ctx.fillStyle   = focus ? "#ffffff" : "#909090";
+            ctx.fillStyle   = focus ? getComputedStyle(document.documentElement).getPropertyValue("--tempest-fg-default").trim() : getComputedStyle(document.documentElement).getPropertyValue("--tempest-fg-muted").trim();
             ctx.globalAlpha = focus ? 1 : 0.75 * alpha;
             ctx.fillText(n.label, n.x, n.y + r + fs * 1.4);
           }

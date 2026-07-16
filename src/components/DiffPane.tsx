@@ -133,6 +133,7 @@ export function DiffPane({ cwd, hidden, gitRevision, agentSessions = [] }: Props
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
 
   interface CommentingRange {
+    filePath: string;
     hunkIdx: number;
     startLi: number;
     endLi: number;
@@ -250,12 +251,12 @@ export function DiffPane({ cwd, hidden, gitRevision, agentSessions = [] }: Props
 
   const submitComment = (hunkLines: DiffLine[]) => {
     const text = commentDraft.trim();
-    if (!text || !selected || !commentingRange) return;
-    const { hunkIdx, startLi, endLi, startLineNum, endLineNum } = commentingRange;
+    if (!text || !commentingRange) return;
+    const { filePath, hunkIdx, startLi, endLi, startLineNum, endLineNum } = commentingRange;
     const startKey = `h${hunkIdx}l${startLi}`;
     const endKey = `h${hunkIdx}l${endLi}`;
     const quote = hunkLines.slice(startLi, endLi + 1).map(l => l.content).join("\n");
-    addComment(cwd, { file: selected.path, startLineKey: startKey, endLineKey: endKey, startLine: startLineNum, endLine: endLineNum, quote, body: text });
+    addComment(cwd, { file: filePath, startLineKey: startKey, endLineKey: endKey, startLine: startLineNum, endLine: endLineNum, quote, body: text });
     setCommentDraft("");
     setCommentingRange(null);
   };
@@ -696,6 +697,7 @@ export function DiffPane({ cwd, hidden, gitRevision, agentSessions = [] }: Props
                                   const first = hunk.lines[0];
                                   const last = hunk.lines[hunk.lines.length - 1];
                                   setCommentingRange({
+                                    filePath: selected.path,
                                     hunkIdx: i,
                                     startLi: 0,
                                     endLi: hunk.lines.length - 1,
@@ -722,13 +724,13 @@ export function DiffPane({ cwd, hidden, gitRevision, agentSessions = [] }: Props
                               // Notes whose range ends at this line
                               const lineNotes = comments.filter(c => c.file === selected.path && c.endLineKey === lineKey);
                               // Is this line inside the active selection range?
-                              const inRange = commentingRange?.hunkIdx === i
+                              const inRange = commentingRange?.filePath === selected.path && commentingRange?.hunkIdx === i
                                 && li >= commentingRange.startLi
                                 && li <= commentingRange.endLi;
                               // Is this the last line of the active range? (form renders here)
-                              const isRangeEnd = commentingRange?.hunkIdx === i && li === commentingRange.endLi;
+                              const isRangeEnd = commentingRange?.filePath === selected.path && commentingRange?.hunkIdx === i && li === commentingRange.endLi;
                               // Is this exactly a single-line range start/end?
-                              const isSingleActive = commentingRange?.hunkIdx === i
+                              const isSingleActive = commentingRange?.filePath === selected.path && commentingRange?.hunkIdx === i
                                 && commentingRange.startLi === li
                                 && commentingRange.endLi === li;
                               return (
@@ -761,19 +763,19 @@ export function DiffPane({ cwd, hidden, gitRevision, agentSessions = [] }: Props
                                           ? "Shift+click to extend range"
                                           : "Add comment · Shift+click to select range"}
                                         onClick={(e) => {
-                                          if (commentingRange?.hunkIdx === i && e.shiftKey) {
+                                          if (commentingRange?.filePath === selected.path && commentingRange?.hunkIdx === i && e.shiftKey) {
                                             const newStart = Math.min(commentingRange.startLi, li);
                                             const newEnd = Math.max(commentingRange.endLi, li);
                                             const newStartNum = newStart === commentingRange.startLi
                                               ? commentingRange.startLineNum : lineNum;
                                             const newEndNum = newEnd === commentingRange.endLi
                                               ? commentingRange.endLineNum : lineNum;
-                                            setCommentingRange({ hunkIdx: i, startLi: newStart, endLi: newEnd, startLineNum: newStartNum, endLineNum: newEndNum });
+                                            setCommentingRange({ filePath: selected.path, hunkIdx: i, startLi: newStart, endLi: newEnd, startLineNum: newStartNum, endLineNum: newEndNum });
                                           } else if (isSingleActive) {
                                             setCommentingRange(null);
                                             setCommentDraft("");
                                           } else {
-                                            setCommentingRange({ hunkIdx: i, startLi: li, endLi: li, startLineNum: lineNum, endLineNum: lineNum });
+                                            setCommentingRange({ filePath: selected.path, hunkIdx: i, startLi: li, endLi: li, startLineNum: lineNum, endLineNum: lineNum });
                                             setCommentDraft("");
                                           }
                                         }}
@@ -895,17 +897,139 @@ export function DiffPane({ cwd, hidden, gitRevision, agentSessions = [] }: Props
                           <div key={i} className="dv-hunk">
                             <div className="dv-hunk-hdr">
                               <span className="dv-hunk-range">{hunk.header.content}</span>
+                              <div className="dv-hunk-actions">
+                                <button
+                                  className="dv-hunk-btn dv-hunk-btn--comment"
+                                  onClick={() => {
+                                    if (hunk.lines.length === 0) return;
+                                    const first = hunk.lines[0];
+                                    const last = hunk.lines[hunk.lines.length - 1];
+                                    setCommentingRange({
+                                      filePath: file.path,
+                                      hunkIdx: i,
+                                      startLi: 0,
+                                      endLi: hunk.lines.length - 1,
+                                      startLineNum: first.line_new ?? first.line_old ?? 1,
+                                      endLineNum: last.line_new ?? last.line_old ?? hunk.lines.length,
+                                    });
+                                    setCommentDraft("");
+                                  }}
+                                >
+                                  Comment on hunk
+                                </button>
+                              </div>
                             </div>
                             <div className="dv-hunk-body">
-                              {hunk.lines.map((line, li) => (
-                                <div key={li} className="diff-line-wrap">
-                                  <div className={`diff-line diff-${line.kind}`}>
-                                    <span className="diff-num">{line.line_old ?? ""}</span>
-                                    <span className="diff-num">{line.line_new ?? ""}</span>
-                                    <span className="diff-content">{line.content}</span>
+                              {hunk.lines.map((line, li) => {
+                                const lineKey = `h${i}l${li}`;
+                                const lineNum = line.line_new ?? line.line_old ?? li + 1;
+                                const lineNotes = comments.filter(c => c.file === file.path && c.endLineKey === lineKey);
+                                const inRange = commentingRange?.filePath === file.path && commentingRange?.hunkIdx === i
+                                  && li >= commentingRange.startLi && li <= commentingRange.endLi;
+                                const isRangeEnd = commentingRange?.filePath === file.path && commentingRange?.hunkIdx === i && li === commentingRange.endLi;
+                                const isSingleActive = commentingRange?.filePath === file.path && commentingRange?.hunkIdx === i
+                                  && commentingRange.startLi === li && commentingRange.endLi === li;
+                                return (
+                                  <div key={li} className="diff-line-wrap">
+                                    {(() => {
+                                      const isMultiRange = inRange && commentingRange!.startLi !== commentingRange!.endLi;
+                                      const centerLi = isMultiRange ? Math.floor((commentingRange!.startLi + commentingRange!.endLi) / 2) : -1;
+                                      return (
+                                        <div className={`diff-line diff-${line.kind}${inRange ? " diff-line-selected" : ""}`}>
+                                          {isMultiRange ? (
+                                            li === centerLi ? (
+                                              <button className="diff-comment-btn diff-comment-btn--center" type="button" title="Cancel range"
+                                                onClick={() => { setCommentingRange(null); setCommentDraft(""); }}>
+                                                <Plus size={9} />
+                                              </button>
+                                            ) : (
+                                              <div className="diff-range-segment" />
+                                            )
+                                          ) : (
+                                            <button
+                                              className={`diff-comment-btn${isSingleActive ? " active" : ""}`}
+                                              type="button"
+                                              title={isSingleActive ? "Shift+click to extend range" : "Add comment · Shift+click to select range"}
+                                              onClick={(e) => {
+                                                if (commentingRange?.filePath === file.path && commentingRange?.hunkIdx === i && e.shiftKey) {
+                                                  const newStart = Math.min(commentingRange.startLi, li);
+                                                  const newEnd = Math.max(commentingRange.endLi, li);
+                                                  const newStartNum = newStart === commentingRange.startLi ? commentingRange.startLineNum : lineNum;
+                                                  const newEndNum = newEnd === commentingRange.endLi ? commentingRange.endLineNum : lineNum;
+                                                  setCommentingRange({ filePath: file.path, hunkIdx: i, startLi: newStart, endLi: newEnd, startLineNum: newStartNum, endLineNum: newEndNum });
+                                                } else if (isSingleActive) {
+                                                  setCommentingRange(null);
+                                                  setCommentDraft("");
+                                                } else {
+                                                  setCommentingRange({ filePath: file.path, hunkIdx: i, startLi: li, endLi: li, startLineNum: lineNum, endLineNum: lineNum });
+                                                  setCommentDraft("");
+                                                }
+                                              }}
+                                            >
+                                              <Plus size={9} />
+                                            </button>
+                                          )}
+                                          <span className="diff-num">{line.line_old ?? ""}</span>
+                                          <span className="diff-num">{line.line_new ?? ""}</span>
+                                          <span className="diff-content">{line.content}</span>
+                                        </div>
+                                      );
+                                    })()}
+                                    {lineNotes.map((note) => (
+                                      <div key={note.id} className="diff-placed-comment">
+                                        <span className="diff-placed-comment-meta">
+                                          {note.startLine === note.endLine ? `line ${note.startLine}` : `lines ${note.startLine}–${note.endLine}`}
+                                        </span>
+                                        <span className="diff-placed-comment-text">{note.body}</span>
+                                        <button className="diff-placed-comment-remove" type="button" onClick={() => removeComment(cwd, note.id)}>
+                                          <X size={9} />
+                                        </button>
+                                      </div>
+                                    ))}
+                                    {isRangeEnd && (
+                                      <div className="diff-comment-form" onClick={(e) => e.stopPropagation()}>
+                                        <div className="diff-comment-form-hdr">
+                                          <span className="diff-comment-form-who">You</span>
+                                          <span className="diff-comment-form-line">
+                                            {commentingRange!.startLineNum === commentingRange!.endLineNum
+                                              ? `· line ${commentingRange!.startLineNum}`
+                                              : `· lines ${commentingRange!.startLineNum}–${commentingRange!.endLineNum}`}
+                                          </span>
+                                        </div>
+                                        <textarea
+                                          className="diff-comment-textarea"
+                                          placeholder="Leave a comment…"
+                                          value={commentDraft}
+                                          onChange={(e) => setCommentDraft(e.target.value)}
+                                          autoFocus
+                                          rows={2}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                                              e.preventDefault();
+                                              submitComment(hunk.lines);
+                                            }
+                                            if (e.key === "Escape") { setCommentingRange(null); setCommentDraft(""); }
+                                          }}
+                                        />
+                                        <div className="diff-comment-form-actions">
+                                          <button className="diff-comment-cancel" type="button"
+                                            onClick={() => { setCommentingRange(null); setCommentDraft(""); }}>
+                                            Cancel
+                                          </button>
+                                          <button
+                                            className={`diff-comment-submit${commentDraft.trim() ? " ready" : ""}`}
+                                            type="button"
+                                            disabled={!commentDraft.trim()}
+                                            onClick={() => submitComment(hunk.lines)}
+                                          >
+                                            Comment
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                         ))}

@@ -31,7 +31,6 @@ import {
   Globe,
   FileCode,
   BookOpen,
-  Copy,
   Check,
   Cpu,
   Database,
@@ -2121,8 +2120,8 @@ export function WorkspaceView({ zen, name, path }: Props) {
                         {atlasEnabled && getRuntimeState().atlasProjects[project.path] === true && (
                           <Cpu size={11} className="sidebar-project-atlas-icon" aria-label="Token Intelligence indexed" />
                         )}
-                        {isGitProject && (
-                          <span className="sidebar-project-count">{project.worktrees.length + 1}</span>
+                        {(isGitProject || canonRoots.size > 0) && (
+                          <span className="sidebar-project-count">{project.worktrees.length + (canonRoots.size > 0 ? 1 : 0)}</span>
                         )}
                         <Tooltip content="New session" placement="right">
                           <button
@@ -2137,8 +2136,8 @@ export function WorkspaceView({ zen, name, path }: Props) {
 
                       {project.expanded && (
                         <div className="sidebar-project-sessions">
-                          {/* Root sessions — expandable row (git projects only) */}
-                          {isGitProject && canonRoots.size > 0 && (
+                          {/* Root sessions — expandable row */}
+                          {canonRoots.size > 0 && (
                             <div className="sb-worktree">
                               <div
                                 className="sb-worktree-row"
@@ -2146,8 +2145,8 @@ export function WorkspaceView({ zen, name, path }: Props) {
                                 onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, null, false, true)}
                               >
                                 <ChevronRight size={9} className={`sb-worktree-chevron${rootExpanded ? " open" : ""}`} />
-                                <span className="sb-worktree-label">main</span>
-                                <GitBranch size={10} className="sb-worktree-branch-icon" />
+                                <span className="sb-worktree-label">{isGitProject ? "main" : "root"}</span>
+                                {isGitProject && <GitBranch size={10} className="sb-worktree-branch-icon" />}
                                 {primaryRootAgent && <SidebarWorkBadge sessionId={primaryRootAgent.id} />}
                                 <button
                                   className="sb-worktree-add"

@@ -105,7 +105,7 @@ function ModelSelect({ options, value, onChange, extraOption }: {
             background: 'var(--tempest-bg-panel)',
             border: '1px solid var(--tempest-border-default)',
             borderRadius: '8px',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            boxShadow: '0 8px 24px var(--tempest-ui-shadow-sm)',
             zIndex: 99999, padding: '4px',
             maxHeight: '220px', overflowY: 'auto',
           }}

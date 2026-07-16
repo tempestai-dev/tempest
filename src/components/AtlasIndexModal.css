@@ -1,8 +1,8 @@
-/* ── Overlay ─────────────────────────────────────────────── */
+﻿/* â”€â”€ Overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .aim-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--tempest-ui-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -15,7 +15,7 @@
   to   { opacity: 1; }
 }
 
-/* ── Dialog ──────────────────────────────────────────────── */
+/* â”€â”€ Dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .aim-dialog {
   background: var(--tempest-bg-panel);
   border: 1px solid var(--tempest-border-default);
@@ -26,7 +26,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 24px var(--tempest-ui-shadow-md);
   animation: aim-dialog-in 140ms ease both;
 }
 
@@ -35,7 +35,7 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Header (icon + title on one row) ────────────────────── */
+/* â”€â”€ Header (icon + title on one row) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .aim-header {
   display: flex;
   align-items: center;
@@ -44,7 +44,7 @@
   border-bottom: 1px solid var(--tempest-border-subtle);
 }
 
-/* ── Icon ────────────────────────────────────────────────── */
+/* â”€â”€ Icon â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .aim-icon {
   flex: none;
   width: 18px;
@@ -53,7 +53,7 @@
   place-items: center;
 }
 
-/* Thin spinner ring — one arc coloured, rotating */
+/* Thin spinner ring â€” one arc coloured, rotating */
 .aim-spinner {
   width: 16px;
   height: 16px;
@@ -77,7 +77,7 @@
   stroke-linejoin: round;
 }
 
-/* ── Text ────────────────────────────────────────────────── */
+/* â”€â”€ Text â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .aim-title {
   font-size: 14px;
   font-weight: 600;
@@ -99,7 +99,7 @@
   min-height: 15px;
 }
 
-/* ── Progress bar ────────────────────────────────────────── */
+/* â”€â”€ Progress bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .aim-progress {
   position: relative;
   width: 100%;
@@ -131,7 +131,7 @@
   background: var(--tempest-accent-green);
 }
 
-/* ── Actions ─────────────────────────────────────────────── */
+/* â”€â”€ Actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .aim-actions {
   display: flex;
   justify-content: flex-end;
@@ -162,7 +162,7 @@
   cursor: not-allowed;
 }
 
-/* ── Reduced motion ──────────────────────────────────────── */
+/* â”€â”€ Reduced motion â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 @media (prefers-reduced-motion: reduce) {
   .aim-overlay,
   .aim-dialog,

@@ -62,7 +62,7 @@ export default function WelcomePage({ onStart, onSkip }: Props) {
             objectFit: 'contain',
             borderRadius: '6px',
             display: 'block',
-            boxShadow: '0 4px 32px rgba(0, 0, 0, 0.35)',
+            boxShadow: '0 4px 32px var(--tempest-ui-shadow-md)',
           }}
         />
       </div>

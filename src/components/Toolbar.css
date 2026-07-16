@@ -7,13 +7,13 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px 14px 0;
-  color: #252525;
+  color: var(--tempest-fg-default);
   background: var(--tempest-bg-toolbar);
   position: relative;
 }
 
 [data-theme="dark"] .bar {
-  color: #a1a1aa;
+  color: var(--tempest-fg-muted);
 }
 
 .bar-end {
@@ -33,13 +33,9 @@
 .bar .sep {
   width: 1px;
   height: 14px;
-  background: #C0C0C0;
+  background: var(--tempest-border-subtle);
   border-radius: 0;
   flex-shrink: 0;
-}
-
-[data-theme="dark"] .bar .sep {
-  background: #3a3a3a;
 }
 
 .bar svg {
@@ -65,7 +61,7 @@
 }
 
 [data-theme="dark"] .bar button:hover {
-  color: #e4e4e7;
+  color: var(--tempest-fg-default);
 }
 
 /* ─── Expanded icon tray (right side) ───────────────────────────────── */
@@ -103,8 +99,8 @@
 }
 
 [data-theme="dark"] .bar .collapse-btn:hover {
-  background: rgba(255,255,255,0.07);
-  color: #e4e4e7;
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
 }
 
 .capsule-btn {
@@ -171,7 +167,7 @@
   cursor: pointer;
   font-size: 12px;
   font-family: "Geist", sans-serif;
-  color: #8E8E8E;
+  color: var(--tempest-ui-tab-inactive-fg);
   transition: background 0.2s ease, color 0.2s ease;
   position: relative;
   border-top-left-radius: 6px;
@@ -179,22 +175,13 @@
 }
 
 .agent-box:hover {
-  background: rgba(0, 0, 0, 0.04);
-  color: #252525;
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
 }
 
 .agent-box.active {
-  background: #FFFFFF;
-  color: var(--active-fg, #252525);
-}
-
-[data-theme="dark"] .agent-box:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #e4e4e7;
-}
-
-[data-theme="dark"] .agent-box.active {
-  background: #0f0f10;
+  background: var(--tempest-ui-tab-active);
+  color: var(--tempest-fg-default);
 }
 
 .agent-box .agent-icon {
@@ -227,8 +214,8 @@
   align-items: center;
   gap: 10px;
   height: 26px;
-  background: #F7F7F7;
-  border: 1px solid #EBEBEB;
+  background: var(--tempest-bg-base);
+  border: 1px solid var(--tempest-border-default);
   border-radius: 999px;
   overflow: hidden;
   white-space: nowrap;
@@ -242,8 +229,7 @@
 }
 
 [data-theme="dark"] .icon-capsule {
-  background: #141414;
-  border-color: #2a2a2a;
+  background: var(--tempest-ui-tab-pill-bg);
 }
 
 .icon-capsule.animating { display: flex; }

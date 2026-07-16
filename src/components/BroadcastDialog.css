@@ -1,7 +1,7 @@
-.bc-overlay {
+﻿.bc-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--tempest-ui-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -17,10 +17,10 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 8px 32px var(--tempest-ui-shadow-lg);
 }
 
-/* ── Header ── */
+/* â”€â”€ Header â”€â”€ */
 .bc-header {
   display: flex;
   align-items: center;
@@ -37,7 +37,7 @@
 .bc-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--tempest-text-primary);
+  color: var(--tempest-fg-default);
   flex: 1;
 }
 
@@ -45,7 +45,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--tempest-text-muted);
+  color: var(--tempest-fg-subtle);
   padding: 2px;
   display: flex;
   align-items: center;
@@ -53,20 +53,20 @@
   transition: color 120ms, background 120ms;
 }
 .bc-close:hover {
-  color: var(--tempest-text-primary);
+  color: var(--tempest-fg-default);
   background: var(--tempest-bg-hover);
 }
 
-/* ── Empty state ── */
+/* â”€â”€ Empty state â”€â”€ */
 .bc-empty {
   font-size: 12px;
-  color: var(--tempest-text-muted);
+  color: var(--tempest-fg-subtle);
   text-align: center;
   padding: 24px 16px;
   margin: 0;
 }
 
-/* ── Session list ── */
+/* â”€â”€ Session list â”€â”€ */
 .bc-session-list {
   display: flex;
   flex-direction: column;
@@ -108,7 +108,7 @@
 .bc-all-label {
   font-size: 11px;
   font-weight: 600;
-  color: var(--tempest-text-secondary);
+  color: var(--tempest-fg-muted);
   flex: 1;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -116,7 +116,7 @@
 
 .bc-count {
   font-size: 11px;
-  color: var(--tempest-text-muted);
+  color: var(--tempest-fg-subtle);
   background: var(--tempest-bg-editor);
   border: 1px solid var(--tempest-border-subtle);
   border-radius: 10px;
@@ -127,7 +127,7 @@
 
 .bc-session-name {
   font-size: 12px;
-  color: var(--tempest-text-primary);
+  color: var(--tempest-fg-default);
   font-family: "Geist Mono", monospace;
   flex: 1;
   overflow: hidden;
@@ -137,14 +137,14 @@
 
 .bc-session-project {
   font-size: 11px;
-  color: var(--tempest-text-muted);
+  color: var(--tempest-fg-subtle);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100px;
 }
 
-/* ── Compose area ── */
+/* â”€â”€ Compose area â”€â”€ */
 .bc-compose {
   padding: 12px 14px 6px;
 }
@@ -155,7 +155,7 @@
   background: var(--tempest-bg-editor);
   border: 1px solid var(--tempest-border-subtle);
   border-radius: 5px;
-  color: var(--tempest-text-primary);
+  color: var(--tempest-fg-default);
   font-size: 12.5px;
   font-family: inherit;
   padding: 8px 10px;
@@ -169,17 +169,17 @@
   border-color: var(--tempest-accent-blue);
 }
 .bc-textarea::placeholder {
-  color: var(--tempest-text-muted);
+  color: var(--tempest-fg-subtle);
 }
 
 .bc-hint {
   font-size: 10.5px;
-  color: var(--tempest-text-muted);
+  color: var(--tempest-fg-subtle);
   margin: 5px 0 0;
   text-align: right;
 }
 
-/* ── Actions ── */
+/* â”€â”€ Actions â”€â”€ */
 .bc-actions {
   display: flex;
   align-items: center;
@@ -204,11 +204,11 @@
 .bc-btn--cancel {
   background: transparent;
   border-color: var(--tempest-border-subtle);
-  color: var(--tempest-text-secondary);
+  color: var(--tempest-fg-muted);
 }
 .bc-btn--cancel:hover {
   background: var(--tempest-bg-hover);
-  color: var(--tempest-text-primary);
+  color: var(--tempest-fg-default);
 }
 
 .bc-btn--send {

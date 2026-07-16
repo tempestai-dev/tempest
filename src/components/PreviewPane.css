@@ -1,23 +1,23 @@
-.preview-pane {
+﻿.preview-pane {
   display: flex;
   flex-direction: column;
   width: 100%;
   height: 100%;
-  background: var(--tempest-bg-primary);
+  background: var(--tempest-bg-editor);
 }
 
 .preview-pane--hidden {
   display: none;
 }
 
-/* ── Toolbar ──────────────────────────────────────────────────────────────── */
+/* â”€â”€ Toolbar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 .preview-toolbar {
   display: flex;
   align-items: center;
   gap: 2px;
   padding: 5px 8px;
-  background: var(--tempest-bg-secondary);
+  background: var(--tempest-bg-panel);
   border-bottom: 1px solid var(--tempest-border-subtle);
   flex-shrink: 0;
 }
@@ -30,7 +30,7 @@
   height: 26px;
   border: none;
   background: transparent;
-  color: var(--tempest-fg-secondary);
+  color: var(--tempest-fg-muted);
   border-radius: 4px;
   cursor: pointer;
   flex-shrink: 0;
@@ -40,7 +40,7 @@
 
 .preview-nav-btn:hover:not(:disabled) {
   background: var(--tempest-bg-hover);
-  color: var(--tempest-fg-primary);
+  color: var(--tempest-fg-default);
 }
 
 .preview-nav-btn:disabled {
@@ -50,7 +50,7 @@
 
 .preview-nav-btn--active {
   background: var(--tempest-bg-active);
-  color: var(--tempest-fg-primary);
+  color: var(--tempest-fg-default);
 }
 
 .preview-nav-btn--active:hover:not(:disabled) {
@@ -69,7 +69,7 @@
   flex: 1;
   display: flex;
   align-items: center;
-  background: var(--tempest-bg-primary);
+  background: var(--tempest-bg-editor);
   border: 1px solid var(--tempest-border-subtle);
   border-radius: 5px;
   padding: 0 8px;
@@ -93,7 +93,7 @@
   background: transparent;
   border: none;
   outline: none;
-  color: var(--tempest-fg-primary);
+  color: var(--tempest-fg-default);
   font-size: 12px;
   font-family: var(--tempest-font-mono);
   min-width: 0;
@@ -103,7 +103,7 @@
   color: var(--tempest-fg-muted);
 }
 
-/* ── Dimension display ─────────────────────────────────────────────────────── */
+/* â”€â”€ Dimension display â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 .preview-dims {
   display: flex;
@@ -133,7 +133,7 @@
 }
 
 .preview-dim-value:hover {
-  color: var(--tempest-fg-primary);
+  color: var(--tempest-fg-default);
   background: var(--tempest-bg-hover);
 }
 
@@ -143,14 +143,14 @@
   background: var(--tempest-bg-active);
   border: 1px solid var(--tempest-accent-blue);
   border-radius: 3px;
-  color: var(--tempest-fg-primary);
+  color: var(--tempest-fg-default);
   outline: none;
   padding: 1px 3px;
   text-align: center;
   min-width: 28px;
 }
 
-/* ── Content area ─────────────────────────────────────────────────────────── */
+/* â”€â”€ Content area â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 .preview-outer {
   flex: 1;
@@ -162,7 +162,7 @@
 }
 
 .preview-outer--constrained {
-  background: var(--tempest-bg-secondary);
+  background: var(--tempest-bg-panel);
 }
 
 .preview-frame {
@@ -190,7 +190,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--tempest-bg-primary);
+  background: var(--tempest-bg-editor);
 }
 
 .preview-spinner {
@@ -203,7 +203,7 @@
   to   { transform: rotate(360deg); }
 }
 
-/* ── URL Picker (empty state) ─────────────────────────────────────────────── */
+/* â”€â”€ URL Picker (empty state) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 .preview-picker {
   flex: 1;
@@ -227,13 +227,13 @@
 .preview-picker-title {
   font-size: 14px;
   font-weight: 500;
-  color: var(--tempest-fg-primary);
+  color: var(--tempest-fg-default);
   margin: 0 0 4px;
 }
 
 .preview-picker-subtitle {
   font-size: 12px;
-  color: var(--tempest-fg-secondary);
+  color: var(--tempest-fg-muted);
   margin: 0;
 }
 
@@ -247,7 +247,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  background: var(--tempest-bg-secondary);
+  background: var(--tempest-bg-panel);
   border: 1px solid var(--tempest-border-subtle);
   border-radius: 6px;
   padding: 6px 10px;
@@ -270,7 +270,7 @@
   border: none;
   outline: none;
   font-size: 12px;
-  color: var(--tempest-fg-primary);
+  color: var(--tempest-fg-default);
   font-family: var(--tempest-font-mono);
 }
 
@@ -315,7 +315,7 @@
 
 .preview-picker-port-btn:hover {
   background: var(--tempest-bg-hover);
-  color: var(--tempest-fg-primary);
+  color: var(--tempest-fg-default);
   border-color: var(--tempest-border-subtle);
 }
 
