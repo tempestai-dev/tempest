@@ -1685,8 +1685,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
 
   const activeProjectPath = activeSession
-    ? projects.find((p) => p.id === activeSession.projectId)?.path
-    : undefined;
+    ? (projects.find((p) => p.id === activeSession.projectId)?.path ?? (zen ? path : undefined))
+    : zen
+      ? path
+      : (projects.find((p) => p.id === pendingProjectId)?.path ?? projects[0]?.path ?? undefined);
   const isAtlasIndexing = !!activeProjectPath && atlasIndexingPaths.includes(activeProjectPath);
   const isAtlasIndexed =
     !!activeProjectPath &&
@@ -2393,9 +2395,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
                           {/* Project-level empty state */}
                           {(() => {
                             const hasGitRows = isGitProject && (canonRoots.size > 0 || project.worktrees.length > 0);
+                            const hasRootRows = !isGitProject && canonRoots.size > 0;
                             const hasOtherSessions = projectSessions.some((s) => !s.isRootSession && !s.parentSessionId && !project.worktrees.some((w) => w.path === s.cwd));
                             const hasChatGhost = getRuntimeState().tabs.some((t) => t.kind === "chat" && t.projectId === project.id) && !projectSessions.some((s) => s.kind === "chat");
-                            if (!hasGitRows && !hasOtherSessions && !hasChatGhost) {
+                            if (!hasGitRows && !hasRootRows && !hasOtherSessions && !hasChatGhost) {
                               return (
                                 <div className="sb-dropdown-empty-box">
                                   <span className="sb-dropdown-empty-text">No sessions open. Start one with +</span>
@@ -2841,10 +2844,11 @@ export function WorkspaceView({ zen, name, path }: Props) {
             );
           })()}
             </div>{/* canvas */}
-            {activeSessionId && (
+            {activeSession && (!activeSession.kind || activeSession.kind === "diff" || activeSession.kind === "terminal") && (atlasEnabled && activeProjectPath) && (
               <div className="canvas-wrap-footer">
                 <StatusBar
                   sandboxed={activeSession?.sandboxed}
+                  atlasEnabled={atlasEnabled && activeProjectPath ? true : undefined}
                   atlasIndexed={atlasEnabled && isAtlasIndexed ? true : undefined}
                   atlasIndexing={atlasEnabled && isAtlasIndexing ? true : undefined}
                   onSyncAtlas={atlasEnabled && isAtlasIndexed && !isAtlasIndexing && activeProjectPath ? () => {

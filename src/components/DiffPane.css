@@ -221,11 +221,11 @@
   line-height: 1.4;
 }
 
-.status-m { color: var(--tempest-diff-badge-fg); background: var(--tempest-diff-badge-modified); }
-.status-a { color: var(--tempest-diff-badge-fg); background: var(--tempest-diff-badge-added); }
-.status-d { color: var(--tempest-diff-badge-fg); background: var(--tempest-diff-badge-deleted); }
-.status-r { color: var(--tempest-diff-badge-fg); background: var(--tempest-diff-badge-renamed); }
-.status-u { color: var(--tempest-diff-badge-fg); background: var(--tempest-diff-badge-untracked); }
+.status-m { color: var(--tempest-bg-editor); background: var(--tempest-diff-badge-modified); }
+.status-a { color: var(--tempest-bg-editor); background: var(--tempest-diff-badge-added); }
+.status-d { color: var(--tempest-bg-editor); background: var(--tempest-diff-badge-deleted); }
+.status-r { color: var(--tempest-bg-editor); background: var(--tempest-diff-badge-renamed); }
+.status-u { color: var(--tempest-bg-editor); background: var(--tempest-diff-badge-untracked); }
 
 .dv-fpath {
   flex: 1;
@@ -823,8 +823,9 @@
 
 .dv-hunk-hdr {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 5px 12px;
   background: #fafafa;
 }
@@ -836,6 +837,9 @@
 [data-theme="dark"] .dv-hunk.staged .dv-hunk-hdr { background: #0d1f12; }
 
 .dv-hunk-range {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-family: "Geist Mono", monospace;
   font-size: 11px;
   color: #6b7280;
@@ -846,6 +850,8 @@
 
 .dv-hunk-actions {
   display: flex;
+  flex: 0 0 auto;
+  align-self: center;
   align-items: center;
   gap: 6px;
 }

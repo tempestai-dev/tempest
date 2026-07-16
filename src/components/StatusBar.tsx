@@ -5,12 +5,13 @@ interface Props {
   sandboxed?: boolean;
   atlasIndexed?: boolean;
   atlasIndexing?: boolean;
+  atlasEnabled?: boolean;
   onSyncAtlas?: () => void;
 }
 
-export function StatusBar({ sandboxed, atlasIndexed, atlasIndexing, onSyncAtlas }: Props) {
+export function StatusBar({ sandboxed, atlasIndexed, atlasIndexing, atlasEnabled, onSyncAtlas }: Props) {
   const showShield = sandboxed !== undefined;
-  const showAtlas = atlasIndexing || atlasIndexed;
+  const showAtlas = atlasEnabled !== undefined;
 
   if (!showShield && !showAtlas) return null;
 
@@ -24,7 +25,7 @@ export function StatusBar({ sandboxed, atlasIndexed, atlasIndexing, onSyncAtlas 
               Indexing
             </span>
           </Tooltip>
-        ) : (
+        ) : atlasIndexed ? (
           <Tooltip content="Click to re-index" placement="top">
             <span
               className="status-bar-badge status-bar-badge--clickable"
@@ -35,6 +36,13 @@ export function StatusBar({ sandboxed, atlasIndexed, atlasIndexing, onSyncAtlas 
             >
               <Cpu size={13} strokeWidth={2} className="status-bar-badge-icon" />
               Indexed
+            </span>
+          </Tooltip>
+        ) : (
+          <Tooltip content="Project not indexed" placement="top">
+            <span className="status-bar-badge status-bar-badge--error">
+              <Cpu size={13} strokeWidth={2} className="status-bar-badge-icon" />
+              Not indexed
             </span>
           </Tooltip>
         )

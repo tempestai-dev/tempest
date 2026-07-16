@@ -32,6 +32,14 @@
   flex-shrink: 0;
 }
 
+.status-bar-badge--error {
+  color: var(--tempest-semantic-error);
+}
+
+.status-bar-badge--error .status-bar-badge-icon {
+  color: var(--tempest-semantic-error);
+}
+
 .status-bar-sep {
   width: 1px;
   height: 10px;
