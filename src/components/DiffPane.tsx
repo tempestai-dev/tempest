@@ -2,35 +2,30 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
-  RefreshCw, GitBranch, GitPullRequest, Loader, Check,
-  Plus, X, AlertTriangle, ChevronDown, Trash2,
-  RotateCcw, Send, MessageSquare,
+  RefreshCw, GitBranch, Loader,
+  Plus, X, ChevronDown,
 } from "lucide-react";
 import { Tooltip } from "./Tooltip";
-import { useAttribution, setAttribution, COAUTHOR_LINE } from "../store/attribution";
+import { useAttribution, COAUTHOR_LINE } from "../store/attribution";
 import { useComments, addComment, removeComment, clearComments, composeMessage } from "../store/reviewComments";
 import { enqueue } from "../store/messageQueue";
+import { DiscardFileDialog } from "./DiffPane/DiscardFileDialog";
+import { DeleteBranchDialog } from "./DiffPane/DeleteBranchDialog";
+import { CommitBox } from "./DiffPane/CommitBox";
+import { BranchMenu } from "./DiffPane/BranchMenu";
+import { PushControls } from "./DiffPane/PushControls";
+import { CommentBar } from "./DiffPane/CommentBar";
 import "./DiffPane.css";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface DiffLine {
-  kind: "hunk" | "context" | "added" | "removed";
-  line_old: number | null;
-  line_new: number | null;
-  content: string;
-}
+import type { BranchInfo, DiffLine, FileStats } from "../types/git";
+import { buildPrUrl, statusClass, groupHunks } from "../lib/git";
 
 interface FileEntry {
   xy: string;
   path: string;
   status: string;
-}
-
-interface FileStats {
-  path: string;
-  adds: number;
-  dels: number;
 }
 
 interface FileDiff {
@@ -42,62 +37,6 @@ interface FileDiff {
 }
 
 type FileSection = "staged" | "unstaged";
-
-interface BranchInfo {
-  name: string;
-  is_current: boolean;
-  is_remote: boolean;
-  is_worktree: boolean;
-  worktree_path?: string;
-}
-
-interface Hunk {
-  header: DiffLine;
-  lines: DiffLine[];
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function buildPrUrl(remoteUrl: string, branch: string): string {
-  const normalized = remoteUrl.trim().replace(/\.git$/, "");
-  let host = "", path = "";
-  const ssh = normalized.match(/^git@([^:]+):(.+)$/);
-  if (ssh) { host = ssh[1]; path = ssh[2]; }
-  else {
-    try { const u = new URL(normalized); host = u.host; path = u.pathname.replace(/^\//, ""); }
-    catch { return normalized; }
-  }
-  const eb = encodeURIComponent(branch);
-  if (host === "github.com") return `https://github.com/${path}/compare/${eb}?expand=1`;
-  if (host === "gitlab.com" || host.includes("gitlab"))
-    return `https://gitlab.com/${path}/-/merge_requests/new?merge_request[source_branch]=${eb}`;
-  if (host === "bitbucket.org")
-    return `https://bitbucket.org/${path}/pull-requests/new?source=${eb}`;
-  return `https://${host}/${path}`;
-}
-
-function statusClass(s: string) {
-  if (s === "M") return "status-m";
-  if (s === "A") return "status-a";
-  if (s === "D") return "status-d";
-  if (s === "R") return "status-r";
-  return "status-u";
-}
-
-function groupHunks(lines: DiffLine[]): Hunk[] {
-  const hunks: Hunk[] = [];
-  let cur: Hunk | null = null;
-  for (const line of lines) {
-    if (line.kind === "hunk") {
-      if (cur) hunks.push(cur);
-      cur = { header: line, lines: [] };
-    } else if (cur) {
-      cur.lines.push(line);
-    }
-  }
-  if (cur) hunks.push(cur);
-  return hunks;
-}
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 
@@ -515,47 +454,17 @@ export function DiffPane({ cwd, hidden, gitRevision, agentSessions = [] }: Props
             </div>
           </div>
 
-          {/* Commit form */}
-          <div className="dv-commit">
-            <input
-              className="dv-commit-msg"
-              placeholder="Commit message"
-              value={commitTitle}
-              onChange={(e) => setCommitTitle(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); commitStaged(); } }}
-              maxLength={72}
-            />
-            <textarea
-              className="dv-commit-desc"
-              placeholder="Description (optional)"
-              value={commitDesc}
-              onChange={(e) => setCommitDesc(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); commitStaged(); } }}
-              rows={2}
-            />
-            <div className="dv-coauthor-row">
-              <span className="dv-coauthor-label">Co-authored-by Tempest</span>
-              <input
-                type="checkbox"
-                className="dp-toggle"
-                checked={coauthor}
-                onChange={(e) => setAttribution(e.target.checked)}
-              />
-            </div>
-            <button
-              className={`dv-commit-btn${canCommit ? " ready" : ""}`}
-              disabled={!canCommit || commitState === "committing"}
-              onClick={commitStaged}
-            >
-              {commitState === "committing" && <Loader size={12} className="dp-spin" />}
-              {commitState === "done" && <Check size={12} />}
-              Commit{staged.length > 0 ? ` (${staged.length})` : ""}
-            </button>
-            <button className="dv-amend-btn" onClick={() => {}}>
-              <RotateCcw size={10} />
-              Amend last commit
-            </button>
-          </div>
+          <CommitBox
+            commitTitle={commitTitle}
+            commitDesc={commitDesc}
+            commitState={commitState}
+            coauthor={coauthor}
+            canCommit={canCommit}
+            stagedCount={staged.length}
+            onTitleChange={setCommitTitle}
+            onDescChange={setCommitDesc}
+            onCommit={commitStaged}
+          />
         </div>
 
         {/* ── Right: branch bar + diff viewer ── */}
@@ -575,52 +484,17 @@ export function DiffPane({ cwd, hidden, gitRevision, agentSessions = [] }: Props
             </div>
 
             <div className="dv-branch-push">
-              {!showBranchInput ? (
-                <>
-                  <button
-                    className="dv-push-btn"
-                    disabled={pushState === "pushing"}
-                    onClick={pushToCurrent}
-                    title={`Push to ${currentBranch || "current branch"}`}
-                  >
-                    {pushState === "pushing" ? <Loader size={11} className="dp-spin" /> : pushState === "done" ? <Check size={11} /> : <GitBranch size={11} />}
-                    Push
-                  </button>
-                  <button
-                    className="dv-push-btn dv-push-btn--outline"
-                    onClick={() => setShowBranchInput(true)}
-                    title="Create new branch and push"
-                  >
-                    <GitPullRequest size={11} />
-                    PR
-                  </button>
-                </>
-              ) : (
-                <div className="dv-new-branch-row">
-                  <button className="dv-branch-cancel" onClick={() => { setShowBranchInput(false); setNewBranchName(""); }}>
-                    <X size={11} />
-                  </button>
-                  <input
-                    className="dv-branch-input"
-                    placeholder="branch-name"
-                    value={newBranchName}
-                    onChange={(e) => setNewBranchName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") pushToNewBranch();
-                      if (e.key === "Escape") { setShowBranchInput(false); setNewBranchName(""); }
-                    }}
-                    autoFocus
-                  />
-                  <button
-                    className="dv-push-btn"
-                    disabled={!newBranchName.trim() || branchPushState === "pushing"}
-                    onClick={pushToNewBranch}
-                  >
-                    {branchPushState === "pushing" ? <Loader size={11} className="dp-spin" /> : <GitPullRequest size={11} />}
-                    Push & PR
-                  </button>
-                </div>
-              )}
+              <PushControls
+                currentBranch={currentBranch}
+                pushState={pushState}
+                branchPushState={branchPushState}
+                showBranchInput={showBranchInput}
+                newBranchName={newBranchName}
+                onSetShowBranchInput={setShowBranchInput}
+                onSetNewBranchName={setNewBranchName}
+                onPushCurrent={pushToCurrent}
+                onPushNewBranch={pushToNewBranch}
+              />
             </div>
 
             <div className="dv-branch-meta">
@@ -635,39 +509,13 @@ export function DiffPane({ cwd, hidden, gitRevision, agentSessions = [] }: Props
           {/* Diff viewer / branch list */}
           <div className="dv-viewer">
             {showBranchMenu ? (
-              <>
-                <div className="dv-branch-view-tabs">
-                  <button className={`dv-bdt${branchTab === "local" ? " active" : ""}`} onClick={() => setBranchTab("local")}>Local</button>
-                  <button className={`dv-bdt${branchTab === "remote" ? " active" : ""}`} onClick={() => setBranchTab("remote")}>Remote</button>
-                </div>
-                <div className="dv-branch-view-list">
-                  {branchList.length === 0 ? (
-                    <div className="dv-branch-empty">No branches</div>
-                  ) : branchList.map((b) => (
-                    <div key={b.name} className={`dv-branch-item-row${b.is_current ? " current" : ""}`}>
-                      <button
-                        className="dv-branch-item"
-                        onClick={() => !b.is_current && switchBranch(b.name)}
-                        disabled={b.is_current}
-                      >
-                        <GitBranch size={11} />
-                        <span>{b.name}</span>
-                        {b.is_current && <Check size={11} className="dv-branch-check" />}
-                      </button>
-                      {!b.is_current && !b.is_remote && (
-                        <Tooltip content="Delete branch" placement="left">
-                          <button
-                            className="dv-branch-del"
-                            onClick={(e) => { e.stopPropagation(); setDeleteTarget(b.name); setShowBranchMenu(false); }}
-                          >
-                            <Trash2 size={11} />
-                          </button>
-                        </Tooltip>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </>
+              <BranchMenu
+                branches={branchList}
+                tab={branchTab}
+                onSetTab={setBranchTab}
+                onSwitch={switchBranch}
+                onDelete={(name) => { setDeleteTarget(name); setShowBranchMenu(false); }}
+              />
             ) : selected && activeFile ? (
               <>
                 <div className="dv-viewer-hdr">
@@ -1044,95 +892,29 @@ export function DiffPane({ cwd, hidden, gitRevision, agentSessions = [] }: Props
 
       </div>
 
-      {/* Review comments bar */}
-      {comments.length > 0 && (
-        <div className="dcb-bar">
-          <div className="dcb-left">
-            <MessageSquare size={13} className="dcb-icon" />
-            <span className="dcb-count">{comments.length} comment{comments.length !== 1 ? "s" : ""}</span>
-            <span className="dcb-hint">pending</span>
-          </div>
-          <div className="dcb-right">
-            {agentSessions.length > 1 && (
-              <select
-                className="dcb-agent-select"
-                value={selectedAgentId}
-                onChange={(e) => setSelectedAgentId(e.target.value)}
-              >
-                {agentSessions.map((a) => (
-                  <option key={a.id} value={a.id}>{a.name}</option>
-                ))}
-              </select>
-            )}
-            {agentSessions.length === 1 && (
-              <span className="dcb-agent-name">{agentSessions[0].name}</span>
-            )}
-            <button
-              className="dcb-clear-btn"
-              onClick={() => clearComments(cwd)}
-              title="Discard all comments"
-            >
-              <X size={11} />
-            </button>
-            <button
-              className={`dcb-send-btn${agentSessions.length === 0 ? " disabled" : ""}`}
-              onClick={sendCommentsToAgent}
-              disabled={agentSessions.length === 0}
-              title={agentSessions.length === 0 ? "No active agent sessions" : "Send comments to agent"}
-            >
-              <Send size={11} />
-              Send to agent
-            </button>
-          </div>
-        </div>
-      )}
+      <CommentBar
+        count={comments.length}
+        agentSessions={agentSessions}
+        selectedAgentId={selectedAgentId}
+        onSelectAgent={setSelectedAgentId}
+        onClear={() => clearComments(cwd)}
+        onSend={sendCommentsToAgent}
+      />
 
-      {/* Discard confirmation */}
-      {discardTarget && (
-        <div className="dp-overlay" onClick={() => setDiscardTarget(null)}>
-          <div className="dp-dialog" onClick={(e) => e.stopPropagation()}>
-            <AlertTriangle size={20} className="dp-dialog-icon" />
-            <p className="dp-dialog-title">Discard changes?</p>
-            <code className="dp-dialog-path">{discardTarget}</code>
-            <p className="dp-dialog-warn">This cannot be undone.</p>
-            <div className="dp-dialog-actions">
-              <button className="dp-dialog-cancel" onClick={() => setDiscardTarget(null)}>Cancel</button>
-              <button className="dp-dialog-confirm" onClick={() => discardFile(discardTarget)}>Discard</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DiscardFileDialog
+        path={discardTarget}
+        onConfirm={discardFile}
+        onCancel={() => setDiscardTarget(null)}
+      />
 
-      {/* Branch delete confirmation */}
-      {deleteTarget && (
-        <div className="dp-overlay" onClick={() => { setDeleteTarget(null); setDeleteError(null); }}>
-          <div className="dp-dialog" onClick={(e) => e.stopPropagation()}>
-            <Trash2 size={20} className="dp-dialog-icon dp-dialog-icon--delete" />
-            <p className="dp-dialog-title">Delete branch?</p>
-            <code className="dp-dialog-path">{deleteTarget}</code>
-            {deleteError ? (
-              <>
-                <p className="dp-dialog-warn dp-dialog-warn--error">{deleteError}</p>
-                <div className="dp-dialog-actions">
-                  <button className="dp-dialog-cancel" onClick={() => { setDeleteTarget(null); setDeleteError(null); }}>Cancel</button>
-                  <button className="dp-dialog-confirm" onClick={() => confirmDelete(true)}>Force Delete</button>
-                </div>
-              </>
-            ) : (
-              <>
-                <label className="dp-delete-remote-row">
-                  <input type="checkbox" className="dp-toggle" checked={deleteAlsoRemote} onChange={(e) => setDeleteAlsoRemote(e.target.checked)} />
-                  <span className="dv-coauthor-label">Also delete from remote</span>
-                </label>
-                <div className="dp-dialog-actions">
-                  <button className="dp-dialog-cancel" onClick={() => { setDeleteTarget(null); setDeleteError(null); }}>Cancel</button>
-                  <button className="dp-dialog-confirm" onClick={() => confirmDelete(false)}>Delete</button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      <DeleteBranchDialog
+        branch={deleteTarget}
+        alsoRemote={deleteAlsoRemote}
+        error={deleteError}
+        onSetAlsoRemote={setDeleteAlsoRemote}
+        onCancel={() => { setDeleteTarget(null); setDeleteError(null); }}
+        onDelete={confirmDelete}
+      />
     </div>
   );
 }

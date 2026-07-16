@@ -78,6 +78,30 @@ export function subSessionWorktreePath(key: string): string {
   return idx === -1 ? "" : key.slice(0, idx);
 }
 
+// Worktree terminals: additional PTY sessions in a worktree that aren't agents.
+// Keyed by worktreePath + "::term::" + sessionId so multiple terminals coexist at
+// the same cwd alongside the (single) agent entry keyed by the raw cwd.
+export const TERM_SESSION_PREFIX = "::term::";
+
+export function termSessionKey(worktreePath: string, sessionId: string): string {
+  return `${worktreePath}${TERM_SESSION_PREFIX}${sessionId}`;
+}
+
+export function termSessionIdFromKey(key: string): string {
+  const idx = key.indexOf(TERM_SESSION_PREFIX);
+  return idx === -1 ? "" : key.slice(idx + TERM_SESSION_PREFIX.length);
+}
+
+export function getTermSessionsForWorktree(
+  worktreePath: string
+): { key: string; session: WorktreeSession }[] {
+  const prefix = `${worktreePath}${TERM_SESSION_PREFIX}`;
+  const store = getStore();
+  return Object.entries(store)
+    .filter(([key]) => key.startsWith(prefix))
+    .map(([key, session]) => ({ key, session }));
+}
+
 // Returns all persisted sub-sessions for a given worktree path.
 // Used by the startup restore loop and pruneOrphanedSessions.
 export function getSubSessionsForWorktree(

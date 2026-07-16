@@ -7,8 +7,16 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { createWorktree, gitInit, NotAGitRepoError } from "../lib/worktree";
 import { addRecent, getRecents, removeRecent } from "../store/recents";
 import { getOpenProjects, saveOpenProjects } from "../store/openProjects";
-import { getWorktreeSession, saveWorktreeSession, removeWorktreeSession, markWorktreeSessionClosed, markWorktreeSessionOpen, pruneOrphanedSessions, dedupeRootSessions, rootSessionKey, rootSessionIdFromKey, getRootSessionsForProject, subSessionKey, subSessionIdFromKey, getSubSessionsForWorktree, type WorktreeSession } from "../store/sessions";
+import { getWorktreeSession, saveWorktreeSession, removeWorktreeSession, markWorktreeSessionClosed, markWorktreeSessionOpen, pruneOrphanedSessions, dedupeRootSessions, rootSessionKey, rootSessionIdFromKey, getRootSessionsForProject, subSessionKey, subSessionIdFromKey, getSubSessionsForWorktree, termSessionKey, termSessionIdFromKey, getTermSessionsForWorktree, type WorktreeSession } from "../store/sessions";
 import { getRuntimeState, setRuntimeState, type PersistedTab } from "../lib/runtimeState";
+import type { BranchInfo } from "../types/git";
+import type { Session, Worktree, Project, NavSection } from "../types/workspace";
+import { DeleteWorkspaceDialog, type DeleteDialogState } from "./WorkspaceView/DeleteWorkspaceDialog";
+import { DiffPickerModal } from "./WorkspaceView/DiffPickerModal";
+import { PromptPickerPopover } from "./WorkspaceView/PromptPickerPopover";
+import { TerminalNamingModal } from "./WorkspaceView/TerminalNamingModal";
+import { ContextMenu, type CtxMenuState } from "./WorkspaceView/ContextMenu";
+import { TitleBar } from "./WorkspaceView/TitleBar";
 import {
   LayoutGrid,
   Brain,
@@ -24,19 +32,11 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  Trash2,
-  AlertTriangle,
-  Loader,
-  SquareSlash,
   Globe,
   FileCode,
   BookOpen,
-  Check,
   Cpu,
-  Database,
   MessageSquare,
-  Minus,
-  Square,
   SplitSquareHorizontal,
   Keyboard,
   PanelLeft,
@@ -44,7 +44,6 @@ import {
   SunMoon,
   GitBranch,
 } from "lucide-react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { setWorkState, clearWorkState } from "../store/workState";
 import { useKeybindings, matchesEvent, formatShortcut } from "../store/keybindings";
 import { useAttribution, getAttribution, COAUTHOR_LINE } from "../store/attribution";
@@ -84,115 +83,23 @@ interface Props {
   path?: string;
 }
 
-interface Session {
-  id: string;
-  name: string;
-  cwd: string;
-  projectId: string;
-  kind?: "terminal" | "diff" | "preview" | "editor" | "chat"; // defaults to "terminal" when absent
-  previewUrl?: string; // current URL for preview tabs
-  agent?: string; // CLI command when this is an agent session (e.g. "claude")
-  conversationId?: string; // the Claude conversation UUID
-  instanceId: string; // permanent canonical identity — minted once (= sessionId), never changes across resumes
-  createdAt: string; // ISO timestamp
-  isRootSession?: boolean; // true when session runs in the project root (no worktree)
-  noGit?: boolean; // true when user skipped git init for this root session
-  sandboxed?: boolean; // true when session is running inside a Hephaestus isolation sandbox
-  parentSessionId?: string; // set when this session was spawned via a split from another
-  storeKey?: string; // the sessions.ts key this session was saved under; undefined = not persisted
-  initialDiffPath?: string; // set when opened from Changes tab — skips the project picker
-  metadata: {
-    resumeCount: number;
-    hasBeenResumed: boolean;
-  };
-}
-
-interface Worktree {
-  name: string;
-  path: string;
-}
-
-interface BranchInfo {
-  name: string;
-  is_current: boolean;
-  is_remote: boolean;
-  is_worktree: boolean;
-  worktree_path?: string;
-}
-
-interface Project {
-  id: string;
-  name: string;
-  path: string;
-  expanded: boolean;
-  worktrees: Worktree[];
-}
-
-type NavSection = "overview" | "knowledge-base";
-
-const win = getCurrentWindow();
-
 // Directories under .tempest/ that are internal to Tempest and must never be
 // treated as git worktrees in the sidebar.
 const TEMPEST_INTERNAL_DIRS = new Set(["atlas", "logs"]);
 
-function folderName(p: string): string {
-  return p.replace(/[/\\]+$/, "").split(/[/\\]/).pop() ?? p;
-}
-
-// ─── Split pane layout ────────────────────────────────────────────────────────
-// "v" = vertical divider (panes side by side); "h" = horizontal divider (stacked).
-type SplitDir = "h" | "v";
-interface SplitLeaf   { type: "leaf";  sessionId: string; }
-interface SplitBranch { type: "split"; id: string; dir: SplitDir; ratio: number; first: PaneNode; second: PaneNode; }
-type PaneNode = SplitLeaf | SplitBranch;
-interface PaneRect    { top: number; left: number; width: number; height: number; } // 0–1 fractions
-
-function paneSessionIds(n: PaneNode): string[] {
-  if (n.type === "leaf") return [n.sessionId];
-  return [...paneSessionIds(n.first), ...paneSessionIds(n.second)];
-}
-
-function replaceLeaf(n: PaneNode, id: string, repl: PaneNode): PaneNode | null {
-  if (n.type === "leaf") return n.sessionId === id ? repl : null;
-  const a = replaceLeaf(n.first, id, repl); if (a) return { ...n, first: a } as SplitBranch;
-  const b = replaceLeaf(n.second, id, repl); if (b) return { ...n, second: b } as SplitBranch;
-  return null;
-}
-
-function removeLeaf(n: PaneNode, id: string): PaneNode | null {
-  if (n.type === "leaf") return null;
-  if (n.first.type  === "leaf" && n.first.sessionId  === id) return n.second;
-  if (n.second.type === "leaf" && n.second.sessionId === id) return n.first;
-  const a = removeLeaf(n.first, id);  if (a !== null) return { ...n, first: a }  as SplitBranch;
-  const b = removeLeaf(n.second, id); if (b !== null) return { ...n, second: b } as SplitBranch;
-  return null;
-}
-
-function patchRatio(n: PaneNode, splitId: string, ratio: number): PaneNode {
-  if (n.type === "leaf") return n;
-  const b = n as SplitBranch;
-  if (b.id === splitId) return { ...b, ratio };
-  return { ...b, first: patchRatio(b.first, splitId, ratio), second: patchRatio(b.second, splitId, ratio) };
-}
-
-function computeRects(n: PaneNode, r: PaneRect = { top: 0, left: 0, width: 1, height: 1 }): Map<string, PaneRect> {
-  if (n.type === "leaf") return new Map([[n.sessionId, r]]);
-  const { dir, ratio } = n as SplitBranch;
-  const a: PaneRect = dir === "v" ? { ...r, width: r.width * ratio }                              : { ...r, height: r.height * ratio };
-  const b: PaneRect = dir === "v" ? { ...r, left: r.left + r.width * ratio, width: r.width * (1 - ratio) } : { ...r, top: r.top + r.height * ratio, height: r.height * (1 - ratio) };
-  return new Map([...computeRects(n.first, a), ...computeRects(n.second, b)]);
-}
-
-interface HandleInfo { id: string; dir: SplitDir; ratio: number; parentRect: PaneRect; }
-function collectHandles(n: PaneNode, r: PaneRect = { top: 0, left: 0, width: 1, height: 1 }): HandleInfo[] {
-  if (n.type === "leaf") return [];
-  const { id, dir, ratio } = n as SplitBranch;
-  const a: PaneRect = dir === "v" ? { ...r, width: r.width * ratio }                              : { ...r, height: r.height * ratio };
-  const b: PaneRect = dir === "v" ? { ...r, left: r.left + r.width * ratio, width: r.width * (1 - ratio) } : { ...r, top: r.top + r.height * ratio, height: r.height * (1 - ratio) };
-  return [{ id, dir, ratio, parentRect: r }, ...collectHandles(n.first, a), ...collectHandles(n.second, b)];
-}
-// ─────────────────────────────────────────────────────────────────────────────
+import { folderName, timeAgo } from "../lib/format";
+import { buildAgentArgs } from "../lib/agentArgs";
+import {
+  type SplitDir,
+  type SplitBranch,
+  type PaneNode,
+  paneSessionIds,
+  replaceLeaf,
+  removeLeaf,
+  patchRatio,
+  computeRects,
+  collectHandles,
+} from "../lib/paneLayout";
 
 // WorkStateBadge, QueueBadge, SidebarWorkBadge — imported from ./SessionBadges
 
@@ -306,30 +213,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const [chatNonce, setChatNonce] = useState<Record<string, number>>({});
 
   // Sidebar right-click context menu
-  const [ctxMenu, setCtxMenu] = useState<{
-    x: number; y: number;
-    worktree: Worktree | null;
-    projectPath: string;
-    projectId: string;
-    sessionId: string | null;
-    isProjectHeader?: boolean; // true when right-clicking a project row (not a worktree)
-    isRootSession?: boolean;   // true when right-clicking a root session or its ghost
-    rootKey?: string;          // unique store key for a root-session ghost (sessionId is null)
-    isChatGhost?: boolean;     // true when right-clicking the chat ghost row (sessionId is null)
-  } | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<CtxMenuState | null>(null);
 
   // Delete workspace dialog state
-  const [deleteDialog, setDeleteDialog] = useState<{
-    worktree: Worktree;
-    projectPath: string;
-    projectId: string;
-    sessionId: string | null;
-    branchName: string | null;
-    deleteBranch: boolean;
-    step: 1 | 2;
-    loading: boolean;
-    error: string | null;
-  } | null>(null);
+  const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
 
 
   // Persist projects list to localStorage whenever it changes
@@ -400,6 +287,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
             for (const { key } of getSubSessionsForWorktree(e.path)) {
               validPaths.add(key);
             }
+            // Worktree terminal keys are synthetic too — same treatment.
+            for (const { key } of getTermSessionsForWorktree(e.path)) {
+              validPaths.add(key);
+            }
           });
         } catch {
           // .tempest/ doesn't exist or project path is gone
@@ -464,6 +355,24 @@ export function WorkspaceView({ zen, name, path }: Props) {
               parentMintId // providedSessionId — stable across this restore run
             ).catch(() => {}),
           });
+
+          // Persisted worktree terminals — each restores independently under its own termKey
+          for (const { key: termKey, session: termSaved } of getTermSessionsForWorktree(wt.path)) {
+            if (termSaved.closed === true) continue;
+            const termInstanceId = termSaved.instanceId ?? termKey;
+            const termId = termSessionIdFromKey(termKey);
+            items.push({
+              instanceId: termInstanceId,
+              isActive: termInstanceId === savedActiveId,
+              sortIndex: orderMap.get(termInstanceId) ?? Infinity,
+              open: () => openSession(
+                termSaved.name, wt.path, project.id, undefined,
+                undefined, undefined, undefined,
+                undefined, undefined,
+                true, termId
+              ).catch(() => {}),
+            });
+          }
 
           // Collect persisted sub-sessions for Phase 5
           for (const { key: subKey, session: subSaved } of getSubSessionsForWorktree(wt.path)) {
@@ -863,52 +772,6 @@ export function WorkspaceView({ zen, name, path }: Props) {
   // come from the per-agent AGENT_CONFIGS entry, with "{UUID}" substituted for the
   // appropriate conversation id. Agents whose config has null session/resume args
   // receive no session flags and simply start fresh.
-  function buildAgentArgs(
-    agent: string,
-    sessionId: string, // the new PTY session UUID, minted as the conversation id on first spawn
-    conversationId?: string, // stored UUID, present only when resuming
-    prompt?: string,
-    model?: string, // specific model to pass as --model <id> to supported CLIs
-  ): string[] {
-    const config = AGENT_CONFIGS.find((a) => a.hint === agent);
-    const args: string[] = [];
-
-    // Prepend --model flag for CLIs that support it
-    if (model && (agent === "claude" || agent === "gemini" || agent === "codex")) {
-      args.push("--model", model);
-    }
-
-    if (config && conversationId && config.resumeArgs) {
-      // Standard ID-based resume (Claude Code, Gemini CLI)
-      for (const arg of config.resumeArgs) {
-        args.push(arg.replace("{UUID}", conversationId));
-      }
-    } else if (config && conversationId && config.captureResumeArgs) {
-      // Captured-ID resume (Opencode — session ID was extracted from PTY output)
-      for (const arg of config.captureResumeArgs) {
-        args.push(arg.replace("{UUID}", conversationId));
-      }
-    } else if (config && !conversationId && config.sessionIdArgs) {
-      // First spawn — mint this session's UUID as the conversation id
-      for (const arg of config.sessionIdArgs) {
-        args.push(arg.replace("{UUID}", sessionId));
-      }
-    }
-    // If all arg arrays are null (e.g. Aider, plain opencode first spawn),
-    // no session flags are added and the agent starts fresh or uses CWD state.
-
-    // Auto-approve: append the agent's skip-permissions flag before the prompt
-    // so it's not parsed as task content by the CLI.
-    if (config?.autoApproveArgs && getSettings().autoApprove) {
-      for (const arg of config.autoApproveArgs) {
-        args.push(arg);
-      }
-    }
-
-    if (prompt) args.push(prompt);
-    return args;
-  }
-
   async function openSession(
     sessionName: string,
     cwd: string,
@@ -941,7 +804,11 @@ export function WorkspaceView({ zen, name, path }: Props) {
       // Main worktree terminal sessions: not persisted (no agent worth resuming).
       const rootKey = isRootSession ? rootSessionKey(cwd, sessionId) : null;
       const subKey = parentSessionId ? subSessionKey(cwd, sessionId) : null;
-      const storeKey = rootKey ?? subKey ?? (agent ? cwd : undefined);
+      // Worktree terminals get a unique per-session termKey so multiple terminals
+      // at the same cwd coexist alongside the (cwd-keyed) agent entry — and each
+      // one persists independently across close/reopen for the sidebar ghost.
+      const termKey = (!rootKey && !subKey && !agent) ? termSessionKey(cwd, sessionId) : null;
+      const storeKey = rootKey ?? subKey ?? termKey ?? (agent ? cwd : undefined);
 
       // Worktree sessions: the store key (path) is the stable identity — reuse it so
       // instanceId never changes across restarts. Root sessions have no path anchor, so
@@ -1285,7 +1152,6 @@ export function WorkspaceView({ zen, name, path }: Props) {
     let branchName: string;
     let existingBranch: string | undefined;
     let directWorktreePath: string | undefined;
-    let parentId: string | undefined;
 
     if (useExistingBranch) {
       if (!existingBranchName.trim()) return;
@@ -1294,20 +1160,6 @@ export function WorkspaceView({ zen, name, path }: Props) {
       if (selectedBranch?.is_worktree && selectedBranch.worktree_path) {
         // Branch is already in a worktree — open a session there without calling createWorktree.
         directWorktreePath = selectedBranch.worktree_path;
-        const liveParent = sessions.find((s) => s.cwd === directWorktreePath && !s.parentSessionId);
-        if (liveParent) {
-          parentId = liveParent.id;
-        } else {
-          // No live parent yet (e.g. user is on the overview tab). If a ghost exists in
-          // localStorage, pre-mint the parent ID and restore the ghost first so the new
-          // sub-session nests under it rather than replacing the worktree row.
-          const ghost = getWorktreeSession(directWorktreePath);
-          if (ghost && ghost.closed !== true) {
-            parentId = crypto.randomUUID();
-          }
-          // If no ghost either, parentId stays undefined and the new session becomes
-          // the main worktree session (correct for a truly fresh worktree).
-        }
       } else {
         existingBranch = existingBranchName.trim();
       }
@@ -1334,25 +1186,12 @@ export function WorkspaceView({ zen, name, path }: Props) {
       if (directWorktreePath) {
         worktreePath = directWorktreePath;
         addWorktreeToState({ name: branchName, path: worktreePath }, workingProjectId);
-        // If we pre-minted a parentId but no live session holds it yet, restore the
-        // ghost parent first with that exact ID so sub-session nesting works immediately.
-        if (parentId && !sessions.some((s) => s.id === parentId)) {
-          const ghost = getWorktreeSession(worktreePath);
-          if (ghost) {
-            await openSession(
-              ghost.name, worktreePath, workingProjectId ?? "",
-              ghost.agent, undefined, undefined,
-              ghost.agent ? ghost.conversationId : undefined,
-              false, ghost.noGit, false, parentId
-            );
-          }
-        }
       } else {
         const result = await createWorktree({ projectPath: activePath, name: branchName, existingBranch });
         worktreePath = result.path;
         addWorktreeToState({ name: branchName, path: worktreePath }, workingProjectId);
       }
-      await openSession(sessionName, worktreePath, workingProjectId ?? "", agent, prompt, undefined, undefined, undefined, undefined, false, undefined, parentId);
+      await openSession(sessionName, worktreePath, workingProjectId ?? "", agent, prompt, undefined, undefined, undefined, undefined, false, undefined, undefined);
       resetTerminalModal();
     } catch (e) {
       if (e instanceof NotAGitRepoError) {
@@ -1639,13 +1478,11 @@ export function WorkspaceView({ zen, name, path }: Props) {
     const existingCount = sessions.filter((s) => s.cwd === worktreePath).length;
     const baseName = agent ? agent.name : "Terminal";
     const sessionName = existingCount > 0 ? `${baseName} #${existingCount + 1}` : baseName;
-    // A live parent session in a worktree lets an additional session nest as a
-    // sub-session. Root sessions are independent (keyed per-session), so they never nest.
-    const liveParent = isRootSession
-      ? undefined
-      : sessions.find((s) => s.cwd === worktreePath && !s.parentSessionId);
-    const parentId = liveParent ? liveParent.id : undefined;
     try {
+      // The branch-level "+" always opens a top-level tab. Nesting as a sub-session
+      // is reserved for splitPane(); if we auto-nested here whenever a live session
+      // already ran at this cwd, the new tab would be filtered out of AgentTabs
+      // (which hides parentSessionId sessions) and appear to vanish.
       await openSession(
         sessionName,
         worktreePath,
@@ -1658,7 +1495,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
         undefined,
         false,
         undefined,
-        parentId
+        undefined
       );
     } catch (e) {
       console.error("[BranchSession] launchInWorktree failed:", e);
@@ -1832,15 +1669,6 @@ export function WorkspaceView({ zen, name, path }: Props) {
     }
   }, [activeSessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function timeAgo(iso: string): string {
-    const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-    if (s < 60) return "just now";
-    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-    if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-    if (s < 604800) return `${Math.floor(s / 86400)}d ago`;
-    return `${Math.floor(s / 604800)}w ago`;
-  }
-
   async function openProjectByPath(selected: string) {
     const projName = folderName(selected);
     addRecent({ name: projName, path: selected });
@@ -1893,26 +1721,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
   // Build the workspace list shown in OverviewPage from live session state.
   return (
     <div className="app">
-      <div className="topbar">
-        <div className="topbar-drag" data-tauri-drag-region />
-        <div className="topbar-right">
-          <Tooltip content="Minimize" placement="bottom">
-            <button className="win-btn" onClick={() => win.minimize()}>
-              <Minus size={11} />
-            </button>
-          </Tooltip>
-          <Tooltip content="Maximize" placement="bottom">
-            <button className="win-btn" onClick={() => win.toggleMaximize()}>
-              <Square size={10} />
-            </button>
-          </Tooltip>
-          <Tooltip content="Close" placement="bottom">
-            <button className="win-btn win-btn--close" onClick={() => win.close()}>
-              <X size={12} />
-            </button>
-          </Tooltip>
-        </div>
-      </div>
+      <TitleBar />
 
       <Toolbar
         tabsMode={tabsMode}
@@ -1939,59 +1748,25 @@ export function WorkspaceView({ zen, name, path }: Props) {
                   onClick={() => setPromptPickerOpen((o) => !o)}
                 />
               </Tooltip>
-              {promptPickerOpen && promptPickerPos && createPortal(
-                <div className="sub-bar-prompt-picker" style={{ top: promptPickerPos.top, right: promptPickerPos.right, position: "fixed" }}>
-                  <div className="sub-bar-prompt-picker-header">Prompt Library</div>
-                  <div className="sub-bar-prompt-picker-items">
-                    {promptPickerItems.length > 0 ? (
-                      promptPickerItems.map((p) => {
-                        const sent = promptSentId === p.id;
-                        return (
-                          <div key={p.id} className={`sub-bar-prompt-item${sent ? " sub-bar-prompt-item--sent" : ""}`}>
-                            <div className="sub-bar-prompt-item-text">
-                              <span className="sub-bar-prompt-title">{p.title}</span>
-                              <span className="sub-bar-prompt-preview">
-                                {p.body.length > 60 ? p.body.slice(0, 60) + "…" : p.body}
-                              </span>
-                            </div>
-                            <button
-                              className={`sub-bar-prompt-copy-btn${sent ? " sub-bar-prompt-copy-btn--sent" : ""}`}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                if (sent) return;
-                                navigator.clipboard.writeText(p.body);
-                                setPromptSentId(p.id);
-                                setTimeout(() => {
-                                  setPromptPickerOpen(false);
-                                  setPromptSentId(null);
-                                }, 800);
-                              }}
-                            >
-                              {sent ? <><Check size={11} /> Copied</> : <>Copy</>}
-                            </button>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <div className="sub-bar-prompt-empty">No prompts yet</div>
-                    )}
-                  </div>
-                  <div className="sub-bar-prompt-picker-footer">
-                    <button
-                      className="sub-bar-prompt-manage-btn"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        setPromptPickerOpen(false);
-                        setSettingsInitialSection("prompts");
-                        setSettingsOpen(true);
-                      }}
-                    >
-                      <Plus size={12} />
-                      <span>Manage Prompts</span>
-                    </button>
-                  </div>
-                </div>,
-                document.body
+              {promptPickerOpen && promptPickerPos && (
+                <PromptPickerPopover
+                  pos={promptPickerPos}
+                  items={promptPickerItems}
+                  sentId={promptSentId}
+                  onCopy={(p) => {
+                    navigator.clipboard.writeText(p.body);
+                    setPromptSentId(p.id);
+                    setTimeout(() => {
+                      setPromptPickerOpen(false);
+                      setPromptSentId(null);
+                    }, 800);
+                  }}
+                  onManage={() => {
+                    setPromptPickerOpen(false);
+                    setSettingsInitialSection("prompts");
+                    setSettingsOpen(true);
+                  }}
+                />
               )}
             </div>
           </>
@@ -2256,8 +2031,18 @@ export function WorkspaceView({ zen, name, path }: Props) {
                             const wtAgents = allAtPath.filter((s) => s.agent);
                             const wtTerminals = allAtPath.filter((s) => !s.agent);
                             const primaryAgent = wtAgents[0] ?? null;
-                            const savedMeta = wtSessions.length === 0 ? getWorktreeSession(wt.path) : null;
-                            const showGhost = savedMeta && savedMeta.closed !== true;
+                            // Every persisted entry at this cwd (single agent under cwd, plus each
+                            // terminal under its own termKey). Anything not matched by a live session's
+                            // storeKey renders as a ghost — so closing one session never affects another.
+                            const liveStoreKeys = new Set(allAtPath.map((s) => s.storeKey).filter((k): k is string => !!k));
+                            const agentMeta = getWorktreeSession(wt.path);
+                            const persistedEntries: { key: string; session: WorktreeSession }[] = [
+                              ...(agentMeta ? [{ key: wt.path, session: agentMeta }] : []),
+                              ...getTermSessionsForWorktree(wt.path),
+                            ];
+                            const ghostEntries = persistedEntries.filter((e) => !liveStoreKeys.has(e.key));
+                            const agentGhosts = ghostEntries.filter((e) => !!e.session.agent);
+                            const termGhosts  = ghostEntries.filter((e) => !e.session.agent);
                             const wtExpanded = expandedWorktrees.has(wt.path);
 
                             return (
@@ -2279,8 +2064,8 @@ export function WorkspaceView({ zen, name, path }: Props) {
                                   </button>
                                 </div>
                                 {wtExpanded && (() => {
-                                  const wtAgentsEmpty = wtAgents.length === 0 && !(showGhost && savedMeta?.agent);
-                                  const wtTerminalsEmpty = wtTerminals.length === 0 && !(showGhost && !savedMeta?.agent);
+                                  const wtAgentsEmpty = wtAgents.length === 0 && agentGhosts.length === 0;
+                                  const wtTerminalsEmpty = wtTerminals.length === 0 && termGhosts.length === 0;
                                   return (
                                     <div className="sb-worktree-dropdown">
                                       {wtAgentsEmpty && wtTerminalsEmpty ? (
@@ -2306,16 +2091,17 @@ export function WorkspaceView({ zen, name, path }: Props) {
                                                 <SidebarWorkBadge sessionId={s.id} />
                                               </button>
                                             ))}
-                                            {showGhost && savedMeta!.agent && (
+                                            {agentGhosts.map(({ key, session: g }) => (
                                               <button
+                                                key={key}
                                                 className="sb-dropdown-item sb-dropdown-item--ghost"
-                                                onClick={() => { openSession(savedMeta!.name, wt.path, project.id, savedMeta!.agent, undefined, undefined, savedMeta!.conversationId).catch(() => {}); markWorktreeSessionOpen(wt.path); }}
+                                                onClick={() => { openSession(g.name, wt.path, project.id, g.agent, undefined, undefined, g.conversationId).catch(() => {}); markWorktreeSessionOpen(key); }}
                                                 onContextMenu={(e) => openCtxMenu(e, wt, project.path, project.id, null)}
                                               >
-                                                <AgentIcon hint={savedMeta!.agent} size={11} />
-                                                <span className="sb-dropdown-item-name">{savedMeta!.name}</span>
+                                                <AgentIcon hint={g.agent} size={11} />
+                                                <span className="sb-dropdown-item-name">{g.name}</span>
                                               </button>
-                                            )}
+                                            ))}
                                             {wtAgentsEmpty && (
                                               <div className="sb-dropdown-empty-box">
                                                 <span className="sb-dropdown-empty-text">No agent sessions</span>
@@ -2335,16 +2121,17 @@ export function WorkspaceView({ zen, name, path }: Props) {
                                                 <span className="sb-dropdown-item-name">{s.name}</span>
                                               </button>
                                             ))}
-                                            {showGhost && !savedMeta!.agent && (
+                                            {termGhosts.map(({ key, session: g }) => (
                                               <button
+                                                key={key}
                                                 className="sb-dropdown-item sb-dropdown-item--ghost"
-                                                onClick={() => { openSession(savedMeta!.name, wt.path, project.id, undefined).catch(() => {}); markWorktreeSessionOpen(wt.path); }}
+                                                onClick={() => { openSession(g.name, wt.path, project.id, undefined, undefined, undefined, undefined, undefined, undefined, false, termSessionIdFromKey(key)).catch(() => {}); markWorktreeSessionOpen(key); }}
                                                 onContextMenu={(e) => openCtxMenu(e, wt, project.path, project.id, null)}
                                               >
                                                 <TerminalSquare size={11} />
-                                                <span className="sb-dropdown-item-name">{savedMeta!.name}</span>
+                                                <span className="sb-dropdown-item-name">{g.name}</span>
                                               </button>
-                                            )}
+                                            ))}
                                             {wtTerminalsEmpty && (
                                               <div className="sb-dropdown-empty-box">
                                                 <span className="sb-dropdown-empty-text">No terminals</span>
@@ -2517,66 +2304,12 @@ export function WorkspaceView({ zen, name, path }: Props) {
               })()}
           <div className="workspace-content">
             {diffPickerOpen && (
-              <div className="diff-screen">
-                <div className="diff-screen-body">
-                  <div className="diff-screen-inner">
-                    <header className="diff-screen-header">
-                      <h1 className="diff-screen-title">Open a diff</h1>
-                      <p className="diff-screen-subtitle">Choose a branch to review its changes</p>
-                    </header>
-
-                    {diffPickerProjects.length === 0 ? (
-                      <div className="diff-screen-empty-state">
-                        <GitBranch size={22} />
-                        <p>No projects open</p>
-                      </div>
-                    ) : diffPickerProjects.map((project) => {
-                      const branches = diffPickerBranches[project.id] ?? [];
-                      return (
-                        <section key={project.id} className="diff-screen-project">
-                          <div className="diff-screen-project-header">
-                            <span className="diff-screen-project-name">{project.name}</span>
-                            {branches.length > 0 && (
-                              <span className="diff-screen-project-count">{branches.length}</span>
-                            )}
-                          </div>
-                          <div className="diff-screen-branches">
-                            {diffPickerLoading && branches.length === 0 ? (
-                              <div className="diff-screen-loading">Loading branches…</div>
-                            ) : branches.length === 0 ? (
-                              <div className="diff-screen-empty">No branches found</div>
-                            ) : branches.map((branch) => {
-                              const canOpen = !!branch.worktree_path || branch.is_current;
-                              const kind = branch.is_current
-                                ? "head"
-                                : branch.worktree_path
-                                  ? "worktree"
-                                  : branch.is_remote
-                                    ? "remote"
-                                    : "local";
-                              return (
-                                <button
-                                  key={`${project.id}:${branch.name}:${branch.is_remote ? "remote" : "local"}`}
-                                  className={`diff-screen-branch diff-screen-branch--${kind}`}
-                                  disabled={!canOpen}
-                                  onMouseDown={(e) => { e.preventDefault(); openDiffForBranch(project, branch); }}
-                                  title={branch.worktree_path ?? (branch.is_current ? project.path : "Open this branch in a worktree to view its diff")}
-                                >
-                                  <GitBranch size={14} className="diff-screen-branch-icon" />
-                                  <span className="diff-screen-branch-name">{branch.name}</span>
-                                  <span className={`diff-screen-branch-meta diff-screen-branch-meta--${kind}`}>
-                                    {kind}
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </section>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
+              <DiffPickerModal
+                projects={diffPickerProjects}
+                branches={diffPickerBranches}
+                loading={diffPickerLoading}
+                onPick={openDiffForBranch}
+              />
             )}
             <div className="panes-viewport" ref={workspaceContentRef}>
             {sessions.map((s) => {
@@ -2926,421 +2659,64 @@ export function WorkspaceView({ zen, name, path }: Props) {
         onLivePreview={() => { if (pendingProjectId) openPreviewTab(pendingProjectId); }}
       />
 
-      {/* Sidebar context menu */}
-      {ctxMenu && createPortal(
-        <div className="ctx-overlay" onClick={() => setCtxMenu(null)}>
-          <div
-            className="ctx-menu"
-            style={{ top: ctxMenu.y, left: ctxMenu.x }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {(() => {
-              const m = ctxMenu;
-              if (!m) return null;
-              const targetSession = m.sessionId ? sessions.find((s) => s.id === m.sessionId) : null;
-              const atlasOn = getSettings().atlasEnabled;
-              const indexed = (getRuntimeState().atlasProjects ?? {})[m.projectPath] === true;
-              const canClose = !!m.sessionId;
-              const hasChat = getRuntimeState().tabs.some(
-                (t) => t.kind === "chat" && t.projectId === m.projectId
-              );
-              // Diff opens against worktree path when available, project root otherwise
-              const diffPath = m.worktree ? m.worktree.path : m.projectPath;
-
-              const indexProject = () => {
-                const decided = getRuntimeState().atlasProjects ?? {};
-                setRuntimeState({ atlasProjects: { ...decided, [m.projectPath]: true } });
-                invoke("start_atlas_index", { projectPath: m.projectPath })
-                  .then(() => invoke("start_atlas_daemon", { projectPath: m.projectPath }).catch(() => {}))
-                  .catch((e) => console.error("[Atlas] start_atlas_index failed:", e));
-                setAtlasIndexingPaths((prev) => prev.includes(m.projectPath) ? prev : [...prev, m.projectPath]);
-                setCtxMenu(null);
-              };
-              const removeIndex = () => {
-                invoke("remove_atlas_index", { projectPath: m.projectPath })
-                  .catch((e) => console.error("[Atlas] remove_atlas_index failed:", e));
-                const decided = getRuntimeState().atlasProjects ?? {};
-                const updated = { ...decided };
-                delete updated[m.projectPath];
-                setRuntimeState({ atlasProjects: updated });
-                setCtxMenu(null);
-              };
-
-              const hasToolItems = atlasOn || hasChat;
-              const hasDestructiveWorktree = !!m.worktree;
-              const hasDestructiveSession = m.isRootSession;
-
-              return (
-                <>
-                  {/* ── Navigation ── */}
-                  <button className="ctx-item" onClick={() => { openChatTab(m.projectId); setCtxMenu(null); }}>
-                    <MessageSquare size={13} /> Open chat
-                  </button>
-                  <button className="ctx-item" onClick={() => { openDiffTab(diffPath, m.projectId); setCtxMenu(null); }}>
-                    <Eye size={13} /> Open diff
-                  </button>
-                  {canClose && (
-                    <button className="ctx-item" onClick={() => { closeSession(m.sessionId!); setCtxMenu(null); }}>
-                      <X size={13} /> Close
-                    </button>
-                  )}
-
-                  {/* ── Tools (index, chat history) ── */}
-                  {hasToolItems && <div className="ctx-sep" />}
-                  {atlasOn && (
-                    <button className="ctx-item" onClick={indexProject}>
-                      <Database size={13} /> {indexed ? "Re-index project" : "Index project"}
-                    </button>
-                  )}
-                  {hasChat && (
-                    <>
-                      <button className="ctx-item ctx-item--danger" onClick={() => { clearChatHistory(m.projectId, targetSession?.id); setCtxMenu(null); }}>
-                        <Trash2 size={13} /> Clear history
-                      </button>
-                      <button className="ctx-item ctx-item--danger" onClick={() => {
-                        const chatSess = sessions.find((s) => s.kind === "chat" && s.projectId === m.projectId);
-                        if (chatSess) closeSession(chatSess.id);
-                        const st = getRuntimeState();
-                        setRuntimeState({ tabs: st.tabs.filter((t) => !(t.kind === "chat" && t.projectId === m.projectId)) });
-                        clearChatHistory(m.projectId, chatSess?.id);
-                        setCtxMenu(null);
-                      }}>
-                        <X size={13} /> Remove chat
-                      </button>
-                    </>
-                  )}
-
-                  {/* ── Destructive ── */}
-                  <div className="ctx-sep" />
-                  {hasDestructiveWorktree && (
-                    <>
-                      <button className="ctx-item ctx-item--danger" onClick={() => openDeleteDialog(m.worktree!, m.projectPath, m.projectId, m.sessionId)}>
-                        <Trash2 size={13} /> Delete workspace
-                      </button>
-                      <button className="ctx-item ctx-item--danger" onClick={() => openDeleteDialog(m.worktree!, m.projectPath, m.projectId, m.sessionId, true)}>
-                        <Trash2 size={13} /> Delete branch
-                      </button>
-                    </>
-                  )}
-                  {hasDestructiveSession && (
-                    <button
-                      className="ctx-item ctx-item--danger"
-                      onClick={() => {
-                        const keyToRemove = targetSession?.storeKey ?? m.rootKey;
-                        if (m.sessionId) closeSession(m.sessionId);
-                        if (keyToRemove) removeWorktreeSession(keyToRemove);
-                        setCtxMenu(null);
-                      }}
-                    >
-                      <Trash2 size={13} /> Remove session
-                    </button>
-                  )}
-                  {atlasOn && indexed && (
-                    <button className="ctx-item ctx-item--danger" onClick={removeIndex}>
-                      <Database size={13} /> Remove index
-                    </button>
-                  )}
-                  <button className="ctx-item ctx-item--danger" onClick={() => { removeProject(m.projectId); setCtxMenu(null); }}>
-                    <FolderOpen size={13} /> Remove project
-                  </button>
-                </>
-              );
-            })()}
-          </div>
-        </div>,
-        document.body
+      {ctxMenu && (
+        <ContextMenu
+          menu={ctxMenu}
+          sessions={sessions}
+          onClose={() => setCtxMenu(null)}
+          onOpenChat={openChatTab}
+          onOpenDiff={openDiffTab}
+          onCloseSession={closeSession}
+          onClearChatHistory={clearChatHistory}
+          onOpenDeleteDialog={openDeleteDialog}
+          onRemoveProject={removeProject}
+          onAtlasIndexingStart={(path) => setAtlasIndexingPaths((prev) => prev.includes(path) ? prev : [...prev, path])}
+        />
       )}
 
       {/* Delete workspace dialog */}
-      {deleteDialog && createPortal(
-        <div className="naming-modal-overlay" onClick={() => !deleteDialog.loading && setDeleteDialog(null)}>
-          <div className="naming-modal delete-dialog" onClick={(e) => e.stopPropagation()}>
-            {deleteDialog.step === 1 ? (
-              <>
-                <div className="naming-modal-header">
-                  <Trash2 size={15} />
-                  <span>Delete workspace?</span>
-                </div>
-                <p className="naming-modal-desc">
-                  This will permanently remove{" "}
-                  <strong className="delete-dialog-name">{deleteDialog.worktree.name}</strong>{" "}
-                  from disk. Any uncommitted work in this worktree will be lost.
-                </p>
-
-                <label className="delete-dialog-branch-row">
-                  <input
-                    type="checkbox"
-                    checked={deleteDialog.deleteBranch}
-                    onChange={(e) =>
-                      setDeleteDialog((d) => d ? { ...d, deleteBranch: e.target.checked, error: null } : null)
-                    }
-                  />
-                  <span>Also delete branch{deleteDialog.branchName ? ` "${deleteDialog.branchName}"` : ""}</span>
-                </label>
-                {deleteDialog.deleteBranch && (
-                  <div className="delete-dialog-branch-warn">
-                    <AlertTriangle size={13} />
-                    You will be asked to confirm this separately.
-                  </div>
-                )}
-
-                {deleteDialog.error && <p className="naming-modal-error">{deleteDialog.error}</p>}
-
-                <div className="naming-modal-actions">
-                  <button
-                    className="naming-modal-btn naming-modal-btn--cancel"
-                    disabled={deleteDialog.loading}
-                    onClick={() => setDeleteDialog(null)}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className="naming-modal-btn naming-modal-btn--delete"
-                    disabled={deleteDialog.loading}
-                    onClick={handleDeleteConfirm}
-                  >
-                    {deleteDialog.loading ? <Loader size={13} className="spin" /> : "Delete workspace"}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="naming-modal-header delete-dialog-header--danger">
-                  <AlertTriangle size={15} />
-                  <span>Delete branch permanently?</span>
-                </div>
-                <p className="naming-modal-desc">
-                  Branch{" "}
-                  <code className="delete-dialog-branch-code">{deleteDialog.branchName}</code>{" "}
-                  will be deleted from the repository. This cannot be undone.
-                </p>
-                <div className="delete-dialog-final-warn">
-                  All commits on this branch that are not merged will be permanently lost.
-                </div>
-
-                {deleteDialog.error && <p className="naming-modal-error">{deleteDialog.error}</p>}
-
-                <div className="naming-modal-actions">
-                  <button
-                    className="naming-modal-btn naming-modal-btn--cancel"
-                    disabled={deleteDialog.loading}
-                    onClick={() => setDeleteDialog(null)}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className="naming-modal-btn naming-modal-btn--delete"
-                    disabled={deleteDialog.loading}
-                    onClick={handleDeleteConfirm}
-                  >
-                    {deleteDialog.loading ? <Loader size={13} className="spin" /> : "Delete branch & workspace"}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>,
-        document.body
+      {deleteDialog && (
+        <DeleteWorkspaceDialog
+          dialog={deleteDialog}
+          onChange={setDeleteDialog}
+          onCancel={() => setDeleteDialog(null)}
+          onConfirm={handleDeleteConfirm}
+        />
       )}
 
-      {/* Terminal naming modal */}
-      {showTerminalNaming && createPortal(
-        <div className="naming-modal-overlay" onClick={resetTerminalModal}>
-          <div className="naming-modal" onClick={(e) => e.stopPropagation()}>
-            {gitNotFoundRoot ? (
-              <>
-                <div className="naming-modal-header">
-                  {pendingAgent ? <AgentIcon hint={pendingAgent.hint} size={15} /> : <TerminalSquare size={15} />}
-                  <span>No Git Repository Found</span>
-                </div>
-                <p className="naming-modal-desc">
-                  This folder isn't a Git repository. Initialize one to enable version
-                  control and the Changes tab, or continue without Git (the Changes tab
-                  will show a notice instead).
-                </p>
-                <div className="naming-modal-prompt-block">
-                  <label className="naming-modal-prompt-label">
-                    Remote URL
-                    <span className="naming-modal-prompt-hint"> — optional</span>
-                  </label>
-                  <input
-                    className="naming-modal-input"
-                    type="text"
-                    placeholder="https://github.com/user/repo.git"
-                    value={rootRemoteUrl}
-                    onChange={(e) => setRootRemoteUrl(e.target.value)}
-                  />
-                </div>
-                {rootGitError && <p className="naming-modal-error">{rootGitError}</p>}
-                <div className="naming-modal-actions naming-modal-actions--git">
-                  <div className="naming-modal-actions-row">
-                    <button
-                      className="naming-modal-btn naming-modal-btn--cancel"
-                      disabled={rootGitInitializing}
-                      onClick={skipGitForRoot}
-                    >
-                      {rootGitInitializing ? <Loader size={13} className="spin" /> : "Continue without Git"}
-                    </button>
-                    <button
-                      className="naming-modal-btn naming-modal-btn--create"
-                      disabled={rootGitInitializing}
-                      onClick={initGitForRoot}
-                    >
-                      {rootGitInitializing ? <Loader size={13} className="spin" /> : "Initialize Git"}
-                    </button>
-                  </div>
-                  <button
-                    className="naming-modal-btn naming-modal-btn--back"
-                    onClick={() => { setGitNotFoundRoot(false); setRootGitError(null); }}
-                  >
-                    Back
-                  </button>
-                </div>
-              </>
-            ) : gitNotFound ? (
-              <>
-                <div className="naming-modal-header">
-                  {pendingAgent ? <AgentIcon hint={pendingAgent.hint} size={15} /> : <TerminalSquare size={15} />}
-                  <span>No Git Repository Found</span>
-                </div>
-                <p className="naming-modal-desc">
-                  This folder isn't a Git repository. Tempest can initialize one for you, or
-                  you can continue in a basic terminal-only environment with limited functionality.
-                </p>
-                {terminalError && <p className="naming-modal-error">{terminalError}</p>}
-                <div className="naming-modal-actions naming-modal-actions--git">
-                  <div className="naming-modal-actions-row">
-                    <button
-                      className="naming-modal-btn naming-modal-btn--cancel"
-                      disabled={terminalLaunching}
-                      onClick={continueWithoutGit}
-                    >
-                      {terminalLaunching ? <Loader size={13} className="spin" /> : "Continue without Git"}
-                    </button>
-                    <button
-                      className="naming-modal-btn naming-modal-btn--create"
-                      disabled={terminalLaunching}
-                      onClick={initGitAndLaunch}
-                    >
-                      {terminalLaunching ? <Loader size={13} className="spin" /> : "Initialize Git & Launch"}
-                    </button>
-                  </div>
-                  <button
-                    className="naming-modal-btn naming-modal-btn--back"
-                    onClick={() => setGitNotFound(false)}
-                  >
-                    Back
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="naming-modal-header">
-                  {pendingAgent ? <AgentIcon hint={pendingAgent.hint} size={15} /> : <TerminalSquare size={15} />}
-                  <span>{pendingAgent ? `New ${pendingAgent.name} Session` : "New Workspace"}</span>
-                </div>
-                <p className="naming-modal-desc">Give your workspace a name to get started.</p>
-                {(() => {
-                  const pickableBranches = existingBranches.filter((b) => !b.is_current);
-                  const noOtherBranches = pickableBranches.length === 0;
-                  return (
-                    <>
-                      <div className="naming-modal-branch-toggle">
-                        <button
-                          className={`naming-modal-branch-opt${!useExistingBranch ? " active" : ""}`}
-                          onClick={() => setUseExistingBranch(false)}
-                        >New branch</button>
-                        <button
-                          className={`naming-modal-branch-opt${useExistingBranch ? " active" : ""}${noOtherBranches ? " naming-modal-branch-opt--disabled" : ""}`}
-                          onClick={() => { if (!noOtherBranches) setUseExistingBranch(true); }}
-                          disabled={noOtherBranches}
-                          title={noOtherBranches ? "No other branches exist" : undefined}
-                        >Use existing</button>
-                      </div>
-                      {useExistingBranch ? (
-                        <div className="naming-modal-drop" ref={existingDropRef}>
-                          <button
-                            type="button"
-                            className={`naming-modal-input naming-modal-drop-btn${existingDropOpen ? " naming-modal-drop-btn--open" : ""}`}
-                            onClick={() => setExistingDropOpen((v) => !v)}
-                          >
-                            <span className={existingBranchName ? "" : "naming-modal-drop-placeholder"}>
-                              {existingBranchName || "Select a branch…"}
-                            </span>
-                            <ChevronDown size={12} className={`naming-modal-drop-chevron${existingDropOpen ? " naming-modal-drop-chevron--open" : ""}`} />
-                          </button>
-                          {existingDropOpen && (
-                            <div className="naming-modal-drop-menu">
-                              {pickableBranches.map((b) => (
-                                <button
-                                  key={b.name}
-                                  type="button"
-                                  className={`naming-modal-drop-item${b.name === existingBranchName ? " naming-modal-drop-item--active" : ""}${b.is_worktree ? " naming-modal-drop-item--worktree" : ""}${b.is_remote ? " naming-modal-drop-item--remote" : ""}`}
-                                  onClick={() => { setExistingBranchName(b.name); setExistingDropOpen(false); }}
-                                >
-                                  <span className="naming-modal-drop-item-name">{b.name}</span>
-                                  {b.is_worktree && <span className="naming-modal-drop-badge">open</span>}
-                                  {b.is_remote && <span className="naming-modal-drop-badge">remote</span>}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <input
-                          className="naming-modal-input"
-                          type="text"
-                          placeholder="e.g. my-feature"
-                          value={terminalName}
-                          onChange={(e) => setTerminalName(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter") launchTerminalWorktree(); }}
-                          autoFocus
-                        />
-                      )}
-                    </>
-                  );
-                })()}
-                {pendingAgent && (
-                  <div className="naming-modal-prompt-block">
-                    <div className="naming-modal-prompt-label">
-                      Custom Prompt
-                      <span className="naming-modal-prompt-hint">Sent to the agent the moment it starts — leave blank to begin manually.</span>
-                    </div>
-                    <textarea
-                      className="naming-modal-prompt"
-                      placeholder="e.g. Refactor the auth module to use JWT tokens"
-                      value={terminalPrompt}
-                      onChange={(e) => setTerminalPrompt(e.target.value)}
-                      rows={3}
-                    />
-                  </div>
-                )}
-                {terminalError && <p className="naming-modal-error">{terminalError}</p>}
-                <div className="naming-modal-actions">
-                  <button className="naming-modal-btn naming-modal-btn--cancel" onClick={resetTerminalModal}>
-                    Cancel
-                  </button>
-                  <button
-                    className="naming-modal-btn naming-modal-btn--root"
-                    disabled={terminalLaunching}
-                    onClick={launchInRoot}
-                    title="Open directly in the project root — no branch created"
-                  >
-                    {terminalLaunching ? <Loader size={13} className="spin" /> : <><SquareSlash size={13} />in Root</>}
-                  </button>
-                  <button
-                    className="naming-modal-btn naming-modal-btn--create"
-                    disabled={(useExistingBranch ? !existingBranchName.trim() : !terminalName.trim()) || terminalLaunching}
-                    onClick={launchTerminalWorktree}
-                  >
-                    {terminalLaunching ? <Loader size={13} className="spin" /> : useExistingBranch ? "Open Branch" : "in Branch"}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>,
-        document.body
+      {showTerminalNaming && (
+        <TerminalNamingModal
+          pendingAgent={pendingAgent}
+          gitNotFoundRoot={gitNotFoundRoot}
+          gitNotFound={gitNotFound}
+          rootRemoteUrl={rootRemoteUrl}
+          setRootRemoteUrl={setRootRemoteUrl}
+          rootGitInitializing={rootGitInitializing}
+          rootGitError={rootGitError}
+          onSkipGitForRoot={skipGitForRoot}
+          onInitGitForRoot={initGitForRoot}
+          onBackFromRoot={() => { setGitNotFoundRoot(false); setRootGitError(null); }}
+          terminalError={terminalError}
+          terminalLaunching={terminalLaunching}
+          onContinueWithoutGit={continueWithoutGit}
+          onInitGitAndLaunch={initGitAndLaunch}
+          onBackFromGitNotFound={() => setGitNotFound(false)}
+          useExistingBranch={useExistingBranch}
+          setUseExistingBranch={setUseExistingBranch}
+          existingBranches={existingBranches}
+          existingBranchName={existingBranchName}
+          setExistingBranchName={setExistingBranchName}
+          existingDropOpen={existingDropOpen}
+          setExistingDropOpen={setExistingDropOpen}
+          existingDropRef={existingDropRef}
+          terminalName={terminalName}
+          setTerminalName={setTerminalName}
+          terminalPrompt={terminalPrompt}
+          setTerminalPrompt={setTerminalPrompt}
+          onCancel={resetTerminalModal}
+          onLaunchInRoot={launchInRoot}
+          onLaunchTerminalWorktree={launchTerminalWorktree}
+        />
       )}
 
 

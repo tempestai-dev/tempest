@@ -1,66 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Loader, ZoomIn, ZoomOut, Maximize2, RotateCcw, ChevronDown } from "lucide-react";
-import { Tooltip } from "./Tooltip";
+import { Loader } from "lucide-react";
 import {
   forceSimulation,
   forceManyBody,
   forceLink as forceLinks,
   forceCenter,
   forceCollide,
-  type SimulationNodeDatum,
-  type SimulationLinkDatum,
   type Simulation,
 } from "d3-force";
 import { getOpenProjects } from "../store/openProjects";
+import type {
+  IndexedProject,
+  GraphData,
+  LoadState,
+  GNode,
+  GLink,
+} from "../types/knowledgeGraph";
+import { resolveKindColors, nodeRadius, MINIMAP_W, MINIMAP_H } from "../lib/knowledgeGraph";
+import { renderGraph, type MinimapTf } from "../lib/knowledgeGraphRender";
+import { NodeDetailPanel } from "./KnowledgeBasePage/NodeDetailPanel";
+import { KbToolbar } from "./KnowledgeBasePage/KbToolbar";
 import "./KnowledgeBasePage.css";
-
-// ── Types ──────────────────────────────────────────────────────────────────
-
-interface IndexedProject { id: string; name: string; path: string }
-
-interface SymbolNodeRaw {
-  id: string; name: string; kind: string; file_path: string;
-  start_line: number; end_line: number; language: string;
-}
-interface SymbolEdgeRaw { source: string; target: string; kind: string }
-interface GraphData { nodes: SymbolNodeRaw[]; edges: SymbolEdgeRaw[] }
-
-type LoadState = "idle" | "loading" | "ready" | "error";
-
-// D3 augments nodes with index; we provide x/y/vx/vy up-front
-interface GNode extends SimulationNodeDatum {
-  id: string; label: string; kind: string; color: string; radius: number;
-  file_path: string; start_line: number; language: string;
-  x: number; y: number; vx: number; vy: number;
-  fx?: number | null; fy?: number | null;
-}
-
-// Links are pre-resolved to GNode objects; d3 uses them directly
-interface GLink extends SimulationLinkDatum<GNode> {
-  source: GNode; target: GNode; kind: string;
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-function resolveKindColors(): Record<string, string> {
-  const s = getComputedStyle(document.documentElement);
-  const v = (n: string) => s.getPropertyValue(`--tempest-${n}`).trim();
-  return {
-    function:  v("accent-blue"),   method:    v("accent-blue"),
-    class:     v("accent-yellow"), interface: v("accent-green"),
-    type:      v("accent-purple"),  variable:  v("fg-muted"),
-    constant:  v("fg-muted"),      _default:  v("fg-subtle"),
-  };
-}
-
-function nodeRadius(deg: number): number {
-  return 4 + Math.sqrt(deg) * 1.5;
-}
-
-// Minimap dimensions (CSS px)
-const MINIMAP_W = 180;
-const MINIMAP_H = 120;
 
 // ── Component ──────────────────────────────────────────────────────────────
 
@@ -78,9 +39,6 @@ export function KnowledgeBasePage() {
   const [logLine,          setLogLine]          = useState("");
   const [progress,         setProgress]         = useState(0);
   const [detailNode,       setDetailNode]       = useState<GNode | null>(null);
-  const [dropOpen,         setDropOpen]         = useState(false);
-
-  const dropRef = useRef<HTMLDivElement>(null);
 
   // Ref mirror of detail node so the render fn can read it without re-rendering
   const detailNodeRef = useRef<GNode | null>(null);
@@ -112,239 +70,27 @@ export function KnowledgeBasePage() {
   const lastPinchDistRef = useRef<number | null>(null);
 
   // Minimap world→minimap transform, updated each frame by renderMinimap()
-  const minimapTfRef = useRef<{ scale: number; ox: number; oy: number } | null>(null);
+  const minimapTfRef = useRef<MinimapTf>(null);
 
   // RAF
   const rafRef    = useRef<number | null>(null);
-  const renderRef = useRef<() => void>(() => {});
 
-  // ── Render fn (set once; reads refs only, never re-created) ───────────────
-
-  useEffect(() => {
-    // Renders the whole graph, plus the current viewport rect, into the
-    // small minimap canvas. Reads refs only; called at the end of the main
-    // render fn so it stays in sync with the primary canvas.
-    const renderMinimap = () => {
-      const mm = minimapCanvasRef.current;
-      if (!mm) return;
-      const ctx = mm.getContext("2d");
-      if (!ctx) return;
-
-      const dpr = window.devicePixelRatio || 1;
-      const W = MINIMAP_W, H = MINIMAP_H;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, W, H);
-
-      const nodes = nodesRef.current;
-      const links = linksRef.current;
-      if (nodes.length === 0) { minimapTfRef.current = null; return; }
-
-      // Bounding box of all nodes (same logic as fitView)
-      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-      for (const n of nodes) {
-        x0 = Math.min(x0, n.x - n.radius); y0 = Math.min(y0, n.y - n.radius);
-        x1 = Math.max(x1, n.x + n.radius); y1 = Math.max(y1, n.y + n.radius);
-      }
-      const pad = 8;
-      const bw = Math.max(1, x1 - x0), bh = Math.max(1, y1 - y0);
-      const scale = Math.min((W - pad * 2) / bw, (H - pad * 2) / bh);
-      const ox = (W - bw * scale) / 2 - x0 * scale;
-      const oy = (H - bh * scale) / 2 - y0 * scale;
-      minimapTfRef.current = { scale, ox, oy };
-      const wx2 = (wx: number) => wx * scale + ox;
-      const wy2 = (wy: number) => wy * scale + oy;
-
-      const mmStyle = getComputedStyle(document.documentElement);
-      const edgeCol = mmStyle.getPropertyValue("--tempest-border-subtle").trim() || "#2a2a2a";
-
-      // Edges — 1px lines at ~15% opacity
-      ctx.strokeStyle = edgeCol;
-      ctx.globalAlpha = 0.15;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      for (const l of links) {
-        ctx.moveTo(wx2(l.source.x), wy2(l.source.y));
-        ctx.lineTo(wx2(l.target.x), wy2(l.target.y));
-      }
-      ctx.stroke();
-
-      // Nodes — 1.5px filled circles in their kind color
-      ctx.globalAlpha = 1;
-      for (const n of nodes) {
-        ctx.beginPath();
-        ctx.arc(wx2(n.x), wy2(n.y), 1.5, 0, Math.PI * 2);
-        ctx.fillStyle = n.color;
-        ctx.fill();
-      }
-
-      // Viewport rectangle — map the 4 corners of the main viewport to minimap
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const cw = canvas.width / dpr, ch = canvas.height / dpr;
-        const { x: tx, y: ty, zoom } = camRef.current;
-        const vwx0 = -tx / zoom,        vwy0 = -ty / zoom;
-        const vwx1 = (cw - tx) / zoom,  vwy1 = (ch - ty) / zoom;
-        const rx = wx2(vwx0), ry = wy2(vwy0);
-        const rw = (vwx1 - vwx0) * scale, rh = (vwy1 - vwy0) * scale;
-        const cs = getComputedStyle(document.documentElement);
-        ctx.fillStyle   = cs.getPropertyValue("--tempest-minimap-overlay").trim();
-        ctx.strokeStyle = cs.getPropertyValue("--tempest-minimap-border").trim();
-        ctx.lineWidth   = 1;
-        ctx.fillRect(rx, ry, rw, rh);
-        ctx.strokeRect(rx, ry, rw, rh);
-      }
-    };
-
-    renderRef.current = () => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      const dpr  = window.devicePixelRatio || 1;
-      const cw   = canvas.width  / dpr;
-      const ch   = canvas.height / dpr;
-      const { x: tx, y: ty, zoom } = camRef.current;
-      const nodes    = nodesRef.current;
-      const links    = linksRef.current;
-      const hovered  = hoverNodeRef.current;
-      const selected = detailNodeRef.current;
-      const hasHover     = hovered  !== null;
-      const hasSel       = selected !== null;
-      const hasHighlight = hasHover || hasSel;
-      // Hover takes priority for neighborhood; fall back to selection when not hovering
-      const activeNode     = hovered ?? selected;
-      const activeNeibIds  = hasHover ? neighborIdsRef.current  : selNeighborIdsRef.current;
-      const activeConnLnks = hasHover ? connLinksRef.current    : selConnLinksRef.current;
-      const showLabels = zoom > 0.55;
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.save();
-      ctx.scale(dpr, dpr);
-
-      // Background
-      const style = getComputedStyle(document.documentElement);
-      ctx.fillStyle = style.getPropertyValue("--tempest-bg-editor").trim() || "#0f0f0f";
-      ctx.fillRect(0, 0, cw, ch);
-
-      ctx.translate(tx, ty);
-      ctx.scale(zoom, zoom);
-
-      const edgeBase = style.getPropertyValue("--tempest-border-subtle").trim() || "#2a2a2a";
-
-      // ── Edges ───────────────────────────────────────────────────────────
-      if (!hasHighlight) {
-        ctx.beginPath();
-        ctx.strokeStyle = edgeBase;
-        ctx.lineWidth   = 0.8 / zoom;
-        ctx.globalAlpha = 0.28;
-        for (const l of links) {
-          ctx.moveTo(l.source.x, l.source.y);
-          ctx.lineTo(l.target.x, l.target.y);
-        }
-        ctx.stroke();
-      } else {
-        // Dim unconnected edges
-        ctx.beginPath();
-        ctx.strokeStyle = edgeBase;
-        ctx.lineWidth   = 0.6 / zoom;
-        ctx.globalAlpha = 0.05;
-        for (const l of links) {
-          if (!activeConnLnks.has(l)) {
-            ctx.moveTo(l.source.x, l.source.y);
-            ctx.lineTo(l.target.x, l.target.y);
-          }
-        }
-        ctx.stroke();
-
-        // Highlight connected edges in the active node's color
-        if (activeNode) {
-          ctx.beginPath();
-          ctx.strokeStyle = activeNode.color;
-          ctx.lineWidth   = 1.2 / zoom;
-          ctx.globalAlpha = 0.7;
-          for (const l of activeConnLnks) {
-            ctx.moveTo(l.source.x, l.source.y);
-            ctx.lineTo(l.target.x, l.target.y);
-          }
-          ctx.stroke();
-        }
-      }
-
-      // ── Nodes ───────────────────────────────────────────────────────────
-      // Viewport bounds for label culling
-      const marg = 60 / zoom;
-      const vx0 = (-tx / zoom) - marg, vx1 = ((cw - tx) / zoom) + marg;
-      const vy0 = (-ty / zoom) - marg, vy1 = ((ch - ty) / zoom) + marg;
-
-      for (const n of nodes) {
-        const isHov  = n === hovered;
-        const isSel  = n === selected;
-        const isNeib = hasHighlight && activeNeibIds.has(n.id);
-        const focus  = isHov || isSel;
-        const alpha  = (hasHighlight && !focus && !isNeib) ? 0.1 : 1;
-        const r      = n.radius;
-
-        ctx.globalAlpha = alpha;
-
-        // Glow for focused / neighbor nodes
-        if (focus || isNeib) {
-          const gr   = r * (focus ? 4 : 2.5);
-          const grad = ctx.createRadialGradient(n.x, n.y, r * 0.2, n.x, n.y, gr);
-          grad.addColorStop(0, n.color + (focus ? "70" : "50"));
-          grad.addColorStop(1, n.color + "00");
-          ctx.fillStyle   = grad;
-          ctx.globalAlpha = alpha;
-          ctx.beginPath();
-          ctx.arc(n.x, n.y, gr, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.globalAlpha = alpha;
-        }
-
-        // Circle fill
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
-        ctx.fillStyle = n.color;
-        ctx.fill();
-
-        // Selection ring
-        if (isSel) {
-          ctx.beginPath();
-          ctx.arc(n.x, n.y, r + 4 / zoom, 0, Math.PI * 2);
-          ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--tempest-fg-default").trim();
-          ctx.lineWidth   = 1.5 / zoom;
-          ctx.globalAlpha = 0.9;
-          ctx.stroke();
-        } else if (isHov) {
-          ctx.beginPath();
-          ctx.arc(n.x, n.y, r + 3 / zoom, 0, Math.PI * 2);
-          ctx.strokeStyle = n.color;
-          ctx.lineWidth   = 1.5 / zoom;
-          ctx.globalAlpha = 0.55;
-          ctx.stroke();
-        }
-
-        // Labels — viewport-culled; shown for focus/neighbors or when zoomed in
-        if (showLabels) {
-          const inVP  = n.x > vx0 && n.x < vx1 && n.y > vy0 && n.y < vy1;
-          const show  = inVP && (focus || isNeib || zoom > 1.1);
-          if (show) {
-            const fs = Math.max(8, Math.min(13, 11 / zoom));
-            ctx.font        = `${fs}px "Geist Mono", monospace`;
-            ctx.textAlign   = "center";
-            ctx.fillStyle   = focus ? getComputedStyle(document.documentElement).getPropertyValue("--tempest-fg-default").trim() : getComputedStyle(document.documentElement).getPropertyValue("--tempest-fg-muted").trim();
-            ctx.globalAlpha = focus ? 1 : 0.75 * alpha;
-            ctx.fillText(n.label, n.x, n.y + r + fs * 1.4);
-          }
-        }
-      }
-
-      ctx.globalAlpha = 1;
-      ctx.restore();
-
-      renderMinimap();
-    };
-  }, []); // empty: reads refs only, never needs to update
+  const render = useCallback(() => {
+    renderGraph({
+      canvas: canvasRef.current,
+      minimap: minimapCanvasRef.current,
+      nodes: nodesRef.current,
+      links: linksRef.current,
+      camera: camRef.current,
+      hovered: hoverNodeRef.current,
+      selected: detailNodeRef.current,
+      hoverNeighborIds: neighborIdsRef.current,
+      hoverConnLinks: connLinksRef.current,
+      selNeighborIds: selNeighborIdsRef.current,
+      selConnLinks: selConnLinksRef.current,
+      setMinimapTf: (tf) => { minimapTfRef.current = tf; },
+    });
+  }, []);
 
   // ── Single-frame render request ────────────────────────────────────────────
 
@@ -352,9 +98,9 @@ export function KnowledgeBasePage() {
     if (rafRef.current !== null) return;
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = null;
-      renderRef.current();
+      render();
     });
-  }, []);
+  }, [render]);
 
   // ── Hit test (world-space distance to each node) ───────────────────────────
 
@@ -679,19 +425,6 @@ export function KnowledgeBasePage() {
     };
   }, [minimapPanTo]);
 
-  // ── Close project dropdown on outside click ────────────────────────────────
-
-  useEffect(() => {
-    if (!dropOpen) return;
-    function onOutside(e: MouseEvent) {
-      if (dropRef.current && !dropRef.current.contains(e.target as Node)) {
-        setDropOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onOutside);
-    return () => document.removeEventListener("mousedown", onOutside);
-  }, [dropOpen]);
-
   // ── Discover indexed projects on mount ─────────────────────────────────────
 
   useEffect(() => {
@@ -849,7 +582,7 @@ export function KnowledgeBasePage() {
             if (rafRef.current === null) {
               rafRef.current = requestAnimationFrame(() => {
                 rafRef.current = null;
-                renderRef.current();
+                render();
               });
             }
           });
@@ -926,48 +659,16 @@ export function KnowledgeBasePage() {
 
   return (
     <div className="kb-root">
-      <div className="kb-toolbar">
-        <div className="kb-project-drop" ref={dropRef}>
-          <button
-            className={`kb-project-drop-btn${dropOpen ? " kb-project-drop-btn--open" : ""}`}
-            onClick={() => setDropOpen((v) => !v)}
-            disabled={indexedProjects.length === 0}
-          >
-            <span className="kb-project-drop-label">
-              {indexedProjects.find((p) => p.path === selectedPath)?.name ?? "No indexed projects"}
-            </span>
-            <ChevronDown size={12} className="kb-project-drop-chevron" />
-          </button>
-          {dropOpen && indexedProjects.length > 0 && (
-            <div className="kb-project-drop-menu">
-              {indexedProjects.map((p) => (
-                <button
-                  key={p.id}
-                  className={`kb-project-drop-item${p.path === selectedPath ? " kb-project-drop-item--active" : ""}`}
-                  onClick={() => { setSelectedPath(p.path); setDropOpen(false); }}
-                >
-                  {p.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="kb-toolbar-divider" />
-
-        <Tooltip content="Zoom in" placement="top">
-          <button className="kb-tool-btn" onClick={() => zoomBy(1.25)} disabled={!hasGraph}><ZoomIn    size={14} /></button>
-        </Tooltip>
-        <Tooltip content="Zoom out" placement="top">
-          <button className="kb-tool-btn" onClick={() => zoomBy(0.8)}  disabled={!hasGraph}><ZoomOut   size={14} /></button>
-        </Tooltip>
-        <Tooltip content="Fit to screen" placement="top">
-          <button className="kb-tool-btn" onClick={fitView}            disabled={!hasGraph}><Maximize2 size={14} /></button>
-        </Tooltip>
-        <Tooltip content="Reset view" placement="top">
-          <button className="kb-tool-btn" onClick={resetView}           disabled={!hasGraph}><RotateCcw size={14} /></button>
-        </Tooltip>
-      </div>
+      <KbToolbar
+        projects={indexedProjects}
+        selectedPath={selectedPath}
+        hasGraph={hasGraph}
+        onSelectPath={setSelectedPath}
+        onZoomIn={() => zoomBy(1.25)}
+        onZoomOut={() => zoomBy(0.8)}
+        onFit={fitView}
+        onReset={resetView}
+      />
 
       <div className="kb-canvas-wrap" ref={containerRef}>
         {projectsResolved && indexedProjects.length === 0 && (
@@ -1013,39 +714,16 @@ export function KnowledgeBasePage() {
         />
 
         {detailNode && (
-          <div className="kb-detail">
-            <Tooltip content="Close" placement="top">
-              <button
-                className="kb-detail-close"
-                onClick={() => {
-                  detailNodeRef.current     = null;
-                  setDetailNode(null);
-                  selNeighborIdsRef.current = new Set();
-                  selConnLinksRef.current   = new Set();
-                  requestRender();
-                }}
-              >×</button>
-            </Tooltip>
-            <div
-              className="kb-detail-badge"
-              style={{ background: detailNode.color + "22", color: detailNode.color }}
-            >
-              {detailNode.kind}
-            </div>
-            <div className="kb-detail-name">{detailNode.label}</div>
-            <div className="kb-detail-row">
-              <span>File</span>
-              {detailNode.file_path.split(/[/\\]/).slice(-2).join("/")}
-            </div>
-            <div className="kb-detail-row">
-              <span>Line</span>
-              {detailNode.start_line}
-            </div>
-            <div className="kb-detail-row">
-              <span>Language</span>
-              {detailNode.language}
-            </div>
-          </div>
+          <NodeDetailPanel
+            node={detailNode}
+            onClose={() => {
+              detailNodeRef.current     = null;
+              setDetailNode(null);
+              selNeighborIdsRef.current = new Set();
+              selConnLinksRef.current   = new Set();
+              requestRender();
+            }}
+          />
         )}
       </div>
     </div>

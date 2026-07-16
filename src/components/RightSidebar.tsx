@@ -14,6 +14,7 @@ import {
   SplitSquareHorizontal,
 } from "lucide-react";
 import { Tooltip } from "./Tooltip";
+import type { DiffLine, FileStats } from "../types/git";
 import "./RightSidebar.css";
 
 type RightTab = "files" | "changes";
@@ -32,19 +33,6 @@ interface GitChange {
   path: string;
   adds?: number;
   dels?: number;
-}
-
-interface FileStats {
-  path: string;
-  adds: number;
-  dels: number;
-}
-
-interface DiffLine {
-  kind: "hunk" | "context" | "added" | "removed";
-  line_old: number | null;
-  line_new: number | null;
-  content: string;
 }
 
 interface Props {
