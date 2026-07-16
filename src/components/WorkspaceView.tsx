@@ -57,6 +57,7 @@ import { CodeMirrorPane } from "./CodeMirrorPane";
 import { ChatPane } from "./ChatPane";
 import { RightSidebar } from "./RightSidebar";
 import { NewSessionMenu, NewSessionPlacement, AgentConfig, AGENT_CONFIGS, AgentIcon } from "./NewSessionMenu";
+import { BranchSessionMenu } from "./BranchSessionMenu";
 import { SettingsPanel } from "./SettingsPanel";
 import { Tooltip } from "./Tooltip";
 import { BroadcastDialog, BroadcastSession } from "./BroadcastDialog";
@@ -204,6 +205,13 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
   const [sessionMenuRect, setSessionMenuRect] = useState<DOMRect | null>(null);
   const [sessionMenuPlacement, setSessionMenuPlacement] = useState<NewSessionPlacement>("below");
+  // Branch-level "+" menu: worktree context is already known, so sessions spawn
+  // directly into pendingWorktreePath with no worktree-creation modal.
+  const [branchMenuOpen, setBranchMenuOpen] = useState(false);
+  const [branchMenuRect, setBranchMenuRect] = useState<DOMRect | null>(null);
+  const [pendingWorktreePath, setPendingWorktreePath] = useState<string | null>(null);
+  const [branchMenuLabel, setBranchMenuLabel] = useState<string>("");
+  const [branchMenuIsRoot, setBranchMenuIsRoot] = useState(false);
   const [showTerminalNaming, setShowTerminalNaming] = useState(false);
   const [terminalName, setTerminalName] = useState("");
   const [terminalPrompt, setTerminalPrompt] = useState("");
@@ -1599,6 +1607,63 @@ export function WorkspaceView({ zen, name, path }: Props) {
     setSessionMenuOpen(true);
   }
 
+  // Branch-level "+" — anchored to a worktree (or root) row. The worktree already
+  // exists, so we record its path/project and open the direct-spawn menu.
+  function openBranchSessionMenu(
+    e: React.MouseEvent<HTMLElement>,
+    worktreePath: string,
+    projectId: string,
+    label: string,
+    isRoot: boolean
+  ) {
+    e.stopPropagation();
+    setBranchMenuRect((e.currentTarget as HTMLElement).getBoundingClientRect());
+    setPendingWorktreePath(worktreePath);
+    setPendingProjectId(projectId);
+    setBranchMenuLabel(label);
+    setBranchMenuIsRoot(isRoot);
+    setBranchMenuOpen(true);
+  }
+
+  // Spawn a session directly in an existing worktree (or project root). No
+  // createWorktree / naming modal — the destination is already known. Sessions
+  // after the first at a path get a numbered suffix so they stay distinct.
+  async function launchInWorktree(
+    worktreePath: string,
+    projectId: string,
+    agent?: AgentConfig,
+    prompt?: string,
+    isRootSession?: boolean
+  ) {
+    const existingCount = sessions.filter((s) => s.cwd === worktreePath).length;
+    const baseName = agent ? agent.name : "Terminal";
+    const sessionName = existingCount > 0 ? `${baseName} #${existingCount + 1}` : baseName;
+    // A live parent session in a worktree lets an additional session nest as a
+    // sub-session. Root sessions are independent (keyed per-session), so they never nest.
+    const liveParent = isRootSession
+      ? undefined
+      : sessions.find((s) => s.cwd === worktreePath && !s.parentSessionId);
+    const parentId = liveParent ? liveParent.id : undefined;
+    try {
+      await openSession(
+        sessionName,
+        worktreePath,
+        projectId,
+        agent?.hint,
+        prompt?.trim() || undefined,
+        undefined,
+        undefined,
+        isRootSession,
+        undefined,
+        false,
+        undefined,
+        parentId
+      );
+    } catch (e) {
+      console.error("[BranchSession] launchInWorktree failed:", e);
+    }
+  }
+
   function navBtn(section: NavSection) {
     const isActive = !activeSessionId && activeSection === section;
     return `sidebar-nav-btn${isActive ? " sidebar-nav-btn--active" : ""}`;
@@ -2080,7 +2145,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
                                 {primaryRootAgent && <SidebarWorkBadge sessionId={primaryRootAgent.id} />}
                                 <button
                                   className="sb-worktree-add"
-                                  onClick={(e) => { e.stopPropagation(); openSessionMenu(e, project.id, "right"); }}
+                                  onClick={(e) => openBranchSessionMenu(e, project.path, project.id, "main", true)}
                                 >
                                   <Plus size={10} />
                                 </button>
@@ -2201,7 +2266,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
                                   {primaryAgent && <SidebarWorkBadge sessionId={primaryAgent.id} />}
                                   <button
                                     className="sb-worktree-add"
-                                    onClick={(e) => { e.stopPropagation(); openSessionMenu(e, project.id, "right"); }}
+                                    onClick={(e) => openBranchSessionMenu(e, wt.path, project.id, wt.name, false)}
                                   >
                                     <Plus size={10} />
                                   </button>
@@ -2826,6 +2891,26 @@ export function WorkspaceView({ zen, name, path }: Props) {
           setSessionMenuOpen(false);
           openPreviewTab(pendingProjectId);
         } : undefined}
+      />
+
+      <BranchSessionMenu
+        open={branchMenuOpen}
+        anchorRect={branchMenuRect}
+        placement="right"
+        branchLabel={branchMenuLabel}
+        onClose={() => setBranchMenuOpen(false)}
+        onTerminal={() => {
+          if (pendingWorktreePath) {
+            launchInWorktree(pendingWorktreePath, pendingProjectId ?? "", undefined, undefined, branchMenuIsRoot);
+          }
+        }}
+        onAgent={(agent, prompt) => {
+          if (pendingWorktreePath) {
+            launchInWorktree(pendingWorktreePath, pendingProjectId ?? "", agent, prompt, branchMenuIsRoot);
+          }
+        }}
+        onChat={() => { if (pendingProjectId) openChatTab(pendingProjectId); }}
+        onLivePreview={() => { if (pendingProjectId) openPreviewTab(pendingProjectId); }}
       />
 
       {/* Sidebar context menu */}

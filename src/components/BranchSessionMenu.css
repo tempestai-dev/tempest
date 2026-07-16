@@ -1,0 +1,269 @@
+.bsm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+}
+
+.bsm {
+  position: fixed;
+  z-index: 301;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--tempest-bg-sidebar);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 236px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Header ── */
+.bsm-header {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 5px 8px 6px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--tempest-border-subtle);
+}
+
+.bsm-header-label {
+  font-size: 11px;
+  color: var(--tempest-fg-subtle);
+}
+
+.bsm-header-branch {
+  font-size: 11px;
+  font-family: "Geist Mono", monospace;
+  color: var(--tempest-fg-default);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Rows ── */
+.bsm-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 9px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: var(--tempest-fg-default);
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  user-select: none;
+}
+
+/* Agent rows are a flex container holding a main button + optional download btn,
+   so they carry no padding of their own. */
+.bsm-item--agent {
+  padding: 0;
+  gap: 0;
+}
+
+.bsm-item--active {
+  background: var(--tempest-bg-hover);
+}
+
+.bsm-item--unavailable {
+  opacity: 0.42;
+}
+
+.bsm-item-main {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+  min-width: 0;
+  padding: 7px 9px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: var(--tempest-fg-default);
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.bsm-item--unavailable .bsm-item-main {
+  cursor: not-allowed;
+}
+
+.bsm-item-icon {
+  flex-shrink: 0;
+  color: var(--tempest-fg-muted);
+}
+
+[data-theme="dark"] .agent-icon--mono {
+  filter: invert(1);
+}
+
+.bsm-item-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--tempest-fg-default);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bsm-item-hint {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-family: "Geist Mono", monospace;
+  color: var(--tempest-fg-subtle);
+  white-space: nowrap;
+}
+
+.bsm-item-dl {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-right: 5px;
+  background: transparent;
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 4px;
+  color: var(--tempest-fg-muted);
+  cursor: pointer;
+  opacity: 1;
+}
+
+.bsm-item-dl:hover {
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
+}
+
+/* ── Agent prompt panel ── */
+.bsm-prompt {
+  display: flex;
+  flex-direction: column;
+  padding: 2px;
+  min-width: 288px;
+}
+
+.bsm-prompt-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 8px;
+}
+
+.bsm-prompt-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--tempest-fg-muted);
+  cursor: pointer;
+}
+
+.bsm-prompt-back:hover {
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
+}
+
+.bsm-prompt-icon {
+  flex-shrink: 0;
+}
+
+.bsm-prompt-titles {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bsm-prompt-name {
+  font-size: 13px;
+  color: var(--tempest-fg-default);
+  white-space: nowrap;
+}
+
+.bsm-prompt-branch {
+  font-size: 11px;
+  font-family: "Geist Mono", monospace;
+  color: var(--tempest-fg-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bsm-prompt-textarea {
+  width: 100%;
+  resize: none;
+  padding: 8px 9px;
+  background: var(--tempest-bg-editor);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 6px;
+  color: var(--tempest-fg-default);
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.45;
+  box-sizing: border-box;
+}
+
+.bsm-prompt-textarea::placeholder {
+  color: var(--tempest-fg-subtle);
+}
+
+.bsm-prompt-textarea:focus {
+  outline: none;
+  border-color: var(--tempest-accent-blue);
+}
+
+.bsm-prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.bsm-prompt-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.bsm-prompt-btn--ghost {
+  background: transparent;
+  border-color: var(--tempest-border-default);
+  color: var(--tempest-fg-muted);
+}
+
+.bsm-prompt-btn--ghost:hover {
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
+}
+
+.bsm-prompt-btn--primary {
+  background: var(--tempest-accent-blue);
+  color: #fff;
+}
+
+.bsm-prompt-btn--primary:hover {
+  filter: brightness(1.08);
+}
+
+.bsm-prompt-btn-kbd {
+  opacity: 0.75;
+}
