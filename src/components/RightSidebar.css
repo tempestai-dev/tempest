@@ -36,12 +36,12 @@
 /* ── Header ─────────────────────────────────────────────────────────────── */
 
 .rs-header {
-  height: 44px;
+  height: 52px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 6px 5px 10px;
+  padding: 9px 8px 9px 12px;
   background: var(--tempest-bg-panel);
 }
 
@@ -65,7 +65,7 @@
   align-items: center;
   justify-content: center;
   gap: 5px;
-  padding: 4px 8px;
+  padding: 6px 10px;
   border: none;
   background: transparent;
   font-family: inherit;
