@@ -1,10 +1,12 @@
-import { cpSync, rmSync, mkdirSync, writeFileSync } from 'fs'
+import { cpSync, rmSync, mkdirSync, writeFileSync, existsSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const src = join(root, 'node_modules', '@usetempest', 'atlas')
 const dest = join(root, 'src-tauri', 'resources', 'atlas')
+
+if (!existsSync(src)) process.exit(0)
 
 rmSync(dest, { recursive: true, force: true })
 mkdirSync(dest, { recursive: true })
