@@ -170,6 +170,7 @@
   flex-shrink: 0;
   cursor: pointer;
   font-size: 12px;
+  font-family: "Geist", sans-serif;
   color: #8E8E8E;
   transition: background 0.2s ease, color 0.2s ease;
   position: relative;
@@ -298,6 +299,7 @@
   align-items: center;
   font-size: 10px;
   font-weight: 550;
+  font-family: "Geist", sans-serif;
   color: #fff;
   background: var(--group-color);
   border: none;

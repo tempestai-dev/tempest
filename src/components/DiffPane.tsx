@@ -4,10 +4,12 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   RefreshCw, GitBranch, GitPullRequest, Loader, Check,
   Plus, X, AlertTriangle, ChevronDown, Trash2,
-  RotateCcw,
+  RotateCcw, Send, MessageSquare,
 } from "lucide-react";
 import { Tooltip } from "./Tooltip";
 import { useAttribution, setAttribution, COAUTHOR_LINE } from "../store/attribution";
+import { useComments, addComment, removeComment, clearComments, composeMessage } from "../store/reviewComments";
+import { enqueue } from "../store/messageQueue";
 import "./DiffPane.css";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -99,14 +101,20 @@ function groupHunks(lines: DiffLine[]): Hunk[] {
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 
+export interface AgentSession {
+  id: string;
+  name: string;
+}
+
 interface Props {
   sessionId: string;
   cwd: string;
   hidden: boolean;
   gitRevision?: number;
+  agentSessions?: AgentSession[];
 }
 
-export function DiffPane({ cwd, hidden, gitRevision }: Props) {
+export function DiffPane({ cwd, hidden, gitRevision, agentSessions = [] }: Props) {
   const [staged, setStaged] = useState<FileEntry[]>([]);
   const [unstaged, setUnstaged] = useState<FileEntry[]>([]);
   const [statsMap, setStatsMap] = useState<Record<string, { adds: number; dels: number }>>({});
@@ -120,9 +128,18 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
   const [allDiffs, setAllDiffs] = useState<FileDiff[]>([]);
   const [allDiffsLoading, setAllDiffsLoading] = useState(false);
 
-  const [lineComments, setLineComments] = useState<Record<string, string[]>>({});
-  const [commentingLine, setCommentingLine] = useState<string | null>(null);
+  const comments = useComments(cwd);
   const [commentDraft, setCommentDraft] = useState("");
+  const [selectedAgentId, setSelectedAgentId] = useState<string>("");
+
+  interface CommentingRange {
+    hunkIdx: number;
+    startLi: number;
+    endLi: number;
+    startLineNum: number;
+    endLineNum: number;
+  }
+  const [commentingRange, setCommentingRange] = useState<CommentingRange | null>(null);
   const [stagingAll, setStagingAll] = useState(false);
   const [unstagingAll, setUnstagingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -225,27 +242,30 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
   }, [hidden, selected, showBranchMenu, cwd, gitRevision, loadAllDiffs]);
 
   useEffect(() => {
-    setLineComments({});
-    setCommentingLine(null);
+    setCommentingRange(null);
     setCommentDraft("");
   }, [selected?.path, selected?.section]);
 
   // ── Comments ─────────────────────────────────────────────────────────────
 
-  const submitComment = (key: string) => {
+  const submitComment = (hunkLines: DiffLine[]) => {
     const text = commentDraft.trim();
-    if (!text) return;
-    setLineComments(prev => ({ ...prev, [key]: [...(prev[key] ?? []), text] }));
+    if (!text || !selected || !commentingRange) return;
+    const { hunkIdx, startLi, endLi, startLineNum, endLineNum } = commentingRange;
+    const startKey = `h${hunkIdx}l${startLi}`;
+    const endKey = `h${hunkIdx}l${endLi}`;
+    const quote = hunkLines.slice(startLi, endLi + 1).map(l => l.content).join("\n");
+    addComment(cwd, { file: selected.path, startLineKey: startKey, endLineKey: endKey, startLine: startLineNum, endLine: endLineNum, quote, body: text });
     setCommentDraft("");
-    setCommentingLine(null);
+    setCommentingRange(null);
   };
 
-  const removeComment = (key: string, idx: number) => {
-    setLineComments(prev => {
-      const arr = [...(prev[key] ?? [])];
-      arr.splice(idx, 1);
-      return { ...prev, [key]: arr };
-    });
+  const sendCommentsToAgent = () => {
+    const targetId = selectedAgentId || agentSessions[0]?.id;
+    if (!targetId || comments.length === 0) return;
+    enqueue(targetId, composeMessage(comments));
+    clearComments(cwd);
+    setSelectedAgentId("");
   };
 
   // ── Selection ────────────────────────────────────────────────────────────
@@ -668,55 +688,134 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
                         <div key={i} className="dv-hunk">
                           <div className="dv-hunk-hdr">
                             <span className="dv-hunk-range">{hunk.header.content}</span>
-                            <button
-                              className="dv-hunk-btn"
-                              onClick={() => selected.section === "staged" ? unstageFile(selected.path) : stageFile(selected.path)}
-                            >
-                              {selected.section === "staged" ? "Unstage hunk" : "Stage hunk"}
-                            </button>
+                            <div className="dv-hunk-actions">
+                              <button
+                                className="dv-hunk-btn dv-hunk-btn--comment"
+                                onClick={() => {
+                                  if (hunk.lines.length === 0) return;
+                                  const first = hunk.lines[0];
+                                  const last = hunk.lines[hunk.lines.length - 1];
+                                  setCommentingRange({
+                                    hunkIdx: i,
+                                    startLi: 0,
+                                    endLi: hunk.lines.length - 1,
+                                    startLineNum: first.line_new ?? first.line_old ?? 1,
+                                    endLineNum: last.line_new ?? last.line_old ?? hunk.lines.length,
+                                  });
+                                  setCommentDraft("");
+                                }}
+                              >
+                                Comment on hunk
+                              </button>
+                              <button
+                                className="dv-hunk-btn"
+                                onClick={() => selected.section === "staged" ? unstageFile(selected.path) : stageFile(selected.path)}
+                              >
+                                {selected.section === "staged" ? "Unstage hunk" : "Stage hunk"}
+                              </button>
+                            </div>
                           </div>
                           <div className="dv-hunk-body">
                             {hunk.lines.map((line, li) => {
                               const lineKey = `h${i}l${li}`;
-                              const lineNotes = lineComments[lineKey] ?? [];
-                              const isCommenting = commentingLine === lineKey;
+                              const lineNum = line.line_new ?? line.line_old ?? li + 1;
+                              // Notes whose range ends at this line
+                              const lineNotes = comments.filter(c => c.file === selected.path && c.endLineKey === lineKey);
+                              // Is this line inside the active selection range?
+                              const inRange = commentingRange?.hunkIdx === i
+                                && li >= commentingRange.startLi
+                                && li <= commentingRange.endLi;
+                              // Is this the last line of the active range? (form renders here)
+                              const isRangeEnd = commentingRange?.hunkIdx === i && li === commentingRange.endLi;
+                              // Is this exactly a single-line range start/end?
+                              const isSingleActive = commentingRange?.hunkIdx === i
+                                && commentingRange.startLi === li
+                                && commentingRange.endLi === li;
                               return (
                                 <div key={li} className="diff-line-wrap">
-                                  <div className={`diff-line diff-${line.kind}`}>
-                                    <button
-                                      className="diff-comment-btn"
-                                      type="button"
-                                      title="Add comment"
-                                      onClick={() => {
-                                        setCommentingLine(isCommenting ? null : lineKey);
-                                        setCommentDraft("");
-                                      }}
-                                    >
-                                      <Plus size={9} />
-                                    </button>
+                                  {(() => {
+                                    const isMultiRange = inRange && commentingRange!.startLi !== commentingRange!.endLi;
+                                    const centerLi = isMultiRange
+                                      ? Math.floor((commentingRange!.startLi + commentingRange!.endLi) / 2)
+                                      : -1;
+                                    return (
+                                  <div className={`diff-line diff-${line.kind}${inRange ? " diff-line-selected" : ""}`}>
+                                    {isMultiRange ? (
+                                      li === centerLi ? (
+                                        <button
+                                          className="diff-comment-btn diff-comment-btn--center"
+                                          type="button"
+                                          title="Cancel range"
+                                          onClick={() => { setCommentingRange(null); setCommentDraft(""); }}
+                                        >
+                                          <Plus size={9} />
+                                        </button>
+                                      ) : (
+                                        <div className="diff-range-segment" />
+                                      )
+                                    ) : (
+                                      <button
+                                        className={`diff-comment-btn${isSingleActive ? " active" : ""}`}
+                                        type="button"
+                                        title={isSingleActive
+                                          ? "Shift+click to extend range"
+                                          : "Add comment · Shift+click to select range"}
+                                        onClick={(e) => {
+                                          if (commentingRange?.hunkIdx === i && e.shiftKey) {
+                                            const newStart = Math.min(commentingRange.startLi, li);
+                                            const newEnd = Math.max(commentingRange.endLi, li);
+                                            const newStartNum = newStart === commentingRange.startLi
+                                              ? commentingRange.startLineNum : lineNum;
+                                            const newEndNum = newEnd === commentingRange.endLi
+                                              ? commentingRange.endLineNum : lineNum;
+                                            setCommentingRange({ hunkIdx: i, startLi: newStart, endLi: newEnd, startLineNum: newStartNum, endLineNum: newEndNum });
+                                          } else if (isSingleActive) {
+                                            setCommentingRange(null);
+                                            setCommentDraft("");
+                                          } else {
+                                            setCommentingRange({ hunkIdx: i, startLi: li, endLi: li, startLineNum: lineNum, endLineNum: lineNum });
+                                            setCommentDraft("");
+                                          }
+                                        }}
+                                      >
+                                        <Plus size={9} />
+                                      </button>
+                                    )}
                                     <span className="diff-num">{line.line_old ?? ""}</span>
                                     <span className="diff-num">{line.line_new ?? ""}</span>
                                     <span className="diff-content">{line.content}</span>
                                   </div>
-                                  {lineNotes.map((note, ni) => (
-                                    <div key={ni} className="diff-placed-comment">
-                                      <span className="diff-placed-comment-text">{note}</span>
+                                    );
+                                  })()}
+                                  {lineNotes.map((note) => (
+                                    <div key={note.id} className="diff-placed-comment">
+                                      <span className="diff-placed-comment-meta">
+                                        {note.startLine === note.endLine
+                                          ? `line ${note.startLine}`
+                                          : `lines ${note.startLine}–${note.endLine}`}
+                                      </span>
+                                      <span className="diff-placed-comment-text">{note.body}</span>
                                       <button
                                         className="diff-placed-comment-remove"
                                         type="button"
-                                        onClick={() => removeComment(lineKey, ni)}
+                                        onClick={() => removeComment(cwd, note.id)}
                                       >
                                         <X size={9} />
                                       </button>
                                     </div>
                                   ))}
-                                  {isCommenting && (
+                                  {isRangeEnd && (
                                     <div className="diff-comment-form" onClick={(e) => e.stopPropagation()}>
                                       <div className="diff-comment-form-hdr">
                                         <span className="diff-comment-form-who">You</span>
                                         <span className="diff-comment-form-line">
-                                          · line {line.line_new ?? line.line_old ?? li + 1}
+                                          {commentingRange.startLineNum === commentingRange.endLineNum
+                                            ? `· line ${commentingRange.startLineNum}`
+                                            : `· lines ${commentingRange.startLineNum}–${commentingRange.endLineNum}`}
                                         </span>
+                                        {commentingRange.startLi !== commentingRange.endLi && (
+                                          <span className="diff-comment-form-range-hint">Shift+click to adjust range</span>
+                                        )}
                                       </div>
                                       <textarea
                                         className="diff-comment-textarea"
@@ -728,10 +827,10 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
                                         onKeyDown={(e) => {
                                           if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                                             e.preventDefault();
-                                            submitComment(lineKey);
+                                            submitComment(hunk.lines);
                                           }
                                           if (e.key === "Escape") {
-                                            setCommentingLine(null);
+                                            setCommentingRange(null);
                                             setCommentDraft("");
                                           }
                                         }}
@@ -740,7 +839,7 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
                                         <button
                                           className="diff-comment-cancel"
                                           type="button"
-                                          onClick={() => { setCommentingLine(null); setCommentDraft(""); }}
+                                          onClick={() => { setCommentingRange(null); setCommentDraft(""); }}
                                         >
                                           Cancel
                                         </button>
@@ -748,7 +847,7 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
                                           className={`diff-comment-submit${commentDraft.trim() ? " ready" : ""}`}
                                           type="button"
                                           disabled={!commentDraft.trim()}
-                                          onClick={() => submitComment(lineKey)}
+                                          onClick={() => submitComment(hunk.lines)}
                                         >
                                           Comment
                                         </button>
@@ -820,6 +919,49 @@ export function DiffPane({ cwd, hidden, gitRevision }: Props) {
         </div>
 
       </div>
+
+      {/* Review comments bar */}
+      {comments.length > 0 && (
+        <div className="dcb-bar">
+          <div className="dcb-left">
+            <MessageSquare size={13} className="dcb-icon" />
+            <span className="dcb-count">{comments.length} comment{comments.length !== 1 ? "s" : ""}</span>
+            <span className="dcb-hint">pending</span>
+          </div>
+          <div className="dcb-right">
+            {agentSessions.length > 1 && (
+              <select
+                className="dcb-agent-select"
+                value={selectedAgentId}
+                onChange={(e) => setSelectedAgentId(e.target.value)}
+              >
+                {agentSessions.map((a) => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </select>
+            )}
+            {agentSessions.length === 1 && (
+              <span className="dcb-agent-name">{agentSessions[0].name}</span>
+            )}
+            <button
+              className="dcb-clear-btn"
+              onClick={() => clearComments(cwd)}
+              title="Discard all comments"
+            >
+              <X size={11} />
+            </button>
+            <button
+              className={`dcb-send-btn${agentSessions.length === 0 ? " disabled" : ""}`}
+              onClick={sendCommentsToAgent}
+              disabled={agentSessions.length === 0}
+              title={agentSessions.length === 0 ? "No active agent sessions" : "Send comments to agent"}
+            >
+              <Send size={11} />
+              Send to agent
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Discard confirmation */}
       {discardTarget && (

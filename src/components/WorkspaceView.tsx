@@ -2615,6 +2615,9 @@ export function WorkspaceView({ zen, name, path }: Props) {
                       cwd={s.cwd}
                       hidden={hidden}
                       gitRevision={gitRevision}
+                      agentSessions={sessions
+                        .filter((sess) => !!sess.agent && !sess.kind)
+                        .map((sess) => ({ id: sess.id, name: sess.name }))}
                     />
                   ) : s.kind === "preview" ? (
                     <PreviewPane
