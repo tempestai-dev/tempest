@@ -39,91 +39,84 @@ export const metadata: Metadata = {
   ],
 };
 
-const features = [
-  {
-    icon: Coins,
-    title: "Shared repository knowledge graph",
-    body: "Tempest indexes your codebase once and shares that understanding across every running agent. Agents pull from the graph instead of rediscovering files themselves — up to 64% less context consumed, up to 58% fewer tool calls.",
-  },
-  {
-    icon: GitBranch,
-    title: "Isolated git worktrees per agent",
-    body: "Every agent session runs on its own git worktree — a separate working directory linked to your repo. Agents share repository understanding but never touch each other's files. No merge conflicts mid-run, no coordination overhead.",
-  },
-  {
-    icon: Layers,
-    title: "Parallel execution, locally",
-    body: "Run Claude Code, Aider, OpenCode, Gemini CLI, or any terminal-based agent in parallel. All agents report live status from a single interface. Everything runs on your machine — your code never leaves it.",
-  },
-];
-
-const comparisonRows: {
+type Row = {
   label: string;
   tempest: string;
   conductor: string;
-}[] = [
+  tempestYes: boolean;
+  conductorYes: boolean | null; // null = unknown
+};
+
+const rows: Row[] = [
+  { label: "Shared repository context",  tempest: "Yes — indexed once",    conductor: "Per-agent",          tempestYes: true,  conductorYes: false },
+  { label: "Token efficiency",           tempest: "Up to 64% fewer",       conductor: "See documentation",  tempestYes: true,  conductorYes: null  },
+  { label: "Fewer tool calls",           tempest: "Up to 58% fewer",       conductor: "See documentation",  tempestYes: true,  conductorYes: null  },
+  { label: "Knowledge graph",            tempest: "Local, per project",     conductor: "See documentation",  tempestYes: true,  conductorYes: null  },
+  { label: "Git worktree isolation",     tempest: "Per agent session",      conductor: "Implementation differs", tempestYes: true, conductorYes: null },
+  { label: "Parallel agents",           tempest: "Unlimited",              conductor: "Supported",          tempestYes: true,  conductorYes: true  },
+  { label: "Local-first",               tempest: "Fully local",            conductor: "See documentation",  tempestYes: true,  conductorYes: null  },
+  { label: "Open source",               tempest: "Apache 2.0",             conductor: "See documentation",  tempestYes: true,  conductorYes: null  },
+];
+
+const features = [
   {
-    label: "Repository indexing",
-    tempest: "Local knowledge graph — indexed once, shared across all agents",
-    conductor: "See documentation",
+    icon: Coins,
+    title: "Index once, share everywhere",
+    body: "Tempest builds a local knowledge graph of your repository on first run. Every agent session draws from that graph instead of rediscovering files independently. That single shared index is why token usage drops by up to 64% and tool calls drop by up to 58% — the work is done once, not once per agent.",
   },
   {
-    label: "Context reuse across agents",
-    tempest: "Agents draw from a shared index — no redundant file reads",
-    conductor: "Implementation differs",
+    icon: GitBranch,
+    title: "Isolated execution, shared understanding",
+    body: "Repository understanding is shared. Execution is not. Each agent session runs on its own git worktree — a separate working directory linked to your repo. Agents never write to the same branch, so there are no merge conflicts and no coordination overhead between running sessions.",
   },
   {
-    label: "Token efficiency",
-    tempest: "Up to 64% fewer tokens per agent session",
-    conductor: "See documentation",
-  },
-  {
-    label: "Agent isolation",
-    tempest: "Each agent runs in its own git worktree",
-    conductor: "Implementation differs",
-  },
-  {
-    label: "Multi-agent development",
-    tempest: "Parallel sessions with shared knowledge, isolated execution",
-    conductor: "Supported — implementation differs",
-  },
-  {
-    label: "Runs locally",
-    tempest: "Fully local — no cloud dependency",
-    conductor: "See documentation",
-  },
-  {
-    label: "Open source",
-    tempest: "Yes — Apache 2.0",
-    conductor: "See documentation",
+    icon: Layers,
+    title: "Any agent, in parallel",
+    body: "Claude Code, Aider, OpenCode, Gemini CLI, Cline — run them all at once. Each gets the same repository context from the shared index, each executes on its own isolated branch. Everything runs locally; your code never leaves your machine.",
   },
 ];
+
+function Checkmark() {
+  return (
+    <span className="text-foreground font-medium text-sm">✓</span>
+  );
+}
+
+function Cross() {
+  return (
+    <span className="text-muted-foreground text-sm">✕</span>
+  );
+}
+
+function Unknown() {
+  return (
+    <span className="text-muted-foreground text-sm">—</span>
+  );
+}
 
 export default function TempestVsConductorPage() {
   return (
     <main>
       {/* Hero */}
       <Container>
-        <section className="flex flex-col pt-10 pb-8 min-[1000px]:pb-16">
+        <section className="flex flex-col pt-10 pb-10 min-[1000px]:pb-12">
           <p className="text-sm text-muted-foreground font-semibold mb-4">
-            CONDUCTOR VS TEMPEST
+            CONDUCTOR ALTERNATIVE
           </p>
           <h1 className="text-3xl min-[1000px]:text-4xl font-normal leading-snug">
             <span className="text-foreground">
-              The token-efficient Conductor alternative for multi-agent development.
+              The token-efficient alternative to Conductor.
             </span>
             <br />
             <span className="text-muted-foreground">
-              One shared knowledge graph. Every agent isolated.
+              One index. Every agent benefits.
             </span>
           </h1>
           <p className="mt-4 text-base text-muted-foreground max-w-xl leading-relaxed">
-            Running multiple AI agents becomes expensive when every agent
-            independently rebuilds its understanding of your codebase. Tempest
-            indexes your repository once and shares that understanding across
-            every agent — reducing token usage by up to 64% and tool calls by
-            up to 58%, while keeping each agent's execution fully isolated on
-            its own git branch.
+            Tempest indexes your repository once and shares that understanding
+            across every running AI agent. The result is up to 64% fewer tokens
+            consumed and up to 58% fewer tool calls — without changing how you
+            work.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Link
@@ -144,12 +137,72 @@ export default function TempestVsConductorPage() {
         </section>
       </Container>
 
-      {/* Architecture difference */}
-      <Container className="mt-4 pb-20">
-        <div className="flex flex-col min-[700px]:flex-row min-[700px]:items-stretch gap-8">
+      {/* Comparison table */}
+      <Container className="pb-20">
+        <p className="text-sm text-muted-foreground font-semibold mb-4">
+          TEMPEST VS CONDUCTOR BUILD
+        </p>
+
+        <div className="overflow-x-auto rounded border border-foreground/[0.08]">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-foreground/[0.08]">
+                <th className="text-left px-5 py-3.5 text-muted-foreground font-medium">
+                  Feature
+                </th>
+                <th className="text-left px-5 py-3.5 font-medium">
+                  Tempest
+                </th>
+                <th className="text-left px-5 py-3.5 text-muted-foreground font-medium">
+                  Conductor
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, i) => (
+                <tr
+                  key={row.label}
+                  className={i < rows.length - 1 ? "border-b border-foreground/[0.08]" : ""}
+                >
+                  <td className="px-5 py-3.5 text-muted-foreground">
+                    {row.label}
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <span className="flex items-center gap-2">
+                      <Checkmark />
+                      <span className="text-foreground">{row.tempest}</span>
+                    </span>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <span className="flex items-center gap-2">
+                      {row.conductorYes === true ? (
+                        <Checkmark />
+                      ) : row.conductorYes === false ? (
+                        <Cross />
+                      ) : (
+                        <Unknown />
+                      )}
+                      <span className="text-muted-foreground">{row.conductor}</span>
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <p className="mt-3 text-xs text-muted-foreground">
+          Where Conductor&apos;s implementation is unverified, we say so.
+          Rows marked — reflect documentation gaps, not confirmed weaknesses.
+        </p>
+      </Container>
+
+      {/* Architecture explanation */}
+      <Container className="pb-20">
+        <div className="flex flex-col min-[700px]:flex-row min-[700px]:items-stretch gap-8 mb-8">
           <div className="min-[700px]:w-2/3 flex flex-col gap-3">
             <p className="text-sm text-muted-foreground font-semibold">
-              THE ARCHITECTURAL DIFFERENCE
+              WHY THE NUMBERS HOLD
             </p>
             <h2 className="text-2xl min-[1000px]:text-3xl font-normal leading-snug">
               <span className="text-foreground">
@@ -164,15 +217,14 @@ export default function TempestVsConductorPage() {
           </div>
           <div className="min-[700px]:w-1/3 flex flex-col min-[700px]:justify-end">
             <p className="text-base text-muted-foreground leading-relaxed">
-              Both Tempest and Conductor are AI development environments built
-              for multi-agent coding. Where they differ is in how repository
-              understanding is built and shared — and that difference compounds
-              with every agent and every token.
+              The efficiency gap between Tempest and other multi-agent AI IDEs
+              comes from a single architectural decision: where repository
+              understanding lives, and who builds it.
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 min-[700px]:grid-cols-3 gap-4 mt-8">
+        <div className="grid grid-cols-1 min-[700px]:grid-cols-3 gap-4">
           {features.map(({ icon: Icon, title, body }) => (
             <div
               key={title}
@@ -187,60 +239,6 @@ export default function TempestVsConductorPage() {
               </div>
             </div>
           ))}
-        </div>
-      </Container>
-
-      {/* Comparison table */}
-      <Container className="pb-20">
-        <p className="text-sm text-muted-foreground font-semibold mb-4">
-          CONDUCTOR BUILD ALTERNATIVE — FEATURE COMPARISON
-        </p>
-        <h2 className="text-2xl min-[1000px]:text-3xl font-normal leading-snug mb-2">
-          Side by side
-        </h2>
-        <p className="text-sm text-muted-foreground mb-8 max-w-xl">
-          Where we cannot confidently compare, we say so. The goal is clarity,
-          not competitive scoring.
-        </p>
-
-        <div className="overflow-x-auto rounded border border-foreground/[0.08]">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-foreground/[0.08]">
-                <th className="text-left px-5 py-4 text-muted-foreground font-medium w-1/3">
-                  Feature
-                </th>
-                <th className="text-left px-5 py-4 font-medium w-1/3">
-                  Tempest
-                </th>
-                <th className="text-left px-5 py-4 text-muted-foreground font-medium w-1/3">
-                  Conductor
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {comparisonRows.map((row, i) => (
-                <tr
-                  key={row.label}
-                  className={
-                    i < comparisonRows.length - 1
-                      ? "border-b border-foreground/[0.08]"
-                      : ""
-                  }
-                >
-                  <td className="px-5 py-4 text-muted-foreground align-top">
-                    {row.label}
-                  </td>
-                  <td className="px-5 py-4 align-top text-foreground leading-snug">
-                    {row.tempest}
-                  </td>
-                  <td className="px-5 py-4 align-top text-muted-foreground leading-snug">
-                    {row.conductor}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       </Container>
 
