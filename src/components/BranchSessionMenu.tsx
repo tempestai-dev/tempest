@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useAgentAvailability } from "../store/agentAvailability";
@@ -53,6 +53,10 @@ export function BranchSessionMenu({
   const [promptAgent, setPromptAgent] = useState<AgentConfig | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
+  // Final on-screen position, clamped into the viewport after measuring the
+  // rendered menu. Starts from the anchor-derived guess and is corrected in a
+  // layout effect (before paint) so the menu never overflows the edges.
+  const [clamped, setClamped] = useState<{ top: number; left: number } | null>(null);
 
   // Flat list of every row, in render order. Unavailable agents stay in the list
   // (so they render) but are skipped by keyboard navigation.
@@ -77,6 +81,7 @@ export function BranchSessionMenu({
       setView("menu");
       setPromptAgent(null);
       setActiveIndex(navigable[0] ?? 0);
+      setClamped(null); // re-measure against the new anchor before paint
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -134,12 +139,40 @@ export function BranchSessionMenu({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, view, activeIndex, navigable, items, activate, onClose]);
 
+  // Anchor-derived starting position (before viewport clamping).
+  const basePos = anchorRect
+    ? placement === "right"
+      ? { top: anchorRect.top, left: anchorRect.right + 4 }
+      : { top: anchorRect.bottom + 2, left: anchorRect.left }
+    : { top: 0, left: 0 };
+
+  // Measure the rendered menu and shift it so it never overflows the viewport.
+  // Runs before paint, and re-runs when the view switches (the prompt panel is
+  // taller/wider than the list) so the corrected position is what the user sees.
+  useLayoutEffect(() => {
+    if (!open || !anchorRect) { setClamped(null); return; }
+    const el = menuRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    let { top, left } = basePos;
+    if (left + rect.width > window.innerWidth - margin) {
+      // Prefer flipping to the anchor's left side; otherwise pin to the right edge.
+      const flipped = anchorRect.left - rect.width - 4;
+      left = flipped >= margin ? flipped : window.innerWidth - rect.width - margin;
+    }
+    if (top + rect.height > window.innerHeight - margin) {
+      top = window.innerHeight - rect.height - margin;
+    }
+    left = Math.max(margin, left);
+    top = Math.max(margin, top);
+    if (top !== clamped?.top || left !== clamped?.left) setClamped({ top, left });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, anchorRect, placement, view, promptAgent, items]);
+
   if (!open || !anchorRect) return null;
 
-  const pos =
-    placement === "right"
-      ? { top: anchorRect.top, left: anchorRect.right + 4 }
-      : { top: anchorRect.bottom + 2, left: anchorRect.left };
+  const pos = clamped ?? basePos;
 
   return createPortal(
     <div className="bsm-overlay" onMouseDown={onClose}>
