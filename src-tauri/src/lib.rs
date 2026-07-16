@@ -62,16 +62,18 @@ fn write_file(path: String, content: String) -> Result<(), String> {
     std::fs::write(&path, content).map_err(|e| e.to_string())
 }
 
-/// Returns the atlas resource directory: in dev builds uses the cargo manifest
-/// path (src-tauri/resources/atlas/) so the dev-mode binary finds the files
-/// that bundle-atlas.mjs copies there; in release builds uses the standard
-/// Tauri resource dir where the bundle copies them.
+/// Returns the @usetempest/atlas package directory inside the runtime folder.
+/// Dev builds: src-tauri/resources/atlas/node_modules/@usetempest/atlas/
+/// Release builds: <exe>/resources/atlas/node_modules/@usetempest/atlas/
 fn atlas_resource_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     #[cfg(debug_assertions)]
     {
         let _ = app;
         Ok(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("resources")
+            .join("atlas")
+            .join("node_modules")
+            .join("@usetempest")
             .join("atlas"))
     }
     #[cfg(not(debug_assertions))]
@@ -84,7 +86,7 @@ fn atlas_resource_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, Stri
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         let exe_dir = exe.parent()
             .ok_or_else(|| "Cannot determine executable directory".to_string())?;
-        Ok(exe_dir.join("resources").join("atlas"))
+        Ok(exe_dir.join("resources").join("atlas").join("node_modules").join("@usetempest").join("atlas"))
     }
 }
 

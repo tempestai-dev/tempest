@@ -1,5 +1,5 @@
 {
-  "name": "@tempest/atlas",
+  "name": "@usetempest/atlas",
   "version": "1.1.6",
   "description": "Semantic code intelligence for Tempest agents — surgical context, fewer tool calls, faster answers. 100% local.",
   "main": "dist/index.js",
@@ -11,6 +11,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "clean": "node -e \"const fs=require('fs');fs.rmSync('dist',{recursive:true,force:true})\""
+  },
+  "files": [
+    "dist",
+    "src/db/schema.sql",
+    "src/extraction/wasm"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "license": "MIT",
   "dependencies": {
