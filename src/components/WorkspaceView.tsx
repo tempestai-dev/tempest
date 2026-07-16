@@ -257,6 +257,8 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const [promptPickerItems, setPromptPickerItems] = useState<PromptEntry[]>([]);
   const [promptSentId, setPromptSentId] = useState<string | null>(null);
   const promptPickerRef = useRef<HTMLDivElement>(null);
+  const promptBtnRef = useRef<SVGSVGElement>(null);
+  const [promptPickerPos, setPromptPickerPos] = useState<{ top: number; right: number } | null>(null);
   const [diffPickerOpen, setDiffPickerOpen] = useState(false);
   const [diffPickerBranches, setDiffPickerBranches] = useState<Record<string, BranchInfo[]>>({});
   const [diffPickerLoading, setDiffPickerLoading] = useState(false);
@@ -1755,10 +1757,15 @@ export function WorkspaceView({ zen, name, path }: Props) {
   useEffect(() => {
     if (!promptPickerOpen) return;
     setPromptPickerItems(getPrompts().filter((p) => p.enabled));
+    if (promptBtnRef.current) {
+      const r = promptBtnRef.current.getBoundingClientRect();
+      setPromptPickerPos({ top: r.bottom + 8, right: window.innerWidth - r.right });
+    }
     function onDown(e: MouseEvent) {
-      if (promptPickerRef.current && !promptPickerRef.current.contains(e.target as Node)) {
-        setPromptPickerOpen(false);
-      }
+      const target = e.target as Node;
+      const inBtn = promptBtnRef.current?.contains(target);
+      const inPicker = (e.target as Element)?.closest?.(".sub-bar-prompt-picker");
+      if (!inBtn && !inPicker) setPromptPickerOpen(false);
     }
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
@@ -1920,50 +1927,48 @@ export function WorkspaceView({ zen, name, path }: Props) {
             <Tooltip content="Keyboard shortcuts" placement="bottom">
               <Keyboard
                 className="topbar-icon"
-                onClick={() => { setSettingsInitialSection("keybindings"); setSettingsOpen(true); }}
+                onClick={() => { setSettingsInitialSection("keyboard"); setSettingsOpen(true); }}
               />
             </Tooltip>
             <div className="topbar-prompt-wrap" ref={promptPickerRef}>
               <Tooltip content="Prompts" placement="bottom">
                 <BookOpen
+                  ref={promptBtnRef}
                   className={`topbar-icon${promptPickerOpen ? " active" : ""}`}
                   onClick={() => setPromptPickerOpen((o) => !o)}
                 />
               </Tooltip>
-              {promptPickerOpen && (
-                <div className="sub-bar-prompt-picker">
-                  <div className="sub-bar-prompt-picker-header">
-                    <span>Prompts</span>
-                  </div>
+              {promptPickerOpen && promptPickerPos && createPortal(
+                <div className="sub-bar-prompt-picker" style={{ top: promptPickerPos.top, right: promptPickerPos.right, position: "fixed" }}>
+                  <div className="sub-bar-prompt-picker-header">Prompt Library</div>
                   <div className="sub-bar-prompt-picker-items">
                     {promptPickerItems.length > 0 ? (
                       promptPickerItems.map((p) => {
                         const sent = promptSentId === p.id;
                         return (
-                          <button
-                            key={p.id}
-                            className={`sub-bar-prompt-item${sent ? " sub-bar-prompt-item--sent" : ""}`}
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              if (sent) return;
-                              navigator.clipboard.writeText(p.body);
-                              setPromptSentId(p.id);
-                              setTimeout(() => {
-                                setPromptPickerOpen(false);
-                                setPromptSentId(null);
-                              }, 800);
-                            }}
-                          >
-                            <span className="sub-bar-prompt-item-icon">
-                              {sent ? <Check size={12} /> : <Copy size={12} />}
-                            </span>
-                            <span className="sub-bar-prompt-item-text">
+                          <div key={p.id} className={`sub-bar-prompt-item${sent ? " sub-bar-prompt-item--sent" : ""}`}>
+                            <div className="sub-bar-prompt-item-text">
                               <span className="sub-bar-prompt-title">{p.title}</span>
                               <span className="sub-bar-prompt-preview">
-                                {p.body.length > 64 ? p.body.slice(0, 64) + "…" : p.body}
+                                {p.body.length > 60 ? p.body.slice(0, 60) + "…" : p.body}
                               </span>
-                            </span>
-                          </button>
+                            </div>
+                            <button
+                              className={`sub-bar-prompt-copy-btn${sent ? " sub-bar-prompt-copy-btn--sent" : ""}`}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                if (sent) return;
+                                navigator.clipboard.writeText(p.body);
+                                setPromptSentId(p.id);
+                                setTimeout(() => {
+                                  setPromptPickerOpen(false);
+                                  setPromptSentId(null);
+                                }, 800);
+                              }}
+                            >
+                              {sent ? <><Check size={11} /> Copied</> : <>Copy</>}
+                            </button>
+                          </div>
                         );
                       })
                     ) : (
@@ -1980,11 +1985,12 @@ export function WorkspaceView({ zen, name, path }: Props) {
                         setSettingsOpen(true);
                       }}
                     >
-                      <Plus size={11} />
-                      <span>Manage prompts</span>
+                      <Plus size={12} />
+                      <span>Manage Prompts</span>
                     </button>
                   </div>
-                </div>
+                </div>,
+                document.body
               )}
             </div>
           </>
@@ -2479,6 +2485,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
                     onRenameClear={() => setRenamingSessionId(null)}
                     onRenameStart={startRename}
                     onQueueClick={(id, e) => { e.stopPropagation(); setQueueOpenSessionId((prev) => (prev === id ? null : id)); }}
+                    onCloseGroup={(projectId) => sessions.filter(s => s.projectId === projectId).forEach(s => closeSession(s.id))}
                     projects={projects.map((p) => ({ id: p.id, name: p.name }))}
                   />}
                   <div className="bar-end">

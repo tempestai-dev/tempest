@@ -295,28 +295,62 @@
 
 /* Higher specificity (.tab-group .group-chip = 0,2,0) beats .bar button (0,1,1) */
 .tab-group .group-chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
+  gap: 0;
   font-size: 10px;
   font-weight: 550;
   font-family: "Geist", sans-serif;
-  color: #fff;
+  color: var(--tempest-bg-base);
   background: var(--group-color);
   border: none;
   padding: 2px 7px;
-  cursor: pointer;
+  cursor: default;
   white-space: nowrap;
   border-radius: 6px;
   letter-spacing: 0.02em;
-  transition: filter 0.15s;
   line-height: 1.4;
   flex-shrink: 0;
   margin-right: 3px;
   align-self: center;
   margin-bottom: 6px;
+  overflow: hidden;
 }
 
-.tab-group .group-chip:hover { color: #fff; filter: brightness(1.12); }
+.tab-group .group-chip-name {
+  display: block;
+  transition: -webkit-mask-image 0.15s, mask-image 0.15s;
+}
+
+.tab-group .group-chip:hover,
+[data-theme="dark"] .tab-group .group-chip:hover,
+[data-theme="light"] .tab-group .group-chip:hover { color: var(--tempest-bg-base); }
+
+.tab-group .group-chip:hover .group-chip-name {
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 18px), transparent 100%);
+  mask-image:         linear-gradient(to right, black calc(100% - 18px), transparent 100%);
+}
+
+.tab-group .group-chip-close {
+  position: absolute;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  color: var(--tempest-bg-base);
+  transition: opacity 0.15s;
+  cursor: pointer;
+}
+
+.tab-group .group-chip-close svg { width: 12px; height: 12px; stroke-width: 2.2; }
+
+.tab-group .group-chip:hover .group-chip-close {
+  opacity: 1;
+  pointer-events: auto;
+}
 
 /* ─── Mode: tabbed (rounded pills) ──────────────────────────────────── */
 

@@ -51,6 +51,7 @@ interface Props {
   onRenameClear: () => void;
   onRenameStart: (id: string, name: string) => void;
   onQueueClick: (id: string, e: React.MouseEvent) => void;
+  onCloseGroup?: (projectId: string) => void;
   projects?: { id: string; name: string }[];
 }
 
@@ -70,6 +71,7 @@ export default function AgentTabs({
   onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave,
   renamingSessionId, renameValue, onRenameChange, onRenameCommit, onRenameClear, onRenameStart,
   onQueueClick,
+  onCloseGroup,
   projects,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -172,7 +174,14 @@ export default function AgentTabs({
           className="tab-group"
           style={{ "--group-color": hashProjectColor(projectId) } as React.CSSProperties}
         >
-          <button className="group-chip">{projectNameMap.get(projectId) ?? projectId}</button>
+          <button className="group-chip">
+            <span className="group-chip-name">{projectNameMap.get(projectId) ?? projectId}</span>
+            {onCloseGroup && (
+              <span className="group-chip-close" onClick={(e) => { e.stopPropagation(); onCloseGroup(projectId); }}>
+                <X size={12} strokeWidth={2.2} />
+              </span>
+            )}
+          </button>
           <div className="group-tabs">
             {groupTabs.map((s, ti) => renderTabButton(s, ti > 0))}
           </div>
