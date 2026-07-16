@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   RefreshCw, GitBranch, GitPullRequest, Loader, Check,
-  Plus, Minus, X, AlertTriangle, ChevronDown, Trash2,
+  Plus, X, AlertTriangle, ChevronDown, Trash2,
   RotateCcw,
 } from "lucide-react";
 import { Tooltip } from "./Tooltip";
