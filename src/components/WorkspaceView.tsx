@@ -9,6 +9,8 @@ import { addRecent, getRecents, removeRecent } from "../store/recents";
 import { getOpenProjects, saveOpenProjects } from "../store/openProjects";
 import { getWorktreeSession, saveWorktreeSession, removeWorktreeSession, markWorktreeSessionClosed, markWorktreeSessionOpen, pruneOrphanedSessions, dedupeRootSessions, rootSessionKey, rootSessionIdFromKey, getRootSessionsForProject, subSessionKey, subSessionIdFromKey, getSubSessionsForWorktree, type WorktreeSession } from "../store/sessions";
 import { getRuntimeState, setRuntimeState, type PersistedTab } from "../lib/runtimeState";
+import type { BranchInfo } from "../types/git";
+import type { Session, Worktree, Project, NavSection } from "../types/workspace";
 import {
   LayoutGrid,
   Brain,
@@ -84,115 +86,25 @@ interface Props {
   path?: string;
 }
 
-interface Session {
-  id: string;
-  name: string;
-  cwd: string;
-  projectId: string;
-  kind?: "terminal" | "diff" | "preview" | "editor" | "chat"; // defaults to "terminal" when absent
-  previewUrl?: string; // current URL for preview tabs
-  agent?: string; // CLI command when this is an agent session (e.g. "claude")
-  conversationId?: string; // the Claude conversation UUID
-  instanceId: string; // permanent canonical identity — minted once (= sessionId), never changes across resumes
-  createdAt: string; // ISO timestamp
-  isRootSession?: boolean; // true when session runs in the project root (no worktree)
-  noGit?: boolean; // true when user skipped git init for this root session
-  sandboxed?: boolean; // true when session is running inside a Hephaestus isolation sandbox
-  parentSessionId?: string; // set when this session was spawned via a split from another
-  storeKey?: string; // the sessions.ts key this session was saved under; undefined = not persisted
-  initialDiffPath?: string; // set when opened from Changes tab — skips the project picker
-  metadata: {
-    resumeCount: number;
-    hasBeenResumed: boolean;
-  };
-}
-
-interface Worktree {
-  name: string;
-  path: string;
-}
-
-interface BranchInfo {
-  name: string;
-  is_current: boolean;
-  is_remote: boolean;
-  is_worktree: boolean;
-  worktree_path?: string;
-}
-
-interface Project {
-  id: string;
-  name: string;
-  path: string;
-  expanded: boolean;
-  worktrees: Worktree[];
-}
-
-type NavSection = "overview" | "knowledge-base";
-
 const win = getCurrentWindow();
 
 // Directories under .tempest/ that are internal to Tempest and must never be
 // treated as git worktrees in the sidebar.
 const TEMPEST_INTERNAL_DIRS = new Set(["atlas", "logs"]);
 
-function folderName(p: string): string {
-  return p.replace(/[/\\]+$/, "").split(/[/\\]/).pop() ?? p;
-}
-
-// ─── Split pane layout ────────────────────────────────────────────────────────
-// "v" = vertical divider (panes side by side); "h" = horizontal divider (stacked).
-type SplitDir = "h" | "v";
-interface SplitLeaf   { type: "leaf";  sessionId: string; }
-interface SplitBranch { type: "split"; id: string; dir: SplitDir; ratio: number; first: PaneNode; second: PaneNode; }
-type PaneNode = SplitLeaf | SplitBranch;
-interface PaneRect    { top: number; left: number; width: number; height: number; } // 0–1 fractions
-
-function paneSessionIds(n: PaneNode): string[] {
-  if (n.type === "leaf") return [n.sessionId];
-  return [...paneSessionIds(n.first), ...paneSessionIds(n.second)];
-}
-
-function replaceLeaf(n: PaneNode, id: string, repl: PaneNode): PaneNode | null {
-  if (n.type === "leaf") return n.sessionId === id ? repl : null;
-  const a = replaceLeaf(n.first, id, repl); if (a) return { ...n, first: a } as SplitBranch;
-  const b = replaceLeaf(n.second, id, repl); if (b) return { ...n, second: b } as SplitBranch;
-  return null;
-}
-
-function removeLeaf(n: PaneNode, id: string): PaneNode | null {
-  if (n.type === "leaf") return null;
-  if (n.first.type  === "leaf" && n.first.sessionId  === id) return n.second;
-  if (n.second.type === "leaf" && n.second.sessionId === id) return n.first;
-  const a = removeLeaf(n.first, id);  if (a !== null) return { ...n, first: a }  as SplitBranch;
-  const b = removeLeaf(n.second, id); if (b !== null) return { ...n, second: b } as SplitBranch;
-  return null;
-}
-
-function patchRatio(n: PaneNode, splitId: string, ratio: number): PaneNode {
-  if (n.type === "leaf") return n;
-  const b = n as SplitBranch;
-  if (b.id === splitId) return { ...b, ratio };
-  return { ...b, first: patchRatio(b.first, splitId, ratio), second: patchRatio(b.second, splitId, ratio) };
-}
-
-function computeRects(n: PaneNode, r: PaneRect = { top: 0, left: 0, width: 1, height: 1 }): Map<string, PaneRect> {
-  if (n.type === "leaf") return new Map([[n.sessionId, r]]);
-  const { dir, ratio } = n as SplitBranch;
-  const a: PaneRect = dir === "v" ? { ...r, width: r.width * ratio }                              : { ...r, height: r.height * ratio };
-  const b: PaneRect = dir === "v" ? { ...r, left: r.left + r.width * ratio, width: r.width * (1 - ratio) } : { ...r, top: r.top + r.height * ratio, height: r.height * (1 - ratio) };
-  return new Map([...computeRects(n.first, a), ...computeRects(n.second, b)]);
-}
-
-interface HandleInfo { id: string; dir: SplitDir; ratio: number; parentRect: PaneRect; }
-function collectHandles(n: PaneNode, r: PaneRect = { top: 0, left: 0, width: 1, height: 1 }): HandleInfo[] {
-  if (n.type === "leaf") return [];
-  const { id, dir, ratio } = n as SplitBranch;
-  const a: PaneRect = dir === "v" ? { ...r, width: r.width * ratio }                              : { ...r, height: r.height * ratio };
-  const b: PaneRect = dir === "v" ? { ...r, left: r.left + r.width * ratio, width: r.width * (1 - ratio) } : { ...r, top: r.top + r.height * ratio, height: r.height * (1 - ratio) };
-  return [{ id, dir, ratio, parentRect: r }, ...collectHandles(n.first, a), ...collectHandles(n.second, b)];
-}
-// ─────────────────────────────────────────────────────────────────────────────
+import { folderName, timeAgo } from "../lib/format";
+import { buildAgentArgs } from "../lib/agentArgs";
+import {
+  type SplitDir,
+  type SplitBranch,
+  type PaneNode,
+  paneSessionIds,
+  replaceLeaf,
+  removeLeaf,
+  patchRatio,
+  computeRects,
+  collectHandles,
+} from "../lib/paneLayout";
 
 // WorkStateBadge, QueueBadge, SidebarWorkBadge — imported from ./SessionBadges
 
@@ -863,52 +775,6 @@ export function WorkspaceView({ zen, name, path }: Props) {
   // come from the per-agent AGENT_CONFIGS entry, with "{UUID}" substituted for the
   // appropriate conversation id. Agents whose config has null session/resume args
   // receive no session flags and simply start fresh.
-  function buildAgentArgs(
-    agent: string,
-    sessionId: string, // the new PTY session UUID, minted as the conversation id on first spawn
-    conversationId?: string, // stored UUID, present only when resuming
-    prompt?: string,
-    model?: string, // specific model to pass as --model <id> to supported CLIs
-  ): string[] {
-    const config = AGENT_CONFIGS.find((a) => a.hint === agent);
-    const args: string[] = [];
-
-    // Prepend --model flag for CLIs that support it
-    if (model && (agent === "claude" || agent === "gemini" || agent === "codex")) {
-      args.push("--model", model);
-    }
-
-    if (config && conversationId && config.resumeArgs) {
-      // Standard ID-based resume (Claude Code, Gemini CLI)
-      for (const arg of config.resumeArgs) {
-        args.push(arg.replace("{UUID}", conversationId));
-      }
-    } else if (config && conversationId && config.captureResumeArgs) {
-      // Captured-ID resume (Opencode — session ID was extracted from PTY output)
-      for (const arg of config.captureResumeArgs) {
-        args.push(arg.replace("{UUID}", conversationId));
-      }
-    } else if (config && !conversationId && config.sessionIdArgs) {
-      // First spawn — mint this session's UUID as the conversation id
-      for (const arg of config.sessionIdArgs) {
-        args.push(arg.replace("{UUID}", sessionId));
-      }
-    }
-    // If all arg arrays are null (e.g. Aider, plain opencode first spawn),
-    // no session flags are added and the agent starts fresh or uses CWD state.
-
-    // Auto-approve: append the agent's skip-permissions flag before the prompt
-    // so it's not parsed as task content by the CLI.
-    if (config?.autoApproveArgs && getSettings().autoApprove) {
-      for (const arg of config.autoApproveArgs) {
-        args.push(arg);
-      }
-    }
-
-    if (prompt) args.push(prompt);
-    return args;
-  }
-
   async function openSession(
     sessionName: string,
     cwd: string,
@@ -1831,15 +1697,6 @@ export function WorkspaceView({ zen, name, path }: Props) {
       setExpandedWorktrees((prev) => new Set([...prev, activeSession.cwd]));
     }
   }, [activeSessionId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  function timeAgo(iso: string): string {
-    const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-    if (s < 60) return "just now";
-    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-    if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-    if (s < 604800) return `${Math.floor(s / 86400)}d ago`;
-    return `${Math.floor(s / 604800)}w ago`;
-  }
 
   async function openProjectByPath(selected: string) {
     const projName = folderName(selected);

@@ -8,59 +8,18 @@ import {
   forceLink as forceLinks,
   forceCenter,
   forceCollide,
-  type SimulationNodeDatum,
-  type SimulationLinkDatum,
   type Simulation,
 } from "d3-force";
 import { getOpenProjects } from "../store/openProjects";
+import type {
+  IndexedProject,
+  GraphData,
+  LoadState,
+  GNode,
+  GLink,
+} from "../types/knowledgeGraph";
+import { resolveKindColors, nodeRadius, MINIMAP_W, MINIMAP_H } from "../lib/knowledgeGraph";
 import "./KnowledgeBasePage.css";
-
-// ── Types ──────────────────────────────────────────────────────────────────
-
-interface IndexedProject { id: string; name: string; path: string }
-
-interface SymbolNodeRaw {
-  id: string; name: string; kind: string; file_path: string;
-  start_line: number; end_line: number; language: string;
-}
-interface SymbolEdgeRaw { source: string; target: string; kind: string }
-interface GraphData { nodes: SymbolNodeRaw[]; edges: SymbolEdgeRaw[] }
-
-type LoadState = "idle" | "loading" | "ready" | "error";
-
-// D3 augments nodes with index; we provide x/y/vx/vy up-front
-interface GNode extends SimulationNodeDatum {
-  id: string; label: string; kind: string; color: string; radius: number;
-  file_path: string; start_line: number; language: string;
-  x: number; y: number; vx: number; vy: number;
-  fx?: number | null; fy?: number | null;
-}
-
-// Links are pre-resolved to GNode objects; d3 uses them directly
-interface GLink extends SimulationLinkDatum<GNode> {
-  source: GNode; target: GNode; kind: string;
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-function resolveKindColors(): Record<string, string> {
-  const s = getComputedStyle(document.documentElement);
-  const v = (n: string) => s.getPropertyValue(`--tempest-${n}`).trim();
-  return {
-    function:  v("accent-blue"),   method:    v("accent-blue"),
-    class:     v("accent-yellow"), interface: v("accent-green"),
-    type:      v("accent-purple"),  variable:  v("fg-muted"),
-    constant:  v("fg-muted"),      _default:  v("fg-subtle"),
-  };
-}
-
-function nodeRadius(deg: number): number {
-  return 4 + Math.sqrt(deg) * 1.5;
-}
-
-// Minimap dimensions (CSS px)
-const MINIMAP_W = 180;
-const MINIMAP_H = 120;
 
 // ── Component ──────────────────────────────────────────────────────────────
 
