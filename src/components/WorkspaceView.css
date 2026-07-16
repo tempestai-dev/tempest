@@ -694,7 +694,7 @@
   border: none;
   border-radius: 6px;
   color: var(--tempest-fg-muted);
-  font-size: 13.5px;
+  font-size: var(--sidebar-fs, 14px);
   font-weight: 450;
   font-family: inherit;
   cursor: pointer;
