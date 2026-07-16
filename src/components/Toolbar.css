@@ -1,0 +1,447 @@
+/* ─── Bar (Toolbar) ──────────────────────────────────────────────────── */
+
+.bar {
+  height: 44px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px 0;
+  color: #252525;
+  background: var(--tempest-bg-toolbar);
+  position: relative;
+}
+
+[data-theme="dark"] .bar {
+  color: #a1a1aa;
+}
+
+.bar-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  padding-bottom: 8px;
+  position: relative;
+  z-index: 2;
+}
+
+.bar-end--identity {
+  gap: 14px;
+}
+
+.bar .sep {
+  width: 1px;
+  height: 14px;
+  background: #C0C0C0;
+  border-radius: 0;
+  flex-shrink: 0;
+}
+
+[data-theme="dark"] .bar .sep {
+  background: #3a3a3a;
+}
+
+.bar svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.2;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.bar button {
+  display: flex;
+  align-items: center;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+.bar button:hover {
+  color: var(--tempest-fg-default, #111);
+}
+
+[data-theme="dark"] .bar button:hover {
+  color: #e4e4e7;
+}
+
+/* ─── Expanded icon tray (right side) ───────────────────────────────── */
+
+.icons-expanded {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ─── Compact menu toggle + capsule buttons ──────────────────────────── */
+
+.collapse-btn-wrap {
+  display: flex;
+  align-items: center;
+}
+
+.bar .collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: transparent;
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 999px;
+  color: var(--tempest-fg-muted, #8e8e8e);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.bar .collapse-btn:hover {
+  background: var(--tempest-bg-hover, rgba(0,0,0,0.06));
+  color: var(--tempest-fg-default, #252525);
+}
+
+[data-theme="dark"] .bar .collapse-btn:hover {
+  background: rgba(255,255,255,0.07);
+  color: #e4e4e7;
+}
+
+.capsule-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  line-height: 1;
+}
+
+.capsule-btn:hover {
+  opacity: 0.7;
+}
+
+/* ─── Agent tabs strip ───────────────────────────────────────────────── */
+
+.agent-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  align-self: stretch;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding: 0 0 0 10px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.agent-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.agent-tabs .sep {
+  align-self: center;
+  margin-bottom: 4px;
+}
+
+/* ─── Tab close button (hidden by default; shown per-mode) ──────────── */
+
+.tab-close {
+  display: none;
+}
+
+/* ─── Individual tab ─────────────────────────────────────────────────── */
+
+.agent-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  height: auto;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  font-size: 12px;
+  color: #8E8E8E;
+  transition: background 0.2s ease, color 0.2s ease;
+  position: relative;
+  border-top-left-radius: 6px;
+  border-top-right-radius: 6px;
+}
+
+.agent-box:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: #252525;
+}
+
+.agent-box.active {
+  background: #FFFFFF;
+  color: var(--active-fg, #252525);
+}
+
+[data-theme="dark"] .agent-box:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e4e4e7;
+}
+
+[data-theme="dark"] .agent-box.active {
+  background: #0f0f10;
+}
+
+.agent-box .agent-icon {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  object-fit: contain;
+}
+
+/* ─── Blur wrap for designer mode ───────────────────────────────────── */
+
+.agent-tabs-blur-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  align-self: center;
+  overflow: clip;
+}
+
+.agent-tabs-blur-wrap .agent-tabs {
+  height: auto;
+  align-self: center;
+  padding-bottom: 0;
+}
+
+/* ─── Compact pill capsule (for future compact mode) ────────────────── */
+
+.icon-capsule {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  height: 26px;
+  background: #F7F7F7;
+  border: 1px solid #EBEBEB;
+  border-radius: 999px;
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+  max-width: 0;
+  opacity: 0;
+  padding: 0;
+  transition: max-width 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.25s ease,
+              padding 0.38s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-theme="dark"] .icon-capsule {
+  background: #141414;
+  border-color: #2a2a2a;
+}
+
+.icon-capsule.animating { display: flex; }
+
+.icon-capsule.open {
+  max-width: 300px;
+  opacity: 1;
+  padding: 0 11px;
+  pointer-events: auto;
+}
+
+/* ─── Tab groups ─────────────────────────────────────────────────────── */
+
+.tab-group {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-right: 20px;
+}
+
+.group-tabs {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 2px;
+  position: relative;
+  padding-bottom: 7px;
+}
+
+.group-tabs::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1.5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--group-color) 28%, transparent);
+  pointer-events: none;
+}
+
+[data-theme="dark"] .group-tabs::after {
+  background: color-mix(in srgb, var(--group-color) 35%, transparent);
+}
+
+/* Higher specificity (.tab-group .group-chip = 0,2,0) beats .bar button (0,1,1) */
+.tab-group .group-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 550;
+  color: #fff;
+  background: var(--group-color);
+  border: none;
+  padding: 2px 7px;
+  cursor: pointer;
+  white-space: nowrap;
+  border-radius: 6px;
+  letter-spacing: 0.02em;
+  transition: filter 0.15s;
+  line-height: 1.4;
+  flex-shrink: 0;
+  margin-right: 3px;
+  align-self: center;
+  margin-bottom: 6px;
+}
+
+.tab-group .group-chip:hover { color: #fff; filter: brightness(1.12); }
+
+/* ─── Mode: tabbed (rounded pills) ──────────────────────────────────── */
+
+.bar.tabs-tabbed                         { background: transparent; }
+.bar.tabs-tabbed .bar-end                { padding-bottom: 0; }
+.bar.tabs-tabbed .agent-tabs             { align-items: center; }
+.bar.tabs-tabbed .agent-tabs .sep        { margin-bottom: 0; }
+.bar.tabs-tabbed .agent-box              { border-radius: 999px; border: none; background: rgba(0,0,0,.06); color: #8E8E8E; }
+.bar.tabs-tabbed .agent-box:hover        { background: rgba(0,0,0,.09); color: #252525; }
+.bar.tabs-tabbed .agent-box.active       { background: rgba(0,0,0,.10); color: #252525; }
+
+[data-theme="dark"] .bar.tabs-tabbed                   { background: transparent; }
+[data-theme="dark"] .bar.tabs-tabbed .agent-box        { background: rgba(255,255,255,.07); color: #a1a1aa; }
+[data-theme="dark"] .bar.tabs-tabbed .agent-box:hover  { background: rgba(255,255,255,.11); color: #e4e4e7; }
+[data-theme="dark"] .bar.tabs-tabbed .agent-box.active { background: rgba(255,255,255,.12); color: #e4e4e7; }
+
+/* ─── Mode: ver1 (quiet underline indicator) ─────────────────────────── */
+
+.bar.tabs-ver1 {
+  background: transparent;
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.05);
+}
+
+.bar.tabs-ver1 .bar-end                  { padding-bottom: 0; }
+.bar.tabs-ver1 .agent-tabs               { align-items: center; }
+.bar.tabs-ver1 .agent-tabs .sep          { margin-bottom: 0; }
+
+.bar.tabs-ver1 .agent-box {
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: #8E8E8E;
+  font-weight: 450;
+  letter-spacing: -0.003em;
+  padding: 7px 14px;
+  transition: color 0.2s ease;
+}
+
+.bar.tabs-ver1 .agent-box .agent-icon {
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+}
+
+.bar.tabs-ver1 .agent-box::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 1px;
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--active-fg, #252525);
+  opacity: 0;
+  transform: translateX(-50%) scaleX(0.35);
+  transform-origin: center;
+  transition: opacity 0.22s ease, transform 0.3s cubic-bezier(0.34, 1.2, 0.64, 1);
+  pointer-events: none;
+}
+
+.bar.tabs-ver1 .agent-box:hover               { color: #4a4a4a; }
+.bar.tabs-ver1 .agent-box:hover .agent-icon   { opacity: 0.78; }
+.bar.tabs-ver1 .agent-box:hover::after        { opacity: 0.25; transform: translateX(-50%) scaleX(0.62); }
+.bar.tabs-ver1 .agent-box.active              { background: transparent; color: var(--active-fg, #252525); font-weight: 560; }
+.bar.tabs-ver1 .agent-box.active .agent-icon  { opacity: 1; }
+.bar.tabs-ver1 .agent-box.active::after       { opacity: 1; transform: translateX(-50%) scaleX(1); }
+
+[data-theme="dark"] .bar.tabs-ver1                   { background: transparent; box-shadow: inset 0 -1px 0 rgba(255,255,255,.06); }
+[data-theme="dark"] .bar.tabs-ver1 .agent-box        { color: #a1a1aa; }
+[data-theme="dark"] .bar.tabs-ver1 .agent-box:hover  { color: #c4c4cc; }
+[data-theme="dark"] .bar.tabs-ver1 .agent-box.active { background: transparent; color: var(--active-fg, #252525); }
+
+/* ─── Mode: designer (compact pills with X on hover) ────────────────── */
+
+.bar.tabs-designer                         { background: transparent; }
+.bar.tabs-designer .bar-end                { padding-bottom: 0; }
+.bar.tabs-designer .agent-tabs             { align-items: center; }
+.bar.tabs-designer .agent-tabs .sep        { margin-bottom: 0; }
+
+.bar.tabs-designer .agent-box {
+  position: relative;
+  overflow: hidden;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: #252525;
+  opacity: 0.5;
+  padding: 3px 15px 3px 10px;
+  font-size: 12px;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.bar.tabs-designer .agent-box .agent-icon  { width: 13px; height: 13px; }
+
+.bar.tabs-designer .agent-box:hover span {
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 28px), transparent calc(100% - 14px), transparent 100%);
+  mask-image:         linear-gradient(to right, black calc(100% - 28px), transparent calc(100% - 14px), transparent 100%);
+}
+
+.bar.tabs-designer .tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.bar.tabs-designer .tab-close svg          { width: 12px; height: 12px; stroke-width: 2.2; }
+.bar.tabs-designer .agent-box:hover .tab-close { opacity: 1; pointer-events: auto; }
+.bar.tabs-designer .tab-close:hover        { background: transparent; }
+.bar.tabs-designer .tab-close:hover svg    { opacity: 0.6; }
+.bar.tabs-designer .agent-box:hover        { background: rgba(0,0,0,.05); opacity: 0.6; }
+.bar.tabs-designer .agent-box.active       { background: #E8E8E8; opacity: 1; box-shadow: none; }
+
+[data-theme="dark"] .bar.tabs-designer                   { background: transparent; }
+[data-theme="dark"] .bar.tabs-designer .agent-box        { color: #e4e4e7; }
+[data-theme="dark"] .bar.tabs-designer .agent-box:hover  { background: rgba(255,255,255,.06); }
+[data-theme="dark"] .bar.tabs-designer .agent-box.active { background: rgba(255,255,255,.1); box-shadow: none; }
+
+.bar.tabs-designer .diff-canvas-tab       { padding: 3px 10px; }
+.bar.tabs-designer .diff-canvas-tab:hover span { mask-image: none; -webkit-mask-image: none; }

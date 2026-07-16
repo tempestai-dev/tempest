@@ -1,3 +1,24 @@
+/* ── Phase 1: CSS token bridge — mockup vars → --tempest-* ── */
+:root {
+  --divider:      var(--tempest-border-default);
+  --tab-border:   var(--tempest-border-subtle);
+  --canvas-bg:    var(--tempest-bg-editor);
+  --canvas-border:var(--tempest-canvas-border);
+  --active-fg:    var(--tempest-fg-default);
+  --muted-fg:     var(--tempest-fg-muted);
+  --subtle-fg:    var(--tempest-fg-subtle);
+  --hover-bg:     var(--tempest-bg-hover);
+  --active-bg:    var(--tempest-bg-active);
+  --badge-green:  var(--tempest-git-added);
+  --badge-orange: var(--tempest-git-modified);
+  --badge-red:    var(--tempest-git-deleted);
+  --sidebar-bg:   var(--tempest-bg-sidebar);
+  --panel-bg:     var(--tempest-bg-panel);
+  --group-purple: var(--tempest-group-purple);
+  --group-blue:   var(--tempest-group-blue);
+  --group-green:  var(--tempest-group-green);
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;

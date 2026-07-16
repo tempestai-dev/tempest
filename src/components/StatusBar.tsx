@@ -2,18 +2,9 @@ import { Shield, Cpu, RefreshCw } from "lucide-react";
 import { Tooltip } from "./Tooltip";
 
 interface Props {
-  /**
-   * Isolation state of the active session.
-   * `true`  = agent session, sandboxed via Hephaestus
-   * `false` = agent session, not sandboxed
-   * `undefined` = non-agent session (terminal/diff/editor) — shield hidden
-   */
   sandboxed?: boolean;
-  /** Project has a completed atlas index. */
   atlasIndexed?: boolean;
-  /** Atlas is currently indexing the project. */
   atlasIndexing?: boolean;
-  /** Called when the user clicks the atlas chip to trigger a re-sync. */
   onSyncAtlas?: () => void;
 }
 
@@ -25,44 +16,43 @@ export function StatusBar({ sandboxed, atlasIndexed, atlasIndexing, onSyncAtlas 
 
   return (
     <div className="status-bar" role="status">
-      <div className="status-bar-left" />
-      <div className="status-bar-right">
-        {showAtlas && (
-          atlasIndexing ? (
-            <Tooltip content="Indexing codebase…" placement="top">
-              <div
-                className="status-bar-chip status-bar-chip--indexing"
-              >
-                <RefreshCw size={10} className="status-bar-chip-icon status-bar-chip-icon--spin" />
-                <span className="status-bar-chip-label">Indexing</span>
-              </div>
-            </Tooltip>
-          ) : (
-            <Tooltip content="Click to re-index" placement="top">
-              <div
-                className="status-bar-chip status-bar-chip--atlas-indexed"
-                onClick={onSyncAtlas}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => e.key === "Enter" && onSyncAtlas?.()}
-              >
-                <Cpu size={10} className="status-bar-chip-icon" />
-                <span className="status-bar-chip-label">Indexed</span>
-              </div>
-            </Tooltip>
-          )
-        )}
-        {showShield && (
-          <Tooltip content={sandboxed ? "Process isolated" : "Not isolated"} placement="top">
-            <div
-              className={`status-bar-chip status-bar-chip--shield${sandboxed ? " status-bar-chip--isolated" : ""}`}
-            >
-              <Shield size={10} className="status-bar-chip-icon" />
-              <span className="status-bar-chip-label">{sandboxed ? "Isolated" : "Not isolated"}</span>
-            </div>
+      {showAtlas && (
+        atlasIndexing ? (
+          <Tooltip content="Indexing codebase…" placement="top">
+            <span className="status-bar-badge">
+              <RefreshCw size={13} strokeWidth={2} className="status-bar-badge-icon status-bar-badge-icon--spin" />
+              Indexing
+            </span>
           </Tooltip>
-        )}
-      </div>
+        ) : (
+          <Tooltip content="Click to re-index" placement="top">
+            <span
+              className="status-bar-badge status-bar-badge--clickable"
+              onClick={onSyncAtlas}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === "Enter" && onSyncAtlas?.()}
+            >
+              <Cpu size={13} strokeWidth={2} className="status-bar-badge-icon" />
+              Indexed
+            </span>
+          </Tooltip>
+        )
+      )}
+      {showAtlas && showShield && <span className="status-bar-sep" />}
+      {showShield && (
+        <Tooltip content={sandboxed ? "Process isolated" : "Not isolated"} placement="top">
+          <span className="status-bar-badge">
+            <Shield
+              size={13}
+              strokeWidth={2}
+              className="status-bar-badge-icon"
+              fill={sandboxed ? "currentColor" : "none"}
+            />
+            {sandboxed ? "Isolated" : "Not isolated"}
+          </span>
+        </Tooltip>
+      )}
     </div>
   );
 }
