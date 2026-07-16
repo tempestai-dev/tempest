@@ -7,7 +7,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { createWorktree, gitInit, NotAGitRepoError } from "../lib/worktree";
 import { addRecent, getRecents, removeRecent } from "../store/recents";
 import { getOpenProjects, saveOpenProjects } from "../store/openProjects";
-import { getWorktreeSession, saveWorktreeSession, removeWorktreeSession, markWorktreeSessionClosed, markWorktreeSessionOpen, pruneOrphanedSessions, dedupeRootSessions, rootSessionKey, rootSessionIdFromKey, getRootSessionsForProject, subSessionKey, subSessionIdFromKey, getSubSessionsForWorktree, type WorktreeSession } from "../store/sessions";
+import { getWorktreeSession, saveWorktreeSession, removeWorktreeSession, markWorktreeSessionClosed, markWorktreeSessionOpen, pruneOrphanedSessions, dedupeRootSessions, rootSessionKey, rootSessionIdFromKey, getRootSessionsForProject, subSessionKey, subSessionIdFromKey, getSubSessionsForWorktree, termSessionKey, termSessionIdFromKey, getTermSessionsForWorktree, type WorktreeSession } from "../store/sessions";
 import { getRuntimeState, setRuntimeState, type PersistedTab } from "../lib/runtimeState";
 import type { BranchInfo } from "../types/git";
 import type { Session, Worktree, Project, NavSection } from "../types/workspace";
@@ -287,6 +287,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
             for (const { key } of getSubSessionsForWorktree(e.path)) {
               validPaths.add(key);
             }
+            // Worktree terminal keys are synthetic too — same treatment.
+            for (const { key } of getTermSessionsForWorktree(e.path)) {
+              validPaths.add(key);
+            }
           });
         } catch {
           // .tempest/ doesn't exist or project path is gone
@@ -351,6 +355,24 @@ export function WorkspaceView({ zen, name, path }: Props) {
               parentMintId // providedSessionId — stable across this restore run
             ).catch(() => {}),
           });
+
+          // Persisted worktree terminals — each restores independently under its own termKey
+          for (const { key: termKey, session: termSaved } of getTermSessionsForWorktree(wt.path)) {
+            if (termSaved.closed === true) continue;
+            const termInstanceId = termSaved.instanceId ?? termKey;
+            const termId = termSessionIdFromKey(termKey);
+            items.push({
+              instanceId: termInstanceId,
+              isActive: termInstanceId === savedActiveId,
+              sortIndex: orderMap.get(termInstanceId) ?? Infinity,
+              open: () => openSession(
+                termSaved.name, wt.path, project.id, undefined,
+                undefined, undefined, undefined,
+                undefined, undefined,
+                true, termId
+              ).catch(() => {}),
+            });
+          }
 
           // Collect persisted sub-sessions for Phase 5
           for (const { key: subKey, session: subSaved } of getSubSessionsForWorktree(wt.path)) {
@@ -782,7 +804,11 @@ export function WorkspaceView({ zen, name, path }: Props) {
       // Main worktree terminal sessions: not persisted (no agent worth resuming).
       const rootKey = isRootSession ? rootSessionKey(cwd, sessionId) : null;
       const subKey = parentSessionId ? subSessionKey(cwd, sessionId) : null;
-      const storeKey = rootKey ?? subKey ?? (agent ? cwd : undefined);
+      // Worktree terminals get a unique per-session termKey so multiple terminals
+      // at the same cwd coexist alongside the (cwd-keyed) agent entry — and each
+      // one persists independently across close/reopen for the sidebar ghost.
+      const termKey = (!rootKey && !subKey && !agent) ? termSessionKey(cwd, sessionId) : null;
+      const storeKey = rootKey ?? subKey ?? termKey ?? (agent ? cwd : undefined);
 
       // Worktree sessions: the store key (path) is the stable identity — reuse it so
       // instanceId never changes across restarts. Root sessions have no path anchor, so
@@ -1126,7 +1152,6 @@ export function WorkspaceView({ zen, name, path }: Props) {
     let branchName: string;
     let existingBranch: string | undefined;
     let directWorktreePath: string | undefined;
-    let parentId: string | undefined;
 
     if (useExistingBranch) {
       if (!existingBranchName.trim()) return;
@@ -1135,20 +1160,6 @@ export function WorkspaceView({ zen, name, path }: Props) {
       if (selectedBranch?.is_worktree && selectedBranch.worktree_path) {
         // Branch is already in a worktree — open a session there without calling createWorktree.
         directWorktreePath = selectedBranch.worktree_path;
-        const liveParent = sessions.find((s) => s.cwd === directWorktreePath && !s.parentSessionId);
-        if (liveParent) {
-          parentId = liveParent.id;
-        } else {
-          // No live parent yet (e.g. user is on the overview tab). If a ghost exists in
-          // localStorage, pre-mint the parent ID and restore the ghost first so the new
-          // sub-session nests under it rather than replacing the worktree row.
-          const ghost = getWorktreeSession(directWorktreePath);
-          if (ghost && ghost.closed !== true) {
-            parentId = crypto.randomUUID();
-          }
-          // If no ghost either, parentId stays undefined and the new session becomes
-          // the main worktree session (correct for a truly fresh worktree).
-        }
       } else {
         existingBranch = existingBranchName.trim();
       }
@@ -1175,25 +1186,12 @@ export function WorkspaceView({ zen, name, path }: Props) {
       if (directWorktreePath) {
         worktreePath = directWorktreePath;
         addWorktreeToState({ name: branchName, path: worktreePath }, workingProjectId);
-        // If we pre-minted a parentId but no live session holds it yet, restore the
-        // ghost parent first with that exact ID so sub-session nesting works immediately.
-        if (parentId && !sessions.some((s) => s.id === parentId)) {
-          const ghost = getWorktreeSession(worktreePath);
-          if (ghost) {
-            await openSession(
-              ghost.name, worktreePath, workingProjectId ?? "",
-              ghost.agent, undefined, undefined,
-              ghost.agent ? ghost.conversationId : undefined,
-              false, ghost.noGit, false, parentId
-            );
-          }
-        }
       } else {
         const result = await createWorktree({ projectPath: activePath, name: branchName, existingBranch });
         worktreePath = result.path;
         addWorktreeToState({ name: branchName, path: worktreePath }, workingProjectId);
       }
-      await openSession(sessionName, worktreePath, workingProjectId ?? "", agent, prompt, undefined, undefined, undefined, undefined, false, undefined, parentId);
+      await openSession(sessionName, worktreePath, workingProjectId ?? "", agent, prompt, undefined, undefined, undefined, undefined, false, undefined, undefined);
       resetTerminalModal();
     } catch (e) {
       if (e instanceof NotAGitRepoError) {
@@ -1480,13 +1478,11 @@ export function WorkspaceView({ zen, name, path }: Props) {
     const existingCount = sessions.filter((s) => s.cwd === worktreePath).length;
     const baseName = agent ? agent.name : "Terminal";
     const sessionName = existingCount > 0 ? `${baseName} #${existingCount + 1}` : baseName;
-    // A live parent session in a worktree lets an additional session nest as a
-    // sub-session. Root sessions are independent (keyed per-session), so they never nest.
-    const liveParent = isRootSession
-      ? undefined
-      : sessions.find((s) => s.cwd === worktreePath && !s.parentSessionId);
-    const parentId = liveParent ? liveParent.id : undefined;
     try {
+      // The branch-level "+" always opens a top-level tab. Nesting as a sub-session
+      // is reserved for splitPane(); if we auto-nested here whenever a live session
+      // already ran at this cwd, the new tab would be filtered out of AgentTabs
+      // (which hides parentSessionId sessions) and appear to vanish.
       await openSession(
         sessionName,
         worktreePath,
@@ -1499,7 +1495,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
         undefined,
         false,
         undefined,
-        parentId
+        undefined
       );
     } catch (e) {
       console.error("[BranchSession] launchInWorktree failed:", e);
@@ -2035,8 +2031,18 @@ export function WorkspaceView({ zen, name, path }: Props) {
                             const wtAgents = allAtPath.filter((s) => s.agent);
                             const wtTerminals = allAtPath.filter((s) => !s.agent);
                             const primaryAgent = wtAgents[0] ?? null;
-                            const savedMeta = wtSessions.length === 0 ? getWorktreeSession(wt.path) : null;
-                            const showGhost = savedMeta && savedMeta.closed !== true;
+                            // Every persisted entry at this cwd (single agent under cwd, plus each
+                            // terminal under its own termKey). Anything not matched by a live session's
+                            // storeKey renders as a ghost — so closing one session never affects another.
+                            const liveStoreKeys = new Set(allAtPath.map((s) => s.storeKey).filter((k): k is string => !!k));
+                            const agentMeta = getWorktreeSession(wt.path);
+                            const persistedEntries: { key: string; session: WorktreeSession }[] = [
+                              ...(agentMeta ? [{ key: wt.path, session: agentMeta }] : []),
+                              ...getTermSessionsForWorktree(wt.path),
+                            ];
+                            const ghostEntries = persistedEntries.filter((e) => !liveStoreKeys.has(e.key));
+                            const agentGhosts = ghostEntries.filter((e) => !!e.session.agent);
+                            const termGhosts  = ghostEntries.filter((e) => !e.session.agent);
                             const wtExpanded = expandedWorktrees.has(wt.path);
 
                             return (
@@ -2058,8 +2064,8 @@ export function WorkspaceView({ zen, name, path }: Props) {
                                   </button>
                                 </div>
                                 {wtExpanded && (() => {
-                                  const wtAgentsEmpty = wtAgents.length === 0 && !(showGhost && savedMeta?.agent);
-                                  const wtTerminalsEmpty = wtTerminals.length === 0 && !(showGhost && !savedMeta?.agent);
+                                  const wtAgentsEmpty = wtAgents.length === 0 && agentGhosts.length === 0;
+                                  const wtTerminalsEmpty = wtTerminals.length === 0 && termGhosts.length === 0;
                                   return (
                                     <div className="sb-worktree-dropdown">
                                       {wtAgentsEmpty && wtTerminalsEmpty ? (
@@ -2085,16 +2091,17 @@ export function WorkspaceView({ zen, name, path }: Props) {
                                                 <SidebarWorkBadge sessionId={s.id} />
                                               </button>
                                             ))}
-                                            {showGhost && savedMeta!.agent && (
+                                            {agentGhosts.map(({ key, session: g }) => (
                                               <button
+                                                key={key}
                                                 className="sb-dropdown-item sb-dropdown-item--ghost"
-                                                onClick={() => { openSession(savedMeta!.name, wt.path, project.id, savedMeta!.agent, undefined, undefined, savedMeta!.conversationId).catch(() => {}); markWorktreeSessionOpen(wt.path); }}
+                                                onClick={() => { openSession(g.name, wt.path, project.id, g.agent, undefined, undefined, g.conversationId).catch(() => {}); markWorktreeSessionOpen(key); }}
                                                 onContextMenu={(e) => openCtxMenu(e, wt, project.path, project.id, null)}
                                               >
-                                                <AgentIcon hint={savedMeta!.agent} size={11} />
-                                                <span className="sb-dropdown-item-name">{savedMeta!.name}</span>
+                                                <AgentIcon hint={g.agent} size={11} />
+                                                <span className="sb-dropdown-item-name">{g.name}</span>
                                               </button>
-                                            )}
+                                            ))}
                                             {wtAgentsEmpty && (
                                               <div className="sb-dropdown-empty-box">
                                                 <span className="sb-dropdown-empty-text">No agent sessions</span>
@@ -2114,16 +2121,17 @@ export function WorkspaceView({ zen, name, path }: Props) {
                                                 <span className="sb-dropdown-item-name">{s.name}</span>
                                               </button>
                                             ))}
-                                            {showGhost && !savedMeta!.agent && (
+                                            {termGhosts.map(({ key, session: g }) => (
                                               <button
+                                                key={key}
                                                 className="sb-dropdown-item sb-dropdown-item--ghost"
-                                                onClick={() => { openSession(savedMeta!.name, wt.path, project.id, undefined).catch(() => {}); markWorktreeSessionOpen(wt.path); }}
+                                                onClick={() => { openSession(g.name, wt.path, project.id, undefined, undefined, undefined, undefined, undefined, undefined, false, termSessionIdFromKey(key)).catch(() => {}); markWorktreeSessionOpen(key); }}
                                                 onContextMenu={(e) => openCtxMenu(e, wt, project.path, project.id, null)}
                                               >
                                                 <TerminalSquare size={11} />
-                                                <span className="sb-dropdown-item-name">{savedMeta!.name}</span>
+                                                <span className="sb-dropdown-item-name">{g.name}</span>
                                               </button>
-                                            )}
+                                            ))}
                                             {wtTerminalsEmpty && (
                                               <div className="sb-dropdown-empty-box">
                                                 <span className="sb-dropdown-empty-text">No terminals</span>
