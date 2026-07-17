@@ -12,6 +12,9 @@
   <a href="https://github.com/tempestai-dev/tempest/releases">
     <img src="https://img.shields.io/github/v/release/tempestai-dev/tempest" alt="Version" />
   </a>
+  <a href="https://github.com/Origin-AI-IDE/origin/releases">
+    <img src="https://img.shields.io/github/downloads/tempestai-dev/tempest/total?color=2ea043" alt="Downloads" />
+  </a>
   <img src="https://img.shields.io/badge/macOS-Supported-grey?logo=apple&logoColor=white&labelColor=000000" alt="macOS" />
   <img src="https://custom-icon-badges.demolab.com/badge/Windows-Supported-grey?logo=windows11&logoColor=white&labelColor=0078D6" alt="Windows" />
   <img src="https://img.shields.io/badge/Linux-Supported-grey?logo=linux&logoColor=black&labelColor=FCC624" alt="Linux" />
