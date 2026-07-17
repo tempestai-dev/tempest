@@ -64,6 +64,13 @@
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1"
   },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "4.62.2",
+    "@rollup/rollup-linux-x64-musl": "4.62.2",
+    "@rollup/rollup-darwin-arm64": "4.62.2",
+    "@rollup/rollup-darwin-x64": "4.62.2",
+    "@rollup/rollup-win32-x64-msvc": "4.62.2"
+  },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
     "@types/cytoscape": "^3.21.9",
