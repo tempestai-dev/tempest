@@ -69,7 +69,12 @@
     "@rollup/rollup-linux-x64-musl": "4.62.2",
     "@rollup/rollup-darwin-arm64": "4.62.2",
     "@rollup/rollup-darwin-x64": "4.62.2",
-    "@rollup/rollup-win32-x64-msvc": "4.62.2"
+    "@rollup/rollup-win32-x64-msvc": "4.62.2",
+    "@tauri-apps/cli-linux-x64-gnu": "2.11.4",
+    "@tauri-apps/cli-linux-x64-musl": "2.11.4",
+    "@tauri-apps/cli-darwin-arm64": "2.11.4",
+    "@tauri-apps/cli-darwin-universal": "2.11.4",
+    "@tauri-apps/cli-win32-x64-msvc": "2.11.4"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
