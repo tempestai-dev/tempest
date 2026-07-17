@@ -44,7 +44,7 @@ import {
   SunMoon,
   GitBranch,
 } from "lucide-react";
-import { setWorkState, clearWorkState } from "../store/workState";
+import { setWorkState, clearWorkState, getWorkState } from "../store/workState";
 import { useKeybindings, matchesEvent, formatShortcut } from "../store/keybindings";
 import { useAttribution, getAttribution, COAUTHOR_LINE } from "../store/attribution";
 import { useSettings, getSettings, updateSetting } from "../store/appSettings";
@@ -60,6 +60,7 @@ import { SettingsPanel } from "./SettingsPanel";
 import { Tooltip } from "./Tooltip";
 import { BroadcastDialog, BroadcastSession } from "./BroadcastDialog";
 import "./BroadcastDialog.css";
+import { CommandPalette } from "./CommandPalette";
 import { QueuePanel } from "./QueuePanel";
 import { dequeue } from "../store/messageQueue";
 import { getPrompts, type PromptEntry } from "../store/prompts";
@@ -71,7 +72,7 @@ import { KnowledgeBasePage } from "./KnowledgeBasePage";
 import { Toolbar } from "./Toolbar";
 import AgentTabs from "./AgentTabs";
 import IconCapsule from "./IconCapsule";
-import { SidebarWorkBadge } from "./SessionBadges";
+import { SidebarWorkBadge, ProjectWorkBadge } from "./SessionBadges";
 import "./StatusBar.css";
 import "./TopBar.css";
 import "./WorkspaceView.css";
@@ -217,6 +218,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
 
   // Delete workspace dialog state
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
+
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [inlineCreateProjectId, setInlineCreateProjectId] = useState<string | null>(null);
+  const [inlineCreateName, setInlineCreateName] = useState("");
 
 
   // Persist projects list to localStorage whenever it changes
@@ -525,7 +530,9 @@ export function WorkspaceView({ zen, name, path }: Props) {
       const isTerminalInput = target.classList.contains("xterm-helper-textarea");
       if ((tag === "INPUT" || tag === "TEXTAREA") && !isTerminalInput) return;
 
-      if (matchesEvent(keybinds.toggleTheme, e)) {
+      if (matchesEvent(keybinds.commandPalette, e)) {
+        e.preventDefault(); setCommandPaletteOpen((o) => !o);
+      } else if (matchesEvent(keybinds.toggleTheme, e)) {
         e.preventDefault(); toggleTheme();
       } else if (matchesEvent(keybinds.toggleLeftSidebar, e)) {
         e.preventDefault(); setSidebarOpen((o) => !o);
@@ -566,6 +573,13 @@ export function WorkspaceView({ zen, name, path }: Props) {
         if (activeSession?.agent) {
           setQueueOpenSessionId((prev) => prev === activeSession.id ? null : activeSession.id);
         }
+      } else if (matchesEvent(keybinds.jumpWaiting, e)) {
+        e.preventDefault();
+        const waiting = sessions.filter((s) => getWorkState(s.id) === "done");
+        if (waiting.length === 0) return;
+        const curIdx = sessions.findIndex((s) => s.id === activeSessionId);
+        const next = waiting.find((s) => sessions.indexOf(s) > curIdx) ?? waiting[0];
+        setActiveSessionId(next.id);
       }
     };
   });
@@ -1897,13 +1911,23 @@ export function WorkspaceView({ zen, name, path }: Props) {
                         {atlasEnabled && getRuntimeState().atlasProjects[project.path] === true && (
                           <Cpu size={11} className="sidebar-project-atlas-icon" aria-label="Token Intelligence indexed" />
                         )}
+                        <ProjectWorkBadge sessionIds={sessions.filter((s) => s.projectId === project.id).map((s) => s.id)} />
                         {(isGitProject || canonRoots.size > 0) && (
                           <span className="sidebar-project-count">{project.worktrees.length + (canonRoots.size > 0 ? 1 : 0)}</span>
                         )}
-                        <Tooltip content="New session" placement="right">
+                        <Tooltip content="Quick session · right-click for more" placement="right">
                           <button
                             className="sidebar-project-add-btn"
-                            onClick={(e) => openSessionMenu(e, project.id, "right")}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!project.expanded) toggleProject(project.id);
+                              setInlineCreateProjectId(project.id);
+                              setInlineCreateName("");
+                            }}
+                            onContextMenu={(e) => {
+                              e.stopPropagation();
+                              openSessionMenu(e, project.id, "right");
+                            }}
                             aria-label="New session"
                           >
                             <Plus size={12} />
@@ -2185,7 +2209,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
                             const hasRootRows = !isGitProject && canonRoots.size > 0;
                             const hasOtherSessions = projectSessions.some((s) => !s.isRootSession && !s.parentSessionId && !project.worktrees.some((w) => w.path === s.cwd));
                             const hasChatGhost = getRuntimeState().tabs.some((t) => t.kind === "chat" && t.projectId === project.id) && !projectSessions.some((s) => s.kind === "chat");
-                            if (!hasGitRows && !hasRootRows && !hasOtherSessions && !hasChatGhost) {
+                            if (!hasGitRows && !hasRootRows && !hasOtherSessions && !hasChatGhost && inlineCreateProjectId !== project.id) {
                               return (
                                 <div className="sb-dropdown-empty-box">
                                   <span className="sb-dropdown-empty-text">No sessions open. Start one with +</span>
@@ -2194,6 +2218,33 @@ export function WorkspaceView({ zen, name, path }: Props) {
                             }
                             return null;
                           })()}
+
+                          {/* Inline quick-create row — click + on project header to show */}
+                          {inlineCreateProjectId === project.id && (
+                            <div className="sb-inline-create">
+                              <input
+                                autoFocus
+                                className="sb-inline-create-input"
+                                placeholder="Session name…"
+                                value={inlineCreateName}
+                                onChange={(e) => setInlineCreateName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && inlineCreateName.trim()) {
+                                    openSession(inlineCreateName.trim(), project.path, project.id, "claude", undefined, undefined, undefined, true).catch(() => {});
+                                    setInlineCreateProjectId(null);
+                                    setInlineCreateName("");
+                                  } else if (e.key === "Escape") {
+                                    setInlineCreateProjectId(null);
+                                    setInlineCreateName("");
+                                  }
+                                }}
+                                onBlur={() => {
+                                  setInlineCreateProjectId(null);
+                                  setInlineCreateName("");
+                                }}
+                              />
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -2774,6 +2825,42 @@ export function WorkspaceView({ zen, name, path }: Props) {
           </div>
         </div>,
         document.body
+      )}
+
+      {commandPaletteOpen && (
+        <CommandPalette
+          onClose={() => setCommandPaletteOpen(false)}
+          onToggleLeftSidebar={() => setSidebarOpen((o) => !o)}
+          onToggleRightSidebar={() => setRightSidebarOpen((o) => !o)}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenProject={addWorkspace}
+          onNewWorkspace={() => {
+            const projId = activeSession?.projectId ?? (projects[0]?.id ?? null);
+            openSessionMenu({ currentTarget: document.body } as unknown as React.MouseEvent<HTMLElement>, projId, "below");
+          }}
+          onCloseTab={() => { if (activeSessionId) closeSession(activeSessionId); }}
+          onNextTab={() => {
+            if (sessions.length > 0) {
+              const idx = sessions.findIndex((s) => s.id === activeSessionId);
+              setActiveSessionId(sessions[(idx + 1) % sessions.length].id);
+            }
+          }}
+          onPrevTab={() => {
+            if (sessions.length > 0) {
+              const idx = sessions.findIndex((s) => s.id === activeSessionId);
+              setActiveSessionId(sessions[(idx - 1 + sessions.length) % sessions.length].id);
+            }
+          }}
+          onBroadcast={() => setBroadcastOpen(true)}
+          onSplitV={() => splitPane("v")}
+          onSplitH={() => splitPane("h")}
+          onOpenQueue={() => {
+            if (activeSession?.agent) {
+              setQueueOpenSessionId((prev) => prev === activeSession.id ? null : activeSession.id);
+            }
+          }}
+          onToggleTheme={toggleTheme}
+        />
       )}
 
       {broadcastOpen && (() => {

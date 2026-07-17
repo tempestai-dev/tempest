@@ -1,0 +1,123 @@
+.cp-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 80px;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.cp-panel {
+  width: 520px;
+  max-width: calc(100vw - 48px);
+  background: var(--tempest-bg-panel);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 16px 48px var(--tempest-ui-shadow-lg), 0 2px 8px var(--tempest-ui-shadow-md);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 160px);
+}
+
+/* ── Input ── */
+.cp-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--tempest-border-subtle);
+  color: var(--tempest-fg-default);
+  font-size: 13.5px;
+  font-family: inherit;
+  padding: 12px 14px;
+  outline: none;
+}
+.cp-input::placeholder {
+  color: var(--tempest-fg-subtle);
+}
+
+/* ── List ── */
+.cp-list {
+  overflow-y: auto;
+  padding: 4px 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tempest-border-subtle) transparent;
+}
+
+.cp-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.cp-section-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--tempest-fg-subtle);
+  padding: 8px 14px 3px;
+  user-select: none;
+}
+
+.cp-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--tempest-fg-muted);
+  font-size: 12.5px;
+  font-family: inherit;
+  padding: 6px 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 80ms, color 80ms;
+}
+.cp-row:hover,
+.cp-row--active {
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
+}
+
+.cp-icon {
+  display: flex;
+  align-items: center;
+  color: var(--tempest-fg-subtle);
+  flex-shrink: 0;
+}
+.cp-row--active .cp-icon,
+.cp-row:hover .cp-icon {
+  color: var(--tempest-accent-blue);
+}
+
+.cp-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cp-shortcut {
+  font-size: 10.5px;
+  font-family: "Geist Mono", monospace;
+  color: var(--tempest-fg-subtle);
+  background: var(--tempest-bg-editor);
+  border: 1px solid var(--tempest-border-subtle);
+  border-radius: 4px;
+  padding: 1px 5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cp-empty {
+  font-size: 12px;
+  color: var(--tempest-fg-subtle);
+  text-align: center;
+  padding: 20px 16px;
+}

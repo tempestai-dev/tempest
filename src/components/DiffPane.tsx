@@ -8,7 +8,7 @@ import {
 import { Tooltip } from "./Tooltip";
 import { useAttribution, COAUTHOR_LINE } from "../store/attribution";
 import { useComments, addComment, removeComment, clearComments, composeMessage } from "../store/reviewComments";
-import { enqueue } from "../store/messageQueue";
+import { sessionManager } from "../store/sessionManager";
 import { DiscardFileDialog } from "./DiffPane/DiscardFileDialog";
 import { DeleteBranchDialog } from "./DiffPane/DeleteBranchDialog";
 import { CommitBox } from "./DiffPane/CommitBox";
@@ -203,7 +203,11 @@ export function DiffPane({ cwd, hidden, gitRevision, agentSessions = [] }: Props
   const sendCommentsToAgent = () => {
     const targetId = selectedAgentId || agentSessions[0]?.id;
     if (!targetId || comments.length === 0) return;
-    enqueue(targetId, composeMessage(comments));
+    // Send immediately to the agent's PTY — same path as typing in the terminal
+    // (see WorkspaceView queue drain). enqueue() would only defer it to the queue.
+    const bytes = Array.from(new TextEncoder().encode(composeMessage(comments) + "\r"));
+    invoke("write_to_pty", { sessionId: targetId, data: bytes }).catch(() => {});
+    sessionManager.markUserInput(targetId);
     clearComments(cwd);
     setSelectedAgentId("");
   };

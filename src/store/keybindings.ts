@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { getRuntimeState, setRuntimeState } from "../lib/runtimeState";
 
 export type ActionId =
+  | "commandPalette"
   | "toggleTheme"
   | "openSettings"
   | "toggleLeftSidebar"
@@ -14,7 +15,8 @@ export type ActionId =
   | "broadcast"
   | "splitPaneV"
   | "splitPaneH"
-  | "openQueue";
+  | "openQueue"
+  | "jumpWaiting";
 
 export interface Shortcut {
   key: string;   // KeyboardEvent.key (original casing preserved)
@@ -30,6 +32,7 @@ export interface ActionDef {
 }
 
 export const ACTION_DEFS: ActionDef[] = [
+  { id: "commandPalette",     label: "Command Palette",        group: "General"     },
   { id: "toggleTheme",        label: "Switch Theme",           group: "Appearance"  },
   { id: "openSettings",       label: "Open Settings",          group: "Appearance"  },
   { id: "toggleLeftSidebar",  label: "Toggle Left Sidebar",    group: "Layout"      },
@@ -43,9 +46,11 @@ export const ACTION_DEFS: ActionDef[] = [
   { id: "splitPaneV",         label: "Split Pane Side by Side", group: "Layout"      },
   { id: "splitPaneH",         label: "Split Pane Top / Bottom", group: "Layout"      },
   { id: "openQueue",          label: "Open Message Queue",      group: "Workspaces"  },
+  { id: "jumpWaiting",        label: "Jump to Waiting Agent",   group: "Navigation"  },
 ];
 
 export const DEFAULTS: Record<ActionId, Shortcut | null> = {
+  commandPalette:     { key: "p",   ctrl: true,  shift: true,  alt: false },
   toggleTheme:        { key: "T",   ctrl: true,  shift: true,  alt: false },
   openSettings:       { key: ",",   ctrl: true,  shift: false, alt: false },
   toggleLeftSidebar:  { key: "b",   ctrl: true,  shift: false, alt: false },
@@ -59,6 +64,7 @@ export const DEFAULTS: Record<ActionId, Shortcut | null> = {
   splitPaneV:         { key: "|",   ctrl: true,  shift: true,  alt: false },
   splitPaneH:         { key: "_",   ctrl: true,  shift: true,  alt: false },
   openQueue:          { key: "q",   ctrl: true,  shift: true,  alt: false },
+  jumpWaiting:        { key: "a",   ctrl: true,  shift: true,  alt: false },
 };
 
 const listeners = new Set<() => void>();
