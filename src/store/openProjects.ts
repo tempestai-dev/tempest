@@ -5,6 +5,7 @@ export interface StoredProject {
   name: string;
   path: string;
   expanded: boolean;
+  worktreeOrder?: string[];
 }
 
 export function getOpenProjects(): StoredProject[] {

@@ -1,6 +1,6 @@
-import { TerminalSquare, GitBranch, Eye, GitPullRequest, MoreHorizontal, Loader, FolderOpen } from "lucide-react";
+import { TerminalSquare, GitBranch, Eye, GitPullRequest, MoreHorizontal, Loader, FolderOpen, Bell } from "lucide-react";
 import { AgentIcon } from "./NewSessionMenu";
-import { useWorkState, getWorkState, useWorkStateVersion } from "../store/workState";
+import { useWorkState, useAttention, getWorkState, getAttention, useWorkStateVersion } from "../store/workState";
 import "./OverviewPage.css";
 
 export interface ChangeEntry {
@@ -28,7 +28,16 @@ interface OverviewPageProps {
 }
 
 type WorkState = "idle" | "working" | "done";
-const STATE_ORDER: Record<WorkState, number> = { done: 0, working: 1, idle: 2 };
+// Sort bucket: attention (0) beats done (0), then working (1), then idle (2).
+// Attention shares the bucket with done so they render in the same group but
+// attention rows will sort first inside it via the second-level sort key.
+function sortBucket(sessionId: string): number {
+  if (getAttention(sessionId)) return 0;
+  const s = getWorkState(sessionId);
+  if (s === "done") return 0;
+  if (s === "working") return 1;
+  return 2;
+}
 
 function timeAgo(iso: string): string {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -39,7 +48,10 @@ function timeAgo(iso: string): string {
   return `${Math.floor(s / 604800)}w`;
 }
 
-function StateDot({ state }: { state: WorkState }) {
+function StateDot({ state, attention }: { state: WorkState; attention: boolean }) {
+  if (attention) {
+    return <Bell size={10} className="op-attention-bell" aria-label="Waiting for input" />;
+  }
   if (state === "working") {
     return <Loader size={10} className="op-spinner" aria-label="Working" />;
   }
@@ -56,6 +68,7 @@ function WorkspaceRow({
   onDiff: (cwd: string, projectId: string) => void;
 }) {
   const workState = useWorkState(ws.id);
+  const attention = useAttention(ws.id);
   const hasAgent = !!ws.agent;
   const fileCount = ws.changes.length;
   const firstName = fileCount > 0
@@ -67,7 +80,7 @@ function WorkspaceRow({
     <div className="op-row">
 
       <div className="op-row-dot">
-        <StateDot state={workState} />
+        <StateDot state={workState} attention={attention} />
       </div>
 
       <div className="op-row-identity">
@@ -77,9 +90,11 @@ function WorkspaceRow({
           </span>
           <span className="op-row-name">{ws.name}</span>
           <span className="op-row-project">{ws.projectName}</span>
-          {workState === "done" && (
+          {attention ? (
+            <span className="op-row-review">waiting for input</span>
+          ) : workState === "done" ? (
             <span className="op-row-review">ready to review</span>
-          )}
+          ) : null}
         </div>
         {(ws.branch || firstName) && (
           <div className="op-row-branchline">
@@ -135,12 +150,17 @@ export function OverviewPage({ workspaces, onOpen, onDiff, onOpenProject }: Over
   useWorkStateVersion();
 
   const sorted = [...workspaces].sort((a, b) => {
-    const sa = STATE_ORDER[getWorkState(a.id) as WorkState] ?? 2;
-    const sb = STATE_ORDER[getWorkState(b.id) as WorkState] ?? 2;
-    return sa - sb;
+    const ba = sortBucket(a.id);
+    const bb = sortBucket(b.id);
+    if (ba !== bb) return ba - bb;
+    // Inside the done/attention bucket, attention rows come first.
+    const aa = getAttention(a.id) ? 0 : 1;
+    const ab = getAttention(b.id) ? 0 : 1;
+    return aa - ab;
   });
 
   const active = workspaces.filter((w) => {
+    if (getAttention(w.id)) return true;
     const s = getWorkState(w.id);
     return s === "working" || s === "done";
   }).length;
@@ -167,8 +187,8 @@ export function OverviewPage({ workspaces, onOpen, onDiff, onOpenProject }: Over
           </div>
         ) : sorted.map((ws, i) => {
           const prev = sorted[i - 1];
-          const prevOrder = prev ? (STATE_ORDER[getWorkState(prev.id) as WorkState] ?? 2) : -1;
-          const curOrder = STATE_ORDER[getWorkState(ws.id) as WorkState] ?? 2;
+          const prevOrder = prev ? sortBucket(prev.id) : -1;
+          const curOrder = sortBucket(ws.id);
           const groupChanged = prev && prevOrder !== curOrder;
           return (
             <div key={ws.id}>

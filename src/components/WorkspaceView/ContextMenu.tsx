@@ -73,7 +73,13 @@ export function ContextMenu({
 
   const hasToolItems = atlasOn || hasChat;
   const hasDestructiveWorktree = !!m.worktree;
-  const hasDestructiveSession = m.isRootSession;
+  // "Remove session" wipes the persisted worktree-session entry so no ghost
+  // reappears. Show it for any right-clicked session that has a store key —
+  // root sessions AND branch/worktree sessions both qualify. Previously
+  // gated on isRootSession only, which hid the button for sessions inside a
+  // branch even though removeWorktreeSession handles their storeKey fine.
+  const hasDestructiveSession =
+    m.isRootSession || !!m.rootKey || !!targetSession?.storeKey;
 
   return createPortal(
     <div className="ctx-overlay" onClick={onClose}>

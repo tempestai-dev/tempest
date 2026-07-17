@@ -1,5 +1,5 @@
 import { Channel } from "@tauri-apps/api/core";
-import { getWorkState, setWorkState } from "./workState";
+import { getWorkState, setWorkState, setAttention } from "./workState";
 
 // Byte-quiet timer: ms with no PTY output before a working session is marked done.
 const QUIET_MS = 5000;
@@ -29,6 +29,45 @@ const OSC_RE = /\x1b\]([^\x07\x1b]*)(?:\x07|\x1b\\)/g;
 // Source: XTerm ctlseqs "DEC Private Mode Set/Reset".
 const DEC_MODE_RE = /\x1b\[\?([0-9;]+)(h|l)/g;
 
+// Strips ANSI CSI (colors, cursor movement) so numbered options like
+// "1.\x1b[32m Yes\x1b[0m" match plain-text regexes below.
+const ANSI_CSI_RE = /\x1b\[[0-9;?]*[a-zA-Z]/g;
+
+// Claude Code renders permission prompts as visible terminal text with a
+// distinctive numbered-option triad — the first two options are BOTH "Yes"
+// (accept / accept-and-remember) and the third is "No":
+//   ❯ 1. Yes
+//     2. Yes, allow all <tool>/<path> during this session (shift+tab)
+//     3. No, and tell Claude what to do differently (esc)
+// Two consecutive numbered "Yes" options don't appear in normal output —
+// tight enough to be a reliable fingerprint, loose on spacing/wording so
+// minor Claude releases don't break it.
+// ponytail: text-fingerprint, replace with a structural signal when Claude
+//           Code ships one (file upstream).
+// Claude Code paints the dialog cell-by-cell. On the wire the surrounding
+// whitespace collapses, so the two options land as "1. Yes2.Yes,allow…" —
+// no word boundary before OR after "Yes" between the options. We can't use
+// \b anywhere near the option markers; use negative lookbehinds to keep out
+// of things like "31." or "12.".
+const CLAUDE_PERMISSION_RE = /(?<!\d)1\.\s*Yes[\s\S]{0,400}?(?<!\d)2\.\s*Yes/;
+const CLAUDE_PERMISSION_RE_1 = /(?<!\d)1\.\s*Yes/;
+const CLAUDE_PERMISSION_RE_2 = /(?<!\d)2\.\s*Yes/;
+
+// Flip to false to silence the permission-detection tracing. Kept on for now
+// while we chase the "green dot before bell" ordering bug.
+const PERM_DEBUG = true;
+const plog = (...args: unknown[]) => { if (PERM_DEBUG) console.log("[perm]", ...args); };
+
+// After markDone fires for a Claude session, we re-scan the raw session buffer
+// at each of these delays. The permission dialog is often painted in pieces
+// AFTER the OSC 9 that trips markDone — sometimes seconds later, because the
+// model is still generating the tool-call payload when OSC 9 fires. We fan
+// out several delayed rechecks so we catch it regardless of when it lands.
+const CLAUDE_PERM_RECHECK_MS = [3000, 8000, 20000];
+// Bytes off the tail of the raw buffer to scan on recheck. The full dialog
+// is ~1-2 KB; 32 KB is generous and still cheap to strip.
+const CLAUDE_PERM_RECHECK_TAIL = 32 * 1024;
+
 interface SessionRecord {
   isAgent: boolean;
   agentHint: string; // CLI command hint e.g. "claude", "gemini" — used for title classification
@@ -41,12 +80,30 @@ interface SessionRecord {
   deadZoneUntil: number;
   // Bytes received since the last user Enter, used to gate heuristic timers.
   outputSinceInput: number;
+  // Set true on the first user Enter. Gates BEL→attention so a bell emitted
+  // before the user has interacted (e.g. at spawn) never rings.
+  hasUserInput: boolean;
   // Set true when the agent's OSC 0/2 title indicates it is actively working.
   // While true, heuristic timers (quiet, ceiling) do not fire done — they wait.
   // Cleared on each new user input turn and when a title signals idle.
   senderBusy: boolean;
   // Tail of the previous chunk kept for cross-chunk OSC/CSI sequence reassembly.
   seqTail: string;
+  // True once markAttention has fired since the last user Enter. Blocks the
+  // Claude permission-prompt fingerprint from re-firing on every repaint
+  // while the prompt is still on screen — otherwise focusing the tab clears
+  // the bell and the next spinner-repaint chunk stamps it right back on.
+  attentionFired: boolean;
+  // Rolling cleaned-text window (OSC/CSI stripped) for the Claude permission
+  // fingerprint. The dialog is drawn row-by-row with cursor-move CSIs and
+  // arrives split across PTY reads, so "1. Yes" and "2. Yes" often land in
+  // different chunks. seqTail only carries an in-progress escape sequence
+  // (≤256 bytes), which is not enough — we need a chunk-spanning text buffer.
+  claudeCleanTail: string;
+  // Scheduled rechecks fired at CLAUDE_PERM_RECHECK_MS after markDone for
+  // Claude, to catch permission dialogs painted after the OSC 9 that tripped
+  // markDone. Cleared on new user input or when attention actually fires.
+  permCheckTimers: ReturnType<typeof setTimeout>[];
   listeners: Set<(data: string) => void>;
 }
 
@@ -72,8 +129,12 @@ class SessionManager {
       ceilTimer: null,
       deadZoneUntil: 0,
       outputSinceInput: 0,
+      hasUserInput: false,
       senderBusy: false,
       seqTail: "",
+      attentionFired: false,
+      claudeCleanTail: "",
+      permCheckTimers: [],
       listeners: new Set(),
     };
     this.sessions.set(sessionId, record);
@@ -85,6 +146,7 @@ class SessionManager {
     if (!record) return;
     if (record.quietTimer !== null) clearTimeout(record.quietTimer);
     if (record.ceilTimer !== null) clearTimeout(record.ceilTimer);
+    for (const t of record.permCheckTimers) clearTimeout(t);
     this.sessions.delete(sessionId);
   }
 
@@ -107,7 +169,15 @@ class SessionManager {
     if (!record?.isAgent) return;
     record.deadZoneUntil = Date.now() + DEAD_ZONE_MS;
     record.outputSinceInput = 0;
+    record.hasUserInput = true;
     record.senderBusy = false;
+    record.attentionFired = false;
+    record.claudeCleanTail = "";
+    for (const t of record.permCheckTimers) clearTimeout(t);
+    record.permCheckTimers = [];
+    plog(sessionId, "user input — reset attention/claudeCleanTail/permCheckTimers");
+    // New turn starts — any prior attention flag no longer applies.
+    setAttention(sessionId, false);
     setWorkState(sessionId, "working");
     this.scheduleQuiet(record, sessionId);
     this.scheduleCeiling(record, sessionId);
@@ -124,13 +194,16 @@ class SessionManager {
     } else if (state === "idle") {
       record.senderBusy = false;
       this.markDone(record, sessionId);
+    } else if (state === "attention") {
+      record.senderBusy = false;
+      this.markAttention(record, sessionId);
     }
     // null = unrecognised title, leave senderBusy unchanged
   }
 
   // Classify an OSC 0/2 terminal title as busy, idle, or unknown (null).
   // Logic is per CLI — each agent has its own title conventions.
-  private classifyTitle(agentHint: string, title: string): "busy" | "idle" | null {
+  private classifyTitle(agentHint: string, title: string): "busy" | "idle" | "attention" | null {
     const t = title.trim();
     if (!t) return null;
 
@@ -144,9 +217,22 @@ class SessionManager {
     }
 
     if (agentHint === "gemini") {
-      // Gemini CLI: "◇ …" = idle, "✦ …" or "✋ …" = busy/thinking.
+      // Gemini CLI: "◇ …" = idle, "✦ …" = busy/thinking, "✋ …" = blocked on user.
       if (/^\s*◇/.test(t)) return "idle";
-      if (/^\s*[✦✋]/.test(t)) return "busy";
+      if (/^\s*✋/.test(t)) return "attention";
+      if (/^\s*✦/.test(t)) return "busy";
+      return null;
+    }
+
+    if (agentHint === "codex") {
+      // Codex CLI status labels shown in the title bar.
+      //  "Waiting" / "Action Required" → blocked on the user (attention).
+      //  "Ready" → prompt idle.
+      //  "Working" / "Thinking" or a leading Braille spinner frame → busy.
+      if (/\b(Waiting|Action[\s-]?Required)\b/i.test(t)) return "attention";
+      if (/\bReady\b/i.test(t)) return "idle";
+      if (/\b(Working|Thinking)\b/i.test(t)) return "busy";
+      if (/^\s*[⠀-⣿]/.test(t)) return "busy";
       return null;
     }
 
@@ -221,8 +307,12 @@ class SessionManager {
             }
           }
         } else {
-          // Plain OSC 9 notification — e.g. Claude Code "Send notification" on turn end.
+          // Plain OSC 9 notification — e.g. Claude Code "Send notification".
           // Source: iTerm2 Proprietary Escape Codes.
+          // Claude Code overloads this for both "turn complete" and permission
+          // prompts; distinguishing them happens further down via the rendered
+          // text scan for claude, so treat OSC 9 as a "turn ended" hint here.
+          plog(sessionId, "OSC 9 plain → markDone (may be upgraded to attention)");
           this.markDone(record, sessionId);
         }
       } else if (oscNum === "133") {
@@ -244,6 +334,13 @@ class SessionManager {
         // Same semantics as OSC 9: agent is signalling attention / turn complete.
         // Source: urxvt man page; VTE source.
         this.markDone(record, sessionId);
+      } else if (oscNum === "1337") {
+        // OSC 1337 — iTerm2 proprietary. RequestAttention=yes/fireworks means the
+        // agent is explicitly blocked and needs the user's input.
+        // Source: iTerm2 "Proprietary Escape Codes" docs.
+        if (/^RequestAttention=(yes|fireworks)$/i.test(parts.slice(1).join(";"))) {
+          this.markAttention(record, sessionId);
+        }
       }
     }
 
@@ -276,11 +373,70 @@ class SessionManager {
       }
     }
 
+    // --- Claude Code permission-prompt fingerprint (rendered text) ---
+    // Runs after the OSC scan, so an earlier plain OSC 9 → markDone can be
+    // upgraded to markAttention here once the numbered-option UI actually
+    // renders on screen. Setting attention alongside done (via markAttention)
+    // is the whole point of the split state — no double-flip issues.
+    if (record.agentHint === "claude") {
+      // Accumulate cleaned text across chunks: Claude repaints the permission
+      // dialog row-by-row with CSI cursor moves, so "1. Yes" and "2. Yes"
+      // frequently land in different PTY reads. Without a rolling buffer the
+      // regex only matches on a later single-chunk repaint — which is why the
+      // bell used to only appear after the tab was clicked (mount → resize_pty
+      // → contiguous repaint). 4 KB comfortably fits the whole dialog.
+      const cleanedChunk = scan.replace(OSC_RE, "").replace(ANSI_CSI_RE, "");
+      record.claudeCleanTail = (record.claudeCleanTail + cleanedChunk).slice(-4096);
+      const has1 = CLAUDE_PERMISSION_RE_1.test(record.claudeCleanTail);
+      const has2 = CLAUDE_PERMISSION_RE_2.test(record.claudeCleanTail);
+      const matched = CLAUDE_PERMISSION_RE.test(record.claudeCleanTail);
+      if (has1 || has2 || matched) {
+        plog(sessionId, `chunk-scan SAW_PERMISSION=${matched ? "TRUE" : "FALSE"} (has1=${has1} has2=${has2} tailLen=${record.claudeCleanTail.length})`);
+      }
+      if (matched) {
+        plog(sessionId, "chunk-scan MATCHED — attempting green → BELL");
+        this.markAttention(record, sessionId);
+      }
+    }
+
+    // --- Bare BEL (0x07) → attention ---
+    // Agent CLIs (Claude Code, etc.) ring the terminal bell when a tool call is
+    // blocked waiting for the user's approval. BEL is also the terminator of an
+    // OSC sequence, so strip complete OSC sequences first to avoid false rings.
+    // Gate to mirror real bell behaviour: only when the user has taken a turn
+    // (no spawn-time bells) and the agent is NOT actively working — Claude BELs
+    // roughly once a second during its spinner, and those must not ring.
+    if (record.hasUserInput && getWorkState(sessionId) !== "working") {
+      const bare = scan.replace(OSC_RE, "");
+      if (bare.includes("\x07")) {
+        this.markAttention(record, sessionId);
+      }
+    }
+
     // Re-arm the byte-quiet fallback timer on any output while still working.
     // If markDone already fired above, getWorkState returns "done" and this is a no-op.
     if (getWorkState(sessionId) === "working") {
       this.scheduleQuiet(record, sessionId);
     }
+  }
+
+  private markAttention(record: SessionRecord, sessionId: string) {
+    if (record.attentionFired) {
+      plog(sessionId, "markAttention called but attentionFired already — SKIP");
+      return;
+    }
+    record.attentionFired = true;
+    if (record.quietTimer !== null) { clearTimeout(record.quietTimer); record.quietTimer = null; }
+    if (record.ceilTimer !== null) { clearTimeout(record.ceilTimer); record.ceilTimer = null; }
+    for (const t of record.permCheckTimers) clearTimeout(t);
+    record.permCheckTimers = [];
+    plog(sessionId, "markAttention → SETTING BELL (attention=true, workState=done)");
+    // The turn reached a terminal state — process is idle, and the user
+    // needs to act. Set both dimensions so downstream consumers see a
+    // "done" agent whose tab is also flagged for attention.
+    setWorkState(sessionId, "done");
+    setAttention(sessionId, true);
+    record.onDone?.();
   }
 
   private markDone(record: SessionRecord, sessionId: string) {
@@ -292,10 +448,65 @@ class SessionManager {
       clearTimeout(record.ceilTimer);
       record.ceilTimer = null;
     }
-    if (Date.now() < record.deadZoneUntil) return;
-    if (getWorkState(sessionId) === "working") {
+    if (Date.now() < record.deadZoneUntil) {
+      plog(sessionId, "markDone SKIP — inside dead zone");
+      return;
+    }
+    const currentState = getWorkState(sessionId);
+    if (currentState === "working") {
+      plog(sessionId, "markDone → SETTING GREEN DOT (workState working → done)");
       setWorkState(sessionId, "done");
       record.onDone?.();
+      // Claude: schedule a delayed recheck against the raw buffer, since the
+      // permission dialog is often painted after the OSC 9 that just tripped
+      // markDone. If the fingerprint shows up within the window, upgrade
+      // green→bell. This is what makes the badge correct without waiting for
+      // the user to click the tab (which was previously forcing a full repaint
+      // via resize_pty and giving the sync-chunk fingerprint scan its shot).
+      if (record.agentHint === "claude" && !record.attentionFired) {
+        for (const t of record.permCheckTimers) clearTimeout(t);
+        record.permCheckTimers = CLAUDE_PERM_RECHECK_MS.map((delay) =>
+          setTimeout(() => this.recheckClaudePermission(record, sessionId, delay), delay),
+        );
+        plog(sessionId, `scheduled claude perm rechecks at ${CLAUDE_PERM_RECHECK_MS.join("/")}ms`);
+      }
+    } else {
+      plog(sessionId, `markDone no-op — workState already "${currentState}"`);
+    }
+  }
+
+  // Scan the tail of the raw session buffer for the Claude permission dialog.
+  // Runs CLAUDE_PERM_RECHECK_MS after markDone. The raw buffer is retained by
+  // sessionManager whether or not the tab pane is mounted, so this works for
+  // backgrounded tabs (which never get an xterm.js Terminal to inspect).
+  private recheckClaudePermission(record: SessionRecord, sessionId: string, delay: number) {
+    if (record.attentionFired) {
+      plog(sessionId, `recheck@${delay}ms skipped — attention already fired`);
+      return;
+    }
+    // Join the last N bytes of the ring buffer, working backwards so we don't
+    // stringify megabytes we're going to throw away.
+    let raw = "";
+    for (let i = record.buffer.length - 1; i >= 0 && raw.length < CLAUDE_PERM_RECHECK_TAIL; i--) {
+      raw = record.buffer[i] + raw;
+    }
+    raw = raw.slice(-CLAUDE_PERM_RECHECK_TAIL);
+    const cleaned = raw.replace(OSC_RE, "").replace(ANSI_CSI_RE, "");
+    const has1 = CLAUDE_PERMISSION_RE_1.test(cleaned);
+    const has2 = CLAUDE_PERMISSION_RE_2.test(cleaned);
+    const hasDialogHint = /(want to proceed|Do you want|allow|permission)/i.test(cleaned);
+    const matched = CLAUDE_PERMISSION_RE.test(cleaned);
+    // 1) The headline TRUE/FALSE line you asked for.
+    plog(sessionId, `recheck@${delay}ms SAW_PERMISSION=${matched ? "TRUE" : "FALSE"} (has1=${has1} has2=${has2} dialogHint=${hasDialogHint} rawLen=${raw.length} cleanedLen=${cleaned.length})`);
+    // 2) Dump the tail as a plain string so DevTools doesn't collapse it.
+    const snippet = cleaned.slice(-1200).replace(/[\x00-\x1f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`);
+    plog(sessionId, `recheck@${delay}ms SEEING: ${snippet}`);
+    // 3) Explicit "trying to change" line before we actually flip the badge.
+    if (matched) {
+      plog(sessionId, `recheck@${delay}ms MATCHED — attempting green → BELL`);
+      this.markAttention(record, sessionId);
+    } else {
+      plog(sessionId, `recheck@${delay}ms no match — leaving badge as green dot`);
     }
   }
 

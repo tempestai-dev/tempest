@@ -270,6 +270,11 @@
   opacity: 0.7;
 }
 
+.op-attention-bell {
+  flex-shrink: 0;
+  color: var(--tempest-accent-orange, #f5a130);
+}
+
 /* Idle: subtle gray */
 .op-dot--idle {
   background: var(--tempest-fg-subtle);

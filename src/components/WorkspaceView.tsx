@@ -44,7 +44,7 @@ import {
   SunMoon,
   GitBranch,
 } from "lucide-react";
-import { setWorkState, clearWorkState, getWorkState } from "../store/workState";
+import { setWorkState, clearWorkState, getWorkState, setAttention, getAttention } from "../store/workState";
 import { useKeybindings, matchesEvent, formatShortcut } from "../store/keybindings";
 import { useAttribution, getAttribution, COAUTHOR_LINE } from "../store/attribution";
 import { useSettings, getSettings, updateSetting } from "../store/appSettings";
@@ -72,7 +72,7 @@ import { KnowledgeBasePage } from "./KnowledgeBasePage";
 import { Toolbar } from "./Toolbar";
 import AgentTabs from "./AgentTabs";
 import IconCapsule from "./IconCapsule";
-import { SidebarWorkBadge, ProjectWorkBadge } from "./SessionBadges";
+import { SidebarWorkBadge, ProjectWorkBadge, AttentionPill } from "./SessionBadges";
 import "./StatusBar.css";
 import "./TopBar.css";
 import "./WorkspaceView.css";
@@ -173,6 +173,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const [sidebarAtBottom, setSidebarAtBottom] = useState(false);
   const sidebarScrollRef = useRef<HTMLDivElement>(null);
   const [expandedWorktrees, setExpandedWorktrees] = useState<Set<string>>(new Set());
+  const [sidebarDragOver, setSidebarDragOver] = useState<{ id: string; side: "before" | "after" } | null>(null);
 
   // Split pane layout. null = single-pane mode (normal). Non-null = one or more
   // splits active. activeSessionId continues to track which pane has focus.
@@ -228,7 +229,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
   useEffect(() => {
     if (zen) return;
     saveOpenProjects(
-      projects.map(({ id, name, path, expanded }) => ({ id, name, path, expanded }))
+      projects.map(({ id, name, path, expanded, worktrees }) => ({
+        id, name, path, expanded,
+        worktreeOrder: worktrees.map(w => w.path),
+      }))
     );
   }, [projects, zen]);
 
@@ -299,6 +303,13 @@ export function WorkspaceView({ zen, name, path }: Props) {
           });
         } catch {
           // .tempest/ doesn't exist or project path is gone
+        }
+
+        // Restore user's custom worktree order if persisted from a previous drag.
+        const storedWtOrder = getOpenProjects().find(p => p.id === project.id)?.worktreeOrder;
+        if (storedWtOrder?.length) {
+          const orderIdx = new Map(storedWtOrder.map((p, i) => [p, i]));
+          wts.sort((a, b) => (orderIdx.get(a.path) ?? Infinity) - (orderIdx.get(b.path) ?? Infinity));
         }
 
         allProjectData.push({ project, wts });
@@ -575,7 +586,14 @@ export function WorkspaceView({ zen, name, path }: Props) {
         }
       } else if (matchesEvent(keybinds.jumpWaiting, e)) {
         e.preventDefault();
-        const waiting = sessions.filter((s) => getWorkState(s.id) === "done");
+        const waiting = sessions.filter((s) => {
+          if (getAttention(s.id)) return true;
+          return getWorkState(s.id) === "done";
+        }).sort((a, b) => {
+          // attention before done so the jump lands on blocked agents first
+          const rank = (id: string) => getAttention(id) ? 0 : 1;
+          return rank(a.id) - rank(b.id);
+        });
         if (waiting.length === 0) return;
         const curIdx = sessions.findIndex((s) => s.id === activeSessionId);
         const next = waiting.find((s) => sessions.indexOf(s) > curIdx) ?? waiting[0];
@@ -822,7 +840,17 @@ export function WorkspaceView({ zen, name, path }: Props) {
       // at the same cwd coexist alongside the (cwd-keyed) agent entry — and each
       // one persists independently across close/reopen for the sidebar ghost.
       const termKey = (!rootKey && !subKey && !agent) ? termSessionKey(cwd, sessionId) : null;
-      const storeKey = rootKey ?? subKey ?? termKey ?? (agent ? cwd : undefined);
+      // Worktree agents key by cwd so they persist/restore at a stable identity — but only
+      // ONE agent can own that slot. A second concurrent agent in the same worktree (branch
+      // "+" → agent) must NOT reuse cwd, or it clobbers the first's persisted entry and
+      // collides on instanceId, making the existing session look replaced. Give the extra one
+      // no store key: instanceId falls back to the unique sessionId and it isn't persisted.
+      // ponytail: additional worktree agents are session-scoped (no restart restore); add a
+      // per-session agent bucket like ::term:: if cross-restart persistence is wanted.
+      const cwdAgentSlotLive =
+        !!agent && !rootKey && !subKey && sessionsRef.current.some((s) => s.storeKey === cwd);
+      const agentKey = agent && !rootKey && !subKey && !cwdAgentSlotLive ? cwd : undefined;
+      const storeKey = rootKey ?? subKey ?? termKey ?? agentKey;
 
       // Worktree sessions: the store key (path) is the stable identity — reuse it so
       // instanceId never changes across restarts. Root sessions have no path anchor, so
@@ -1554,8 +1582,12 @@ export function WorkspaceView({ zen, name, path }: Props) {
   function handleTabClick(id: string) {
     if (activeSplitIds && !activeSplitIds.has(id)) setPaneLayout(null);
     const s = sessions.find((x) => x.id === id);
+    const wasActive = id === activeSessionId;
     setActiveSessionId(id);
-    if (id === activeSessionId && s?.agent) setWorkState(id, "idle");
+    // Focusing an agent tab acknowledges any attention flag. State only clears
+    // on click-when-already-active so a stray click doesn't reset a done bullet.
+    if (s?.agent) setAttention(id, false);
+    if (wasActive && s?.agent) setWorkState(id, "idle");
   }
 
   function handleTabDragStart(id: string, e: React.DragEvent<HTMLButtonElement>) {
@@ -1893,12 +1925,47 @@ export function WorkspaceView({ zen, name, path }: Props) {
                     storedRootEntries.some((e) => !e.session.noGit);
 
                   return (
-                    <div key={project.id} className="sidebar-project"
+                    <div
+                      key={project.id}
+                      className={`sidebar-project${sidebarDragOver?.id === project.id ? ` sidebar-drag-over--${sidebarDragOver.side}` : ""}`}
+                      onDragOver={(e) => {
+                        if (!e.dataTransfer.types.includes("sidebar/project")) return;
+                        e.preventDefault();
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                        const side: "before" | "after" = e.clientY < rect.top + rect.height / 2 ? "before" : "after";
+                        setSidebarDragOver(prev => prev?.id === project.id && prev.side === side ? prev : { id: project.id, side });
+                      }}
+                      onDragLeave={(e) => {
+                        const rt = e.relatedTarget as Node | null;
+                        if (!rt || !(e.currentTarget as HTMLElement).contains(rt)) setSidebarDragOver(null);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const fromId = e.dataTransfer.getData("sidebar/project");
+                        if (!fromId || fromId === project.id) { setSidebarDragOver(null); return; }
+                        const side = sidebarDragOver?.id === project.id ? sidebarDragOver.side : "after";
+                        setSidebarDragOver(null);
+                        setProjects(prev => {
+                          const result = [...prev];
+                          const fromIdx = result.findIndex(p => p.id === fromId);
+                          const [moved] = result.splice(fromIdx, 1);
+                          const toIdx = result.findIndex(p => p.id === project.id);
+                          result.splice(side === "before" ? toIdx : toIdx + 1, 0, moved);
+                          return result;
+                        });
+                      }}
                       onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, null)}
                     >
-                      {/* Project header */}
+                      {/* Project header — drag handle */}
                       <div
                         className="sidebar-project-header"
+                        draggable
+                        onDragStart={(e) => {
+                          e.stopPropagation();
+                          e.dataTransfer.effectAllowed = "move";
+                          e.dataTransfer.setData("sidebar/project", project.id);
+                        }}
+                        onDragEnd={() => setSidebarDragOver(null)}
                         onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, null, true)}
                       >
                         <button
@@ -1915,14 +1982,12 @@ export function WorkspaceView({ zen, name, path }: Props) {
                         {(isGitProject || canonRoots.size > 0) && (
                           <span className="sidebar-project-count">{project.worktrees.length + (canonRoots.size > 0 ? 1 : 0)}</span>
                         )}
-                        <Tooltip content="Quick session · right-click for more" placement="right">
+                        <Tooltip content="New session" placement="right">
                           <button
                             className="sidebar-project-add-btn"
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (!project.expanded) toggleProject(project.id);
-                              setInlineCreateProjectId(project.id);
-                              setInlineCreateName("");
+                              openSessionMenu(e, project.id, "right");
                             }}
                             onContextMenu={(e) => {
                               e.stopPropagation();
@@ -2070,9 +2135,50 @@ export function WorkspaceView({ zen, name, path }: Props) {
                             const wtExpanded = expandedWorktrees.has(wt.path);
 
                             return (
-                              <div key={wt.path} className="sb-worktree">
+                              <div
+                                key={wt.path}
+                                className={`sb-worktree${sidebarDragOver?.id === wt.path ? ` sidebar-drag-over--${sidebarDragOver.side}` : ""}`}
+                                onDragOver={(e) => {
+                                  if (!e.dataTransfer.types.includes("sidebar/worktree")) return;
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                  const side: "before" | "after" = e.clientY < rect.top + rect.height / 2 ? "before" : "after";
+                                  setSidebarDragOver(prev => prev?.id === wt.path && prev.side === side ? prev : { id: wt.path, side });
+                                }}
+                                onDragLeave={(e) => {
+                                  const rt = e.relatedTarget as Node | null;
+                                  if (!rt || !(e.currentTarget as HTMLElement).contains(rt)) setSidebarDragOver(null);
+                                }}
+                                onDrop={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  const fromPath = e.dataTransfer.getData("sidebar/worktree");
+                                  const fromProjectId = e.dataTransfer.getData("sidebar/projectId");
+                                  if (!fromPath || fromPath === wt.path || fromProjectId !== project.id) { setSidebarDragOver(null); return; }
+                                  const side = sidebarDragOver?.id === wt.path ? sidebarDragOver.side : "after";
+                                  setSidebarDragOver(null);
+                                  setProjects(prev => prev.map(p => {
+                                    if (p.id !== project.id) return p;
+                                    const ws = [...p.worktrees];
+                                    const fi = ws.findIndex(w => w.path === fromPath);
+                                    const [moved] = ws.splice(fi, 1);
+                                    const ti = ws.findIndex(w => w.path === wt.path);
+                                    ws.splice(side === "before" ? ti : ti + 1, 0, moved);
+                                    return { ...p, worktrees: ws };
+                                  }));
+                                }}
+                              >
                                 <div
                                   className="sb-worktree-row"
+                                  draggable
+                                  onDragStart={(e) => {
+                                    e.stopPropagation();
+                                    e.dataTransfer.effectAllowed = "move";
+                                    e.dataTransfer.setData("sidebar/worktree", wt.path);
+                                    e.dataTransfer.setData("sidebar/projectId", project.id);
+                                  }}
+                                  onDragEnd={() => setSidebarDragOver(null)}
                                   onClick={() => toggleWorktree(wt.path)}
                                   onContextMenu={(e) => openCtxMenu(e, wt, project.path, project.id, wtSessions[0]?.id ?? null)}
                                 >
@@ -2329,6 +2435,21 @@ export function WorkspaceView({ zen, name, path }: Props) {
                     projects={projects.map((p) => ({ id: p.id, name: p.name }))}
                   />}
                   <div className="bar-end">
+                    <AttentionPill
+                      sessionIds={sessions.map(s => s.id)}
+                      onClick={() => {
+                        const waiting = sessions.filter(s => {
+                          if (getAttention(s.id)) return true;
+                          return getWorkState(s.id) === "done";
+                        }).sort((a, b) =>
+                          (getAttention(a.id) ? 0 : 1) - (getAttention(b.id) ? 0 : 1)
+                        );
+                        if (!waiting.length) return;
+                        const curIdx = sessions.findIndex(s => s.id === activeSessionId);
+                        const next = waiting.find(s => sessions.indexOf(s) > curIdx) ?? waiting[0];
+                        setActiveSessionId(next.id);
+                      }}
+                    />
                     {hasActiveSession && (
                       <>
                         <div className="collapse-btn-wrap">

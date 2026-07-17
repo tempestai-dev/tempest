@@ -1417,6 +1417,20 @@
   box-shadow: 0 0 4px var(--tempest-terminal-green, var(--tempest-accent-blue));
 }
 
+.work-attention-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--tempest-accent-orange, #f5a130);
+  box-shadow: 0 0 4px var(--tempest-accent-orange, #f5a130);
+}
+
+.work-attention-bell {
+  flex-shrink: 0;
+  color: var(--tempest-accent-orange, #f5a130);
+}
+
 /* Sidebar context menu */
 
 .ctx-overlay {
@@ -1790,6 +1804,39 @@
   display: flex;
   flex-direction: column;
   padding: 2px 4px 0;
+}
+
+/* Attention pill — toolbar indicator for blocked agents */
+.attention-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+  padding: 0 7px;
+  border: none;
+  border-radius: 10px;
+  background: var(--tempest-accent-orange, #f5a130);
+  color: #000;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+
+.attention-pill:hover {
+  opacity: 0.8;
+}
+
+/* Sidebar drag-to-reorder indicators */
+.sidebar-project.sidebar-drag-over--before,
+.sb-worktree.sidebar-drag-over--before {
+  border-top: 2px solid var(--tempest-accent-blue);
+}
+
+.sidebar-project.sidebar-drag-over--after,
+.sb-worktree.sidebar-drag-over--after {
+  border-bottom: 2px solid var(--tempest-accent-blue);
 }
 
 .sidebar-project {
