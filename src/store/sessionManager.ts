@@ -50,13 +50,6 @@ const ANSI_CSI_RE = /\x1b\[[0-9;?]*[a-zA-Z]/g;
 // \b anywhere near the option markers; use negative lookbehinds to keep out
 // of things like "31." or "12.".
 const CLAUDE_PERMISSION_RE = /(?<!\d)1\.\s*Yes[\s\S]{0,400}?(?<!\d)2\.\s*Yes/;
-const CLAUDE_PERMISSION_RE_1 = /(?<!\d)1\.\s*Yes/;
-const CLAUDE_PERMISSION_RE_2 = /(?<!\d)2\.\s*Yes/;
-
-// Flip to false to silence the permission-detection tracing. Kept on for now
-// while we chase the "green dot before bell" ordering bug.
-const PERM_DEBUG = true;
-const plog = (...args: unknown[]) => { if (PERM_DEBUG) console.log("[perm]", ...args); };
 
 // After markDone fires for a Claude session, we re-scan the raw session buffer
 // at each of these delays. The permission dialog is often painted in pieces
@@ -175,7 +168,6 @@ class SessionManager {
     record.claudeCleanTail = "";
     for (const t of record.permCheckTimers) clearTimeout(t);
     record.permCheckTimers = [];
-    plog(sessionId, "user input — reset attention/claudeCleanTail/permCheckTimers");
     // New turn starts — any prior attention flag no longer applies.
     setAttention(sessionId, false);
     setWorkState(sessionId, "working");
@@ -312,7 +304,6 @@ class SessionManager {
           // Claude Code overloads this for both "turn complete" and permission
           // prompts; distinguishing them happens further down via the rendered
           // text scan for claude, so treat OSC 9 as a "turn ended" hint here.
-          plog(sessionId, "OSC 9 plain → markDone (may be upgraded to attention)");
           this.markDone(record, sessionId);
         }
       } else if (oscNum === "133") {
@@ -387,14 +378,7 @@ class SessionManager {
       // → contiguous repaint). 4 KB comfortably fits the whole dialog.
       const cleanedChunk = scan.replace(OSC_RE, "").replace(ANSI_CSI_RE, "");
       record.claudeCleanTail = (record.claudeCleanTail + cleanedChunk).slice(-4096);
-      const has1 = CLAUDE_PERMISSION_RE_1.test(record.claudeCleanTail);
-      const has2 = CLAUDE_PERMISSION_RE_2.test(record.claudeCleanTail);
-      const matched = CLAUDE_PERMISSION_RE.test(record.claudeCleanTail);
-      if (has1 || has2 || matched) {
-        plog(sessionId, `chunk-scan SAW_PERMISSION=${matched ? "TRUE" : "FALSE"} (has1=${has1} has2=${has2} tailLen=${record.claudeCleanTail.length})`);
-      }
-      if (matched) {
-        plog(sessionId, "chunk-scan MATCHED — attempting green → BELL");
+      if (CLAUDE_PERMISSION_RE.test(record.claudeCleanTail)) {
         this.markAttention(record, sessionId);
       }
     }
@@ -421,16 +405,12 @@ class SessionManager {
   }
 
   private markAttention(record: SessionRecord, sessionId: string) {
-    if (record.attentionFired) {
-      plog(sessionId, "markAttention called but attentionFired already — SKIP");
-      return;
-    }
+    if (record.attentionFired) return;
     record.attentionFired = true;
     if (record.quietTimer !== null) { clearTimeout(record.quietTimer); record.quietTimer = null; }
     if (record.ceilTimer !== null) { clearTimeout(record.ceilTimer); record.ceilTimer = null; }
     for (const t of record.permCheckTimers) clearTimeout(t);
     record.permCheckTimers = [];
-    plog(sessionId, "markAttention → SETTING BELL (attention=true, workState=done)");
     // The turn reached a terminal state — process is idle, and the user
     // needs to act. Set both dimensions so downstream consumers see a
     // "done" agent whose tab is also flagged for attention.
@@ -448,13 +428,8 @@ class SessionManager {
       clearTimeout(record.ceilTimer);
       record.ceilTimer = null;
     }
-    if (Date.now() < record.deadZoneUntil) {
-      plog(sessionId, "markDone SKIP — inside dead zone");
-      return;
-    }
-    const currentState = getWorkState(sessionId);
-    if (currentState === "working") {
-      plog(sessionId, "markDone → SETTING GREEN DOT (workState working → done)");
+    if (Date.now() < record.deadZoneUntil) return;
+    if (getWorkState(sessionId) === "working") {
       setWorkState(sessionId, "done");
       record.onDone?.();
       // Claude: schedule a delayed recheck against the raw buffer, since the
@@ -466,12 +441,9 @@ class SessionManager {
       if (record.agentHint === "claude" && !record.attentionFired) {
         for (const t of record.permCheckTimers) clearTimeout(t);
         record.permCheckTimers = CLAUDE_PERM_RECHECK_MS.map((delay) =>
-          setTimeout(() => this.recheckClaudePermission(record, sessionId, delay), delay),
+          setTimeout(() => this.recheckClaudePermission(record, sessionId), delay),
         );
-        plog(sessionId, `scheduled claude perm rechecks at ${CLAUDE_PERM_RECHECK_MS.join("/")}ms`);
       }
-    } else {
-      plog(sessionId, `markDone no-op — workState already "${currentState}"`);
     }
   }
 
@@ -479,11 +451,8 @@ class SessionManager {
   // Runs CLAUDE_PERM_RECHECK_MS after markDone. The raw buffer is retained by
   // sessionManager whether or not the tab pane is mounted, so this works for
   // backgrounded tabs (which never get an xterm.js Terminal to inspect).
-  private recheckClaudePermission(record: SessionRecord, sessionId: string, delay: number) {
-    if (record.attentionFired) {
-      plog(sessionId, `recheck@${delay}ms skipped — attention already fired`);
-      return;
-    }
+  private recheckClaudePermission(record: SessionRecord, sessionId: string) {
+    if (record.attentionFired) return;
     // Join the last N bytes of the ring buffer, working backwards so we don't
     // stringify megabytes we're going to throw away.
     let raw = "";
@@ -492,21 +461,8 @@ class SessionManager {
     }
     raw = raw.slice(-CLAUDE_PERM_RECHECK_TAIL);
     const cleaned = raw.replace(OSC_RE, "").replace(ANSI_CSI_RE, "");
-    const has1 = CLAUDE_PERMISSION_RE_1.test(cleaned);
-    const has2 = CLAUDE_PERMISSION_RE_2.test(cleaned);
-    const hasDialogHint = /(want to proceed|Do you want|allow|permission)/i.test(cleaned);
-    const matched = CLAUDE_PERMISSION_RE.test(cleaned);
-    // 1) The headline TRUE/FALSE line you asked for.
-    plog(sessionId, `recheck@${delay}ms SAW_PERMISSION=${matched ? "TRUE" : "FALSE"} (has1=${has1} has2=${has2} dialogHint=${hasDialogHint} rawLen=${raw.length} cleanedLen=${cleaned.length})`);
-    // 2) Dump the tail as a plain string so DevTools doesn't collapse it.
-    const snippet = cleaned.slice(-1200).replace(/[\x00-\x1f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`);
-    plog(sessionId, `recheck@${delay}ms SEEING: ${snippet}`);
-    // 3) Explicit "trying to change" line before we actually flip the badge.
-    if (matched) {
-      plog(sessionId, `recheck@${delay}ms MATCHED — attempting green → BELL`);
+    if (CLAUDE_PERMISSION_RE.test(cleaned)) {
       this.markAttention(record, sessionId);
-    } else {
-      plog(sessionId, `recheck@${delay}ms no match — leaving badge as green dot`);
     }
   }
 

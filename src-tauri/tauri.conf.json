@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Tempest",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "identifier": "com.user.tempest",
   "build": {
     "beforeDevCommand": "npm run dev:frontend",
