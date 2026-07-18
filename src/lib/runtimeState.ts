@@ -1,125 +1,46 @@
-import { invoke } from "@tauri-apps/api/core";
-import type { WorktreeSession } from "../store/sessions";
-import type { StoredProject } from "../store/openProjects";
-import type { RecentWorkspace } from "../store/recents";
+import { dbLoadAppState, dbSetAppState } from "./db";
 import type { AppSettings } from "../store/appSettings";
 import type { ActionId, Shortcut } from "../store/keybindings";
 
-// A non-terminal tab (diff, preview, editor) that survives app restarts.
-export interface PersistedTab {
-  instanceId: string;                         // stable UUID minted once when tab is first opened
-  kind: "diff" | "preview" | "editor" | "chat";
-  projectId: string;
-  cwd: string;                                // worktree path (diff), file path (editor), "" (preview)
-  name: string;
-  previewUrl?: string;
-}
-
-export interface ChatMessageRecord {
-  id: string;
-  role: "user" | "assistant";
-  content?: string;      // legacy — plain text only (kept for backward compat with old saves)
-  parts?: unknown[];     // new — full MessagePart[] (tool calls, proposals, text all preserved)
-}
-
+// App-global preferences. Persisted as a single JSON row in the `app_state`
+// table (key = "runtime"). Entity collections (projects, sessions, branches,
+// tabs, recents, chat) live in their own relational tables, not here.
 export interface RuntimeState {
-  version: number;
-  sessions: Record<string, WorktreeSession>;
-  openProjects: StoredProject[];
-  recents: RecentWorkspace[];
   settings: Partial<AppSettings>;
   keybindings: Partial<Record<ActionId, Shortcut | null>>;
   attribution: boolean;
   onboardingComplete: boolean;
-  migrations: Record<string, boolean>;
-  tabs: PersistedTab[];           // non-terminal tabs (diff, preview, editor, chat)
-  sessionOrder: string[];         // instanceIds in tab-bar order
-  activeInstanceId: string | null; // instanceId of the last focused session
+  sessionOrder: string[];          // session ids in tab-bar order
+  activeInstanceId: string | null; // id of the last focused session
   prompts: Array<{ id: string; title: string; body: string; enabled: boolean; isBuiltin: boolean }>;
-  atlasProjects: Record<string, boolean>; // path → true (index) | false (skip); absent = not yet decided
-  chatHistory: Record<string, ChatMessageRecord[]>; // projectPath → conversation
-  chatContextTokens: Record<string, number>;        // projectPath → last known inputTokens
-  chatSystemPrompts: Record<string, string>;        // projectPath → user's custom system prompt
+  atlasProjects: Record<string, boolean>; // projectPath → indexed? (Token Intelligence decision)
+  theme?: string;         // active theme name
+  chatProvider?: string;  // last selected chat provider id
+  chatModel?: string;     // last selected chat model id
 }
 
 const DEFAULT_STATE: RuntimeState = {
-  version: 1,
-  sessions: {},
-  openProjects: [],
-  recents: [],
   settings: {},
   keybindings: {},
   attribution: false,
   onboardingComplete: false,
-  migrations: {},
-  tabs: [],
   sessionOrder: [],
   activeInstanceId: null,
   prompts: [],
   atlasProjects: {},
-  chatHistory: {},
-  chatContextTokens: {},
-  chatSystemPrompts: {},
 };
 
+const KEY = "runtime";
 let _state: RuntimeState = { ...DEFAULT_STATE };
 
-function migrateLS<T>(key: string, fallback: T): T {
+export async function loadAppState(): Promise<void> {
   try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
+    const rows = await dbLoadAppState();
+    const raw = new Map(rows).get(KEY);
+    if (raw) _state = { ...DEFAULT_STATE, ...(JSON.parse(raw) as Partial<RuntimeState>) };
+  } catch (e) {
+    console.error("[appState] load failed:", e);
   }
-}
-
-export async function loadRuntimeState(): Promise<void> {
-  try {
-    const raw = await invoke<string>("read_runtime_state");
-    const parsed = JSON.parse(raw) as Partial<RuntimeState>;
-    _state = {
-      version:          parsed.version          ?? 1,
-      sessions:         parsed.sessions         ?? migrateLS("tempest-worktree-sessions", {}),
-      openProjects:     parsed.openProjects     ?? migrateLS("tempest-open-projects", []),
-      recents:          parsed.recents          ?? migrateLS("tempest-recents", []),
-      settings:         parsed.settings         ?? migrateLS("tempest-app-settings", {}),
-      keybindings:      parsed.keybindings      ?? migrateLS("tempest-keybindings", {}),
-      attribution:      parsed.attribution      ?? (localStorage.getItem("tempest-attribution") === "true"),
-      onboardingComplete: parsed.onboardingComplete ?? (localStorage.getItem("tempest-onboarding-complete") === "true"),
-      migrations:       parsed.migrations       ?? {},
-      tabs:             parsed.tabs             ?? [],
-      sessionOrder:     parsed.sessionOrder     ?? [],
-      activeInstanceId: parsed.activeInstanceId ?? null,
-      prompts:          parsed.prompts          ?? [],
-      atlasProjects:       parsed.atlasProjects       ?? {},
-      chatHistory:         parsed.chatHistory         ?? {},
-      chatContextTokens:   parsed.chatContextTokens   ?? {},
-      chatSystemPrompts:   parsed.chatSystemPrompts   ?? {},
-    };
-  } catch {
-    // File doesn't exist yet — import whatever is in localStorage.
-    _state = {
-      version:          1,
-      sessions:         migrateLS("tempest-worktree-sessions", {}),
-      openProjects:     migrateLS("tempest-open-projects", []),
-      recents:          migrateLS("tempest-recents", []),
-      settings:         migrateLS("tempest-app-settings", {}),
-      keybindings:      migrateLS("tempest-keybindings", {}),
-      attribution:      localStorage.getItem("tempest-attribution") === "true",
-      onboardingComplete: localStorage.getItem("tempest-onboarding-complete") === "true",
-      migrations:       {},
-      tabs:             [],
-      sessionOrder:     [],
-      activeInstanceId: null,
-      prompts:          [],
-      atlasProjects:     {},
-      chatHistory:       {},
-      chatContextTokens: {},
-      chatSystemPrompts: {},
-    };
-  }
-  persist();
 }
 
 export function getRuntimeState(): RuntimeState {
@@ -128,9 +49,5 @@ export function getRuntimeState(): RuntimeState {
 
 export function setRuntimeState(patch: Partial<RuntimeState>): void {
   _state = { ..._state, ...patch };
-  persist();
-}
-
-function persist(): void {
-  invoke("write_runtime_state", { data: JSON.stringify(_state) }).catch(() => {});
+  dbSetAppState(KEY, JSON.stringify(_state)).catch((e) => console.error("[appState] persist failed:", e));
 }

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { Theme } from "./types";
 import { applyTheme } from "./applyTheme";
+import { getRuntimeState, setRuntimeState } from "../lib/runtimeState";
 
 const themeModules = import.meta.glob<{ default: Theme }>(
   "./**/theme.json",
@@ -11,17 +12,8 @@ export const builtinThemes: Theme[] = Object.values(themeModules).map(
   (m) => m.default
 );
 
-const RENAMES: Record<string, string> = {
-  "Origin Dark": "Tempest Dark",
-  "Origin Light": "Tempest Light",
-};
-
 function resolveDefaultTheme(): Theme {
-  let saved = localStorage.getItem("tempest-theme");
-  if (saved && RENAMES[saved]) {
-    saved = RENAMES[saved];
-    localStorage.setItem("tempest-theme", saved);
-  }
+  const saved = getRuntimeState().theme;
   if (saved) {
     const match = builtinThemes.find((t) => t.name === saved);
     if (match) return match;
@@ -46,7 +38,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   function setTheme(t: Theme) {
     setThemeState(t);
     applyTheme(t);
-    localStorage.setItem("tempest-theme", t.name);
+    setRuntimeState({ theme: t.name });
   }
 
   function loadThemeFromJson(json: string) {
