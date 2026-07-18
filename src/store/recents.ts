@@ -1,4 +1,4 @@
-import { getRuntimeState, setRuntimeState } from "../lib/runtimeState";
+import { dbLoadRecents, dbUpsertRecent, dbDeleteRecent } from "../lib/db";
 
 export interface RecentWorkspace {
   id: string;
@@ -7,16 +7,33 @@ export interface RecentWorkspace {
   lastOpened: string;
 }
 
+// In-memory mirror of the recents table (newest first).
+let _recents: RecentWorkspace[] = [];
+
+const logErr = (op: string) => (e: unknown) => console.error(`[recents] ${op} failed:`, e);
+
+export async function loadRecents(): Promise<void> {
+  _recents = (await dbLoadRecents()).map((r) => ({
+    id: r.id, name: r.name, path: r.path, lastOpened: r.lastOpened,
+  }));
+}
+
 export function getRecents(): RecentWorkspace[] {
-  return getRuntimeState().recents;
+  return _recents;
 }
 
 export function addRecent(ws: Pick<RecentWorkspace, "name" | "path">): void {
-  const all = getRecents().filter((r) => r.path !== ws.path);
-  all.unshift({ ...ws, id: crypto.randomUUID(), lastOpened: new Date().toISOString() });
-  setRuntimeState({ recents: all.slice(0, 50) });
+  const rec: RecentWorkspace = {
+    id: crypto.randomUUID(),
+    name: ws.name,
+    path: ws.path,
+    lastOpened: new Date().toISOString(),
+  };
+  _recents = [rec, ..._recents.filter((r) => r.path !== ws.path)].slice(0, 50);
+  dbUpsertRecent(rec).catch(logErr("upsert recent"));
 }
 
 export function removeRecent(path: string): void {
-  setRuntimeState({ recents: getRecents().filter((r) => r.path !== path) });
+  _recents = _recents.filter((r) => r.path !== path);
+  dbDeleteRecent(path).catch(logErr("delete recent"));
 }

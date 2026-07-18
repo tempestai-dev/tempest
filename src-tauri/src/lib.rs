@@ -653,26 +653,549 @@ fn git_ls_files(path: String) -> Result<Vec<String>, String> {
         .collect())
 }
 
-#[tauri::command]
-fn read_runtime_state(app: tauri::AppHandle) -> Result<String, String> {
+// ── SQLite ───────────────────────────────────────────────────────────────────
+
+const DB_SCHEMA: &str = "
+PRAGMA journal_mode = WAL;
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS projects (
+  id             TEXT PRIMARY KEY,
+  name           TEXT NOT NULL,
+  path           TEXT NOT NULL UNIQUE,
+  expanded       INTEGER NOT NULL DEFAULT 1,
+  worktree_order TEXT,                       -- JSON array of worktree paths (user drag order)
+  atlas_indexed  INTEGER NOT NULL DEFAULT 0, -- Token Intelligence index decision
+  context_tokens INTEGER,                    -- last known chat input-token count
+  system_prompt  TEXT,                       -- user's custom chat system prompt
+  created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  last_opened_at TEXT,
+  archived_at    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS branches (
+  id           TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  name         TEXT NOT NULL,
+  path         TEXT NOT NULL UNIQUE,
+  created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  last_opened_at TEXT,
+  UNIQUE(project_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_branches_project_id ON branches(project_id);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id                TEXT PRIMARY KEY,
+  project_id        TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  branch_id         TEXT REFERENCES branches(id) ON DELETE CASCADE,
+  parent_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+  name              TEXT NOT NULL,
+  agent             TEXT,
+  conversation_id   TEXT,
+  no_git            INTEGER NOT NULL DEFAULT 0,
+  state             TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(state IN ('ACTIVE', 'CLOSED')),
+  created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  last_active_at    TEXT,
+  archived_at       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_project_state ON sessions(project_id, state);
+CREATE INDEX IF NOT EXISTS idx_sessions_branch_id    ON sessions(branch_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_parent_id    ON sessions(parent_session_id);
+
+CREATE TABLE IF NOT EXISTS layouts (
+  id         TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL UNIQUE REFERENCES projects(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS layout_nodes (
+  id          TEXT PRIMARY KEY,
+  layout_id   TEXT NOT NULL REFERENCES layouts(id) ON DELETE CASCADE,
+  parent_id   TEXT REFERENCES layout_nodes(id) ON DELETE CASCADE,
+  type        TEXT NOT NULL CHECK(type IN ('SPLIT', 'SESSION')),
+  direction   TEXT CHECK(direction IN ('HORIZONTAL', 'VERTICAL')),
+  session_id  TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+  order_index INTEGER NOT NULL,
+  size        REAL,
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_layout_nodes_layout_id  ON layout_nodes(layout_id);
+CREATE INDEX IF NOT EXISTS idx_layout_nodes_session_id ON layout_nodes(session_id);
+
+CREATE TABLE IF NOT EXISTS recents (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  path        TEXT NOT NULL UNIQUE,
+  last_opened TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tabs (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  kind        TEXT NOT NULL,                 -- diff | preview | editor | chat
+  cwd         TEXT NOT NULL DEFAULT '',
+  name        TEXT NOT NULL,
+  preview_url TEXT,
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_tabs_project_id ON tabs(project_id);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  role        TEXT NOT NULL,                 -- user | assistant
+  parts       TEXT NOT NULL,                 -- JSON MessagePart[]
+  seq         INTEGER NOT NULL,              -- order within a project's conversation
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_project ON chat_messages(project_id, seq);
+
+CREATE TABLE IF NOT EXISTS app_state (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL                        -- JSON-encoded preference value
+);
+";
+
+fn init_db(handle: &tauri::AppHandle) -> Result<rusqlite::Connection, String> {
     use tauri::Manager;
-    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let file = dir.join("runtime-state.json");
-    if !file.exists() {
-        return Ok("{}".to_string());
-    }
-    std::fs::read_to_string(&file).map_err(|e| e.to_string())
+    let dir = handle.path().app_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let conn = rusqlite::Connection::open(dir.join("tempest.db")).map_err(|e| e.to_string())?;
+    conn.execute_batch(DB_SCHEMA).map_err(|e| e.to_string())?;
+    Ok(conn)
+}
+
+// ── SQLite: session persistence commands ─────────────────────────────────────
+// Phase 1 of the JSON→SQLite migration (docs/session-migration-to-sql.md).
+// The frontend keeps a synchronous in-memory mirror (src/store/sessions.ts) and
+// hydrates it once via `db_load`; every mutation writes through these commands.
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct DbProject {
+    pub id:             String,
+    pub name:           String,
+    pub path:           String,
+    pub expanded:       bool,
+    #[serde(rename = "worktreeOrder")]
+    pub worktree_order: Option<String>, // JSON array
+    #[serde(rename = "atlasIndexed")]
+    pub atlas_indexed:  bool,
+    #[serde(rename = "contextTokens")]
+    pub context_tokens: Option<i64>,
+    #[serde(rename = "systemPrompt")]
+    pub system_prompt:  Option<String>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct DbBranch {
+    pub id:         String,
+    #[serde(rename = "projectId")]
+    pub project_id: String,
+    pub name:       String,
+    pub path:       String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct DbSession {
+    pub id:                String,
+    #[serde(rename = "projectId")]
+    pub project_id:        String,
+    #[serde(rename = "branchId")]
+    pub branch_id:         Option<String>,
+    #[serde(rename = "parentSessionId")]
+    pub parent_session_id: Option<String>,
+    pub name:              String,
+    pub agent:             Option<String>,
+    #[serde(rename = "conversationId")]
+    pub conversation_id:   Option<String>,
+    #[serde(rename = "noGit")]
+    pub no_git:            bool,
+    pub closed:            bool,
+}
+
+#[derive(serde::Serialize)]
+pub struct DbSnapshot {
+    pub projects: Vec<DbProject>,
+    pub branches: Vec<DbBranch>,
+    pub sessions: Vec<DbSession>,
+}
+
+// Read the entire persisted graph for the in-memory mirror. Archived rows are
+// excluded (archiving is a future phase; the column exists but is never set yet).
+#[tauri::command]
+fn db_load(state: tauri::State<DbState>) -> Result<DbSnapshot, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+
+    let projects = conn
+        .prepare(
+            "SELECT id, name, path, expanded, worktree_order, atlas_indexed, context_tokens, system_prompt \
+             FROM projects WHERE archived_at IS NULL",
+        )
+        .and_then(|mut stmt| {
+            stmt.query_map([], |r| {
+                Ok(DbProject {
+                    id:             r.get(0)?,
+                    name:           r.get(1)?,
+                    path:           r.get(2)?,
+                    expanded:       r.get(3)?,
+                    worktree_order: r.get(4)?,
+                    atlas_indexed:  r.get(5)?,
+                    context_tokens: r.get(6)?,
+                    system_prompt:  r.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()
+        })
+        .map_err(|e| e.to_string())?;
+
+    let branches = conn
+        .prepare("SELECT id, project_id, name, path FROM branches")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |r| {
+                Ok(DbBranch { id: r.get(0)?, project_id: r.get(1)?, name: r.get(2)?, path: r.get(3)? })
+            })?
+            .collect::<Result<Vec<_>, _>>()
+        })
+        .map_err(|e| e.to_string())?;
+
+    let sessions = conn
+        .prepare(
+            "SELECT id, project_id, branch_id, parent_session_id, name, agent, conversation_id, no_git, state \
+             FROM sessions WHERE archived_at IS NULL",
+        )
+        .and_then(|mut stmt| {
+            stmt.query_map([], |r| {
+                Ok(DbSession {
+                    id:                r.get(0)?,
+                    project_id:        r.get(1)?,
+                    branch_id:         r.get(2)?,
+                    parent_session_id: r.get(3)?,
+                    name:              r.get(4)?,
+                    agent:             r.get(5)?,
+                    conversation_id:   r.get(6)?,
+                    no_git:            r.get(7)?,
+                    closed:            r.get::<_, String>(8)? == "CLOSED",
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()
+        })
+        .map_err(|e| e.to_string())?;
+
+    Ok(DbSnapshot { projects, branches, sessions })
+}
+
+// All writes use `ON CONFLICT(id) DO UPDATE` — never `INSERT OR REPLACE`, which
+// would delete-then-reinsert the row and fire ON DELETE cascades on children
+// (nulling sub-sessions' parent_session_id, or wiping a project's sessions).
+
+// Create a project row if absent, never clobbering fields owned by the projects
+// store (expanded, worktree_order, …). Used by the session write path to
+// guarantee the FK parent exists regardless of write ordering.
+#[tauri::command]
+fn db_ensure_project(state: tauri::State<DbState>, id: String, name: String, path: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO projects (id, name, path) VALUES (?1, ?2, ?3) ON CONFLICT(id) DO NOTHING",
+        rusqlite::params![id, name, path],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// Full project upsert owned by the projects store.
+#[tauri::command]
+fn db_upsert_project(state: tauri::State<DbState>, project: DbProject) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    // atlas_indexed / context_tokens / system_prompt are intentionally NOT written
+    // here — they are owned by the atlas decision and chat stores respectively, and
+    // this list-level upsert must not reset them.
+    conn.execute(
+        "INSERT INTO projects (id, name, path, expanded, worktree_order, last_opened_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) \
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, path = excluded.path, \
+           expanded = excluded.expanded, worktree_order = excluded.worktree_order, \
+           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+        rusqlite::params![
+            project.id, project.name, project.path,
+            project.expanded, project.worktree_order,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
-fn write_runtime_state(app: tauri::AppHandle, data: String) -> Result<(), String> {
-    use tauri::Manager;
-    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let file = dir.join("runtime-state.json");
-    let tmp = dir.join("runtime-state.json.tmp");
-    std::fs::write(&tmp, data.as_bytes()).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &file).map_err(|e| e.to_string())?;
+fn db_set_project_atlas_indexed(state: tauri::State<DbState>, id: String, indexed: bool) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("UPDATE projects SET atlas_indexed = ?2 WHERE id = ?1", rusqlite::params![id, indexed])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn db_set_project_context_tokens(state: tauri::State<DbState>, id: String, tokens: Option<i64>) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("UPDATE projects SET context_tokens = ?2 WHERE id = ?1", rusqlite::params![id, tokens])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn db_set_project_system_prompt(state: tauri::State<DbState>, id: String, prompt: Option<String>) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("UPDATE projects SET system_prompt = ?2 WHERE id = ?1", rusqlite::params![id, prompt])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn db_upsert_branch(state: tauri::State<DbState>, branch: DbBranch) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO branches (id, project_id, name, path) VALUES (?1, ?2, ?3, ?4) \
+         ON CONFLICT(id) DO UPDATE SET project_id = excluded.project_id, name = excluded.name, \
+         path = excluded.path, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+        rusqlite::params![branch.id, branch.project_id, branch.name, branch.path],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn db_upsert_session(state: tauri::State<DbState>, session: DbSession) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let db_state = if session.closed { "CLOSED" } else { "ACTIVE" };
+    conn.execute(
+        "INSERT INTO sessions \
+           (id, project_id, branch_id, parent_session_id, name, agent, conversation_id, no_git, state) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) \
+         ON CONFLICT(id) DO UPDATE SET \
+           project_id = excluded.project_id, branch_id = excluded.branch_id, \
+           parent_session_id = excluded.parent_session_id, name = excluded.name, \
+           agent = excluded.agent, conversation_id = excluded.conversation_id, \
+           no_git = excluded.no_git, state = excluded.state, \
+           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+        rusqlite::params![
+            session.id,
+            session.project_id,
+            session.branch_id,
+            session.parent_session_id,
+            session.name,
+            session.agent,
+            session.conversation_id,
+            session.no_git,
+            db_state,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn db_delete_session(state: tauri::State<DbState>, id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM sessions WHERE id = ?1", rusqlite::params![id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn db_delete_branch(state: tauri::State<DbState>, id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM branches WHERE id = ?1", rusqlite::params![id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn db_delete_project(state: tauri::State<DbState>, id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM projects WHERE id = ?1", rusqlite::params![id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// Delete every session whose id is not in `valid_ids` (the startup orphan sweep).
+// An empty list clears all sessions, matching `DELETE FROM sessions`.
+#[tauri::command]
+fn db_prune_sessions(state: tauri::State<DbState>, valid_ids: Vec<String>) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    if valid_ids.is_empty() {
+        conn.execute("DELETE FROM sessions", []).map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    let placeholders = std::iter::repeat("?").take(valid_ids.len()).collect::<Vec<_>>().join(",");
+    let sql = format!("DELETE FROM sessions WHERE id NOT IN ({placeholders})");
+    conn.execute(
+        &sql,
+        rusqlite::params_from_iter(valid_ids.iter()),
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ── Recents ──────────────────────────────────────────────────────────────────
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct DbRecent {
+    pub id:          String,
+    pub name:        String,
+    pub path:        String,
+    #[serde(rename = "lastOpened")]
+    pub last_opened: String,
+}
+
+#[tauri::command]
+fn db_load_recents(state: tauri::State<DbState>) -> Result<Vec<DbRecent>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.prepare("SELECT id, name, path, last_opened FROM recents ORDER BY last_opened DESC")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |r| {
+                Ok(DbRecent { id: r.get(0)?, name: r.get(1)?, path: r.get(2)?, last_opened: r.get(3)? })
+            })?
+            .collect::<Result<Vec<_>, _>>()
+        })
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_upsert_recent(state: tauri::State<DbState>, recent: DbRecent) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO recents (id, name, path, last_opened) VALUES (?1, ?2, ?3, ?4) \
+         ON CONFLICT(path) DO UPDATE SET name = excluded.name, last_opened = excluded.last_opened",
+        rusqlite::params![recent.id, recent.name, recent.path, recent.last_opened],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn db_delete_recent(state: tauri::State<DbState>, path: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM recents WHERE path = ?1", rusqlite::params![path])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ── Tabs (non-terminal: diff / preview / editor / chat) ──────────────────────
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct DbTab {
+    pub id:         String,
+    #[serde(rename = "projectId")]
+    pub project_id: String,
+    pub kind:       String,
+    pub cwd:        String,
+    pub name:       String,
+    #[serde(rename = "previewUrl")]
+    pub preview_url: Option<String>,
+}
+
+#[tauri::command]
+fn db_load_tabs(state: tauri::State<DbState>) -> Result<Vec<DbTab>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.prepare("SELECT id, project_id, kind, cwd, name, preview_url FROM tabs ORDER BY created_at")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |r| {
+                Ok(DbTab {
+                    id: r.get(0)?, project_id: r.get(1)?, kind: r.get(2)?,
+                    cwd: r.get(3)?, name: r.get(4)?, preview_url: r.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()
+        })
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_upsert_tab(state: tauri::State<DbState>, tab: DbTab) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO tabs (id, project_id, kind, cwd, name, preview_url) VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
+         ON CONFLICT(id) DO UPDATE SET project_id = excluded.project_id, kind = excluded.kind, \
+           cwd = excluded.cwd, name = excluded.name, preview_url = excluded.preview_url",
+        rusqlite::params![tab.id, tab.project_id, tab.kind, tab.cwd, tab.name, tab.preview_url],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn db_delete_tab(state: tauri::State<DbState>, id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM tabs WHERE id = ?1", rusqlite::params![id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ── App state (key/value preferences) ────────────────────────────────────────
+
+#[tauri::command]
+fn db_load_app_state(state: tauri::State<DbState>) -> Result<Vec<(String, String)>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.prepare("SELECT key, value FROM app_state")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_set_app_state(state: tauri::State<DbState>, key: String, value: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO app_state (key, value) VALUES (?1, ?2) \
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        rusqlite::params![key, value],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ── Chat history ─────────────────────────────────────────────────────────────
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct DbChatMessage {
+    pub id:    String,
+    pub role:  String,
+    pub parts: String, // JSON MessagePart[]
+}
+
+#[tauri::command]
+fn db_load_chat(state: tauri::State<DbState>, project_id: String) -> Result<Vec<DbChatMessage>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.prepare("SELECT id, role, parts FROM chat_messages WHERE project_id = ?1 ORDER BY seq")
+        .and_then(|mut stmt| {
+            stmt.query_map(rusqlite::params![project_id], |r| {
+                Ok(DbChatMessage { id: r.get(0)?, role: r.get(1)?, parts: r.get(2)? })
+            })?
+            .collect::<Result<Vec<_>, _>>()
+        })
+        .map_err(|e| e.to_string())
+}
+
+// Replace a project's entire conversation in one transaction (matches the
+// save-whole-array semantics of the chat store).
+#[tauri::command]
+fn db_replace_chat(state: tauri::State<DbState>, project_id: String, messages: Vec<DbChatMessage>) -> Result<(), String> {
+    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM chat_messages WHERE project_id = ?1", rusqlite::params![project_id])
+        .map_err(|e| e.to_string())?;
+    for (seq, m) in messages.iter().enumerate() {
+        tx.execute(
+            "INSERT INTO chat_messages (id, project_id, role, parts, seq) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![m.id, project_id, m.role, m.parts, seq as i64],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -1844,6 +2367,8 @@ pub struct ZenState(pub Mutex<std::collections::HashMap<String, (String, String)
 
 pub struct DaemonState(pub Mutex<std::collections::HashMap<String, std::process::Child>>);
 
+pub struct DbState(pub Mutex<rusqlite::Connection>);
+
 struct McpBridgeProcess {
     child:   std::process::Child,
     writer:  std::io::BufWriter<std::process::ChildStdin>,
@@ -2566,6 +3091,9 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_icon(tauri::include_image!("icons/icon.png"));
             }
+            let conn = init_db(app.handle())
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            app.manage(DbState(Mutex::new(conn)));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -2609,8 +3137,6 @@ pub fn run() {
             get_ide_panel_url,
             read_file,
             write_file,
-            read_runtime_state,
-            write_runtime_state,
             start_atlas_index,
             get_atlas_graph,
             atlas_query,
@@ -2623,6 +3149,28 @@ pub fn run() {
             git_ls_files,
             check_program_available,
             git_numstat,
+            db_load,
+            db_ensure_project,
+            db_upsert_project,
+            db_set_project_atlas_indexed,
+            db_set_project_context_tokens,
+            db_set_project_system_prompt,
+            db_upsert_branch,
+            db_upsert_session,
+            db_delete_session,
+            db_delete_branch,
+            db_delete_project,
+            db_prune_sessions,
+            db_load_recents,
+            db_upsert_recent,
+            db_delete_recent,
+            db_load_tabs,
+            db_upsert_tab,
+            db_delete_tab,
+            db_load_app_state,
+            db_set_app_state,
+            db_load_chat,
+            db_replace_chat,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -2,7 +2,8 @@ import { createPortal } from "react-dom";
 import { MessageSquare, Eye, X, Database, Trash2, FolderOpen } from "lucide-react";
 import { getSettings } from "../../store/appSettings";
 import { getRuntimeState, setRuntimeState } from "../../lib/runtimeState";
-import { removeWorktreeSession } from "../../store/sessions";
+import { removeSession } from "../../store/sessions";
+import { getTabs, removeTab } from "../../store/tabs";
 import { invoke } from "@tauri-apps/api/core";
 import type { Session, Worktree } from "../../types/workspace";
 
@@ -47,7 +48,7 @@ export function ContextMenu({
   const atlasOn = getSettings().atlasEnabled;
   const indexed = (getRuntimeState().atlasProjects ?? {})[m.projectPath] === true;
   const canClose = !!m.sessionId;
-  const hasChat = getRuntimeState().tabs.some(
+  const hasChat = getTabs().some(
     (t) => t.kind === "chat" && t.projectId === m.projectId
   );
   const diffPath = m.worktree ? m.worktree.path : m.projectPath;
@@ -73,13 +74,12 @@ export function ContextMenu({
 
   const hasToolItems = atlasOn || hasChat;
   const hasDestructiveWorktree = !!m.worktree;
-  // "Remove session" wipes the persisted worktree-session entry so no ghost
-  // reappears. Show it for any right-clicked session that has a store key —
-  // root sessions AND branch/worktree sessions both qualify. Previously
-  // gated on isRootSession only, which hid the button for sessions inside a
-  // branch even though removeWorktreeSession handles their storeKey fine.
+  // "Remove session" deletes the persisted session row so no ghost reappears.
+  // Show it for any right-clicked PTY session (terminal/agent — `kind` unset) and
+  // for ghost rows (m.rootKey carries the persisted id). Non-terminal tabs
+  // (diff/preview/editor/chat) have a `kind` and no persisted row, so they're excluded.
   const hasDestructiveSession =
-    m.isRootSession || !!m.rootKey || !!targetSession?.storeKey;
+    m.isRootSession || !!m.rootKey || (!!targetSession && !targetSession.kind);
 
   return createPortal(
     <div className="ctx-overlay" onClick={onClose}>
@@ -114,8 +114,7 @@ export function ContextMenu({
             <button className="ctx-item ctx-item--danger" onClick={() => {
               const chatSess = sessions.find((s) => s.kind === "chat" && s.projectId === m.projectId);
               if (chatSess) onCloseSession(chatSess.id);
-              const st = getRuntimeState();
-              setRuntimeState({ tabs: st.tabs.filter((t) => !(t.kind === "chat" && t.projectId === m.projectId)) });
+              for (const t of getTabs().filter((t) => t.kind === "chat" && t.projectId === m.projectId)) removeTab(t.instanceId);
               onClearChatHistory(m.projectId, chatSess?.id);
               onClose();
             }}>
@@ -139,9 +138,9 @@ export function ContextMenu({
           <button
             className="ctx-item ctx-item--danger"
             onClick={() => {
-              const keyToRemove = targetSession?.storeKey ?? m.rootKey;
+              const idToRemove = targetSession?.id ?? m.rootKey;
               if (m.sessionId) onCloseSession(m.sessionId);
-              if (keyToRemove) removeWorktreeSession(keyToRemove);
+              if (idToRemove) removeSession(idToRemove);
               onClose();
             }}
           >

@@ -742,6 +742,16 @@
   color: var(--tempest-fg-subtle);
 }
 
+.projects-empty-box {
+  margin: 16px 12px;
+  padding: 20px 14px;
+  font-size: 13px;
+  color: var(--tempest-fg-subtle);
+  text-align: center;
+  border: 1.5px dashed var(--tempest-border-subtle);
+  border-radius: 8px;
+}
+
 /* Project switcher */
 
 /* ── Bottom icon tray ─────────────────────────────────────────── */
@@ -2318,9 +2328,14 @@
 }
 
 .overview-recents-empty {
+  display: block;
+  margin: 16px 12px;
+  padding: 20px 14px;
   font-size: 12px;
   color: var(--tempest-fg-subtle);
-  padding: 8px 10px;
+  text-align: center;
+  border: 1.5px dashed var(--tempest-border-subtle);
+  border-radius: 8px;
 }
 
 /* ─── Split pane slots ─────────────────────────────────────────────────────── */

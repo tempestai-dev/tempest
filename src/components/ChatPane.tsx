@@ -23,6 +23,10 @@ import {
   saveChatHistory,
   buildProjectContext,
   buildSystemPrompt,
+  getContextTokens,
+  setContextTokens as persistContextTokens,
+  getSystemPrompt,
+  setSystemPrompt as persistSystemPrompt,
 } from "../lib/chatHistory";
 import tempestChat from "../assets/tempest-chat.png";
 import "./ChatPane.css";
@@ -51,14 +55,13 @@ export function ChatPane({ hidden, projectPath, atlasIndexed, onLaunchAgent }: P
   const [isLoading, setIsLoading] = useState(false);
 
   const [provider, setProvider] = useState<ChatProvider>(() => {
-    const saved = localStorage.getItem("tempest-chat-provider");
+    const saved = getRuntimeState().chatProvider;
     return CHAT_PROVIDERS.find(p => p.id === saved) ?? CHAT_PROVIDERS[0];
   });
   const [model, setModel] = useState<ChatModel>(() => {
-    const savedProvider = localStorage.getItem("tempest-chat-provider");
-    const savedModel    = localStorage.getItem("tempest-chat-model");
-    const models = PROVIDER_MODELS[savedProvider ?? "anthropic"] ?? [];
-    return models.find(m => m.id === savedModel) ?? PROVIDER_MODELS["anthropic"][0];
+    const { chatProvider, chatModel } = getRuntimeState();
+    const models = PROVIDER_MODELS[chatProvider ?? "anthropic"] ?? [];
+    return models.find(m => m.id === chatModel) ?? PROVIDER_MODELS["anthropic"][0];
   });
   const [pickerOpen, setPickerOpen]     = useState(false);
   const [pickerPos, setPickerPos]       = useState({ bottom: 0, left: 0 });
@@ -68,7 +71,7 @@ export function ChatPane({ hidden, projectPath, atlasIndexed, onLaunchAgent }: P
   const [contextTokens, setContextTokens] = useState(() => {
     const history = loadChatHistory(projectPath);
     if (history.length === 0) return 0;
-    return getRuntimeState().chatContextTokens[projectPath ?? ""] ?? 0;
+    return getContextTokens(projectPath);
   });
   const [ctxPopupOpen, setCtxPopupOpen] = useState(false);
 
@@ -76,9 +79,7 @@ export function ChatPane({ hidden, projectPath, atlasIndexed, onLaunchAgent }: P
   const projectContextRef = useRef("");
   const systemPromptRef   = useRef("");
 
-  const [systemPrompt, setSystemPrompt] = useState(() =>
-    projectPath ? getRuntimeState().chatSystemPrompts?.[projectPath] ?? "" : ""
-  );
+  const [systemPrompt, setSystemPrompt] = useState(() => getSystemPrompt(projectPath));
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsPos, setSettingsPos]   = useState({ bottom: 0, left: 0 });
   const settingsBtnRef = useRef<HTMLButtonElement>(null);
@@ -134,7 +135,7 @@ export function ChatPane({ hidden, projectPath, atlasIndexed, onLaunchAgent }: P
   }, [projectPath]);
 
   useEffect(() => {
-    setSystemPrompt(projectPath ? getRuntimeState().chatSystemPrompts?.[projectPath] ?? "" : "");
+    setSystemPrompt(getSystemPrompt(projectPath));
   }, [projectPath]);
 
   useEffect(() => {
@@ -155,10 +156,7 @@ export function ChatPane({ hidden, projectPath, atlasIndexed, onLaunchAgent }: P
     setMessages([]);
     saveChatHistory(projectPath, []);
     setContextTokens(0);
-    if (projectPath) {
-      const st = getRuntimeState();
-      setRuntimeState({ chatContextTokens: { ...st.chatContextTokens, [projectPath]: 0 } });
-    }
+    persistContextTokens(projectPath, 0);
   }
 
   const send = useCallback(async (injectText?: string) => {
@@ -282,10 +280,7 @@ export function ChatPane({ hidden, projectPath, atlasIndexed, onLaunchAgent }: P
           case "finish": {
             const used = event.inputTokens + event.outputTokens;
             setContextTokens(used);
-            if (projectPath) {
-              const st = getRuntimeState();
-              setRuntimeState({ chatContextTokens: { ...st.chatContextTokens, [projectPath]: used } });
-            }
+            persistContextTokens(projectPath, used);
             setIsLoading(false);
             streamingIdRef.current = null;
             saveChatHistory(projectPath, [
@@ -343,10 +338,7 @@ export function ChatPane({ hidden, projectPath, atlasIndexed, onLaunchAgent }: P
 
   function updateSystemPrompt(value: string) {
     setSystemPrompt(value);
-    if (projectPath) {
-      const st = getRuntimeState();
-      setRuntimeState({ chatSystemPrompts: { ...st.chatSystemPrompts, [projectPath]: value } });
-    }
+    persistSystemPrompt(projectPath, value);
   }
 
   function openSettings() {
@@ -505,10 +497,10 @@ export function ChatPane({ hidden, projectPath, atlasIndexed, onLaunchAgent }: P
     const p = CHAT_PROVIDERS.find(cp => cp.id === pickerProvider);
     if (p) {
       setProvider(p);
-      localStorage.setItem("tempest-chat-provider", p.id);
+      setRuntimeState({ chatProvider: p.id });
     }
     setModel(m);
-    localStorage.setItem("tempest-chat-model", m.id);
+    setRuntimeState({ chatModel: m.id });
     setPickerOpen(false);
   }
 

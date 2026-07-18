@@ -13,7 +13,6 @@ export interface Session {
   noGit?: boolean;
   sandboxed?: boolean;
   parentSessionId?: string;
-  storeKey?: string;
   initialDiffPath?: string;
   metadata: {
     resumeCount: number;
