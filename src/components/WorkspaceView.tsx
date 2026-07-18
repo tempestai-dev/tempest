@@ -1792,7 +1792,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
             <>
               <div className="sidebar-section-label">Projects</div>
               {projects.length === 0 ? (
-                <div className="agents-empty">No projects added</div>
+                <div className="projects-empty-box">No projects added</div>
               ) : (
                 <div className="sidebar-proj-list">
                 {projects.map((project) => {

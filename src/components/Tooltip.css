@@ -9,7 +9,6 @@
 }
 
 .tt-tip {
-  position: absolute;
   z-index: 9999;
   padding: 4px 8px;
   background: var(--tempest-fg-default);
@@ -21,15 +20,8 @@
   white-space: nowrap;
   pointer-events: none;
   user-select: none;
-  opacity: 0;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-  transition: opacity 100ms ease;
-  transition-delay: 0ms;
-}
-
-.tt:hover .tt-tip {
-  opacity: 1;
-  transition-delay: 420ms;
+  transition: opacity 80ms ease;
 }
 
 /* Arrow — rotated square clipped to a triangle */
@@ -43,52 +35,28 @@
   pointer-events: none;
 }
 
-/* top */
-[data-placement="top"] .tt-tip {
-  bottom: calc(100% + 7px);
-  left: 50%;
-  transform: translateX(-50%);
-}
-[data-placement="top"] .tt-tip::after {
+.tt-tip[data-placement="top"]::after {
   top: 100%;
   left: 50%;
   transform: translate(-50%, -4px) rotate(45deg);
   clip-path: polygon(0% 50%, 50% 100%, 100% 50%, 100% 100%, 0% 100%);
 }
 
-/* bottom */
-[data-placement="bottom"] .tt-tip {
-  top: calc(100% + 7px);
-  left: 50%;
-  transform: translateX(-50%);
-}
-[data-placement="bottom"] .tt-tip::after {
+.tt-tip[data-placement="bottom"]::after {
   bottom: 100%;
   left: 50%;
   transform: translate(-50%, 4px) rotate(45deg);
   clip-path: polygon(0% 0%, 100% 0%, 100% 50%, 50% 0%, 0% 50%);
 }
 
-/* left */
-[data-placement="left"] .tt-tip {
-  right: calc(100% + 7px);
-  top: 50%;
-  transform: translateY(-50%);
-}
-[data-placement="left"] .tt-tip::after {
+.tt-tip[data-placement="left"]::after {
   left: 100%;
   top: 50%;
   transform: translate(-4px, -50%) rotate(45deg);
   clip-path: polygon(50% 0%, 100% 0%, 100% 100%, 50% 100%, 100% 50%);
 }
 
-/* right */
-[data-placement="right"] .tt-tip {
-  left: calc(100% + 7px);
-  top: 50%;
-  transform: translateY(-50%);
-}
-[data-placement="right"] .tt-tip::after {
+.tt-tip[data-placement="right"]::after {
   right: 100%;
   top: 50%;
   transform: translate(4px, -50%) rotate(45deg);
