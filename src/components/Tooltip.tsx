@@ -60,7 +60,7 @@ export function Tooltip({ content, placement = "top", children, className }: Too
   if (!content) return <>{children}</>;
 
   const ref   = useRef<HTMLDivElement>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [rect, setRect] = useState<DOMRect | null>(null);
 
   const show = useCallback(() => {
