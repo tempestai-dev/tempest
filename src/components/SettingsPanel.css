@@ -904,6 +904,64 @@
   user-select: none;
 }
 
+.sp-section-subheading {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--tempest-fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 20px 0 6px;
+}
+
+.sp-global-agent-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+}
+
+.sp-global-agent-icon {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+:root[data-theme="dark"] .sp-global-agent-icon.agent-icon--mono {
+  filter: invert(1);
+}
+
+.sp-global-agent-configured {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--tempest-accent-green);
+  flex-shrink: 0;
+}
+
+.sp-global-agent-install {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--tempest-border-default);
+  background: var(--tempest-bg-panel);
+  color: var(--tempest-fg-default);
+  cursor: pointer;
+}
+
+.sp-global-agent-install:hover {
+  background: var(--tempest-bg-hover);
+}
+
+.sp-global-agent-install:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .sp-apikey-add-btn {
   display: flex;
   align-items: center;

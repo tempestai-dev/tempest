@@ -38,8 +38,8 @@ async function main(): Promise<void> {
   }
 
   if (!projectPath) {
-    process.stderr.write('[Atlas] --path <project> is required\n');
-    process.exit(1);
+    // Global MCP configs (Goose, Codex CLI) omit --path; fall back to CWD.
+    projectPath = process.cwd();
   }
 
   const resolvedPath = path.resolve(projectPath);

@@ -422,6 +422,58 @@ fn check_atlas_db(project_path: String) -> bool {
         .exists()
 }
 
+fn global_home() -> std::path::PathBuf {
+    #[cfg(windows)]
+    let key = "USERPROFILE";
+    #[cfg(not(windows))]
+    let key = "HOME";
+    std::env::var(key).map(std::path::PathBuf::from).unwrap_or_else(|_| std::path::PathBuf::from("."))
+}
+
+#[tauri::command]
+fn check_goose_atlas_config() -> bool {
+    let p = global_home().join(".config").join("goose").join("profiles.yaml");
+    std::fs::read_to_string(p).map(|s| s.contains("atlas:")).unwrap_or(false)
+}
+
+#[tauri::command]
+fn write_goose_atlas_config(app: tauri::AppHandle) -> Result<(), String> {
+    let entry = atlas_resource_dir(&app)?.join("dist").join("mcp").join("server-entry.js");
+    let entry_str = entry.to_string_lossy().replace('\\', "/");
+    let path = global_home().join(".config").join("goose").join("profiles.yaml");
+    if let Some(p) = path.parent() { std::fs::create_dir_all(p).map_err(|e| e.to_string())?; }
+    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    if existing.contains("atlas:") { return Ok(()); }
+    let atlas_block = format!("  atlas:\n    name: Atlas\n    type: stdio\n    cmd: node\n    args:\n      - --liftoff-only\n      - {entry_str}\n    enabled: true\n");
+    let content = if existing.is_empty() {
+        format!("extensions:\n{atlas_block}")
+    } else if let Some(pos) = existing.find("extensions:") {
+        let insert_at = existing[pos..].find('\n').map(|n| pos + n + 1).unwrap_or(existing.len());
+        format!("{}{}{}", &existing[..insert_at], atlas_block, &existing[insert_at..])
+    } else {
+        format!("{}\nextensions:\n{atlas_block}", existing.trim_end())
+    };
+    std::fs::write(&path, content).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn check_codex_atlas_config() -> bool {
+    let p = global_home().join(".codex").join("config.toml");
+    std::fs::read_to_string(p).map(|s| s.contains("[mcp_servers.atlas]")).unwrap_or(false)
+}
+
+#[tauri::command]
+fn write_codex_atlas_config(app: tauri::AppHandle) -> Result<(), String> {
+    let entry = atlas_resource_dir(&app)?.join("dist").join("mcp").join("server-entry.js");
+    let entry_str = entry.to_string_lossy().replace('\\', "/");
+    let path = global_home().join(".codex").join("config.toml");
+    if let Some(p) = path.parent() { std::fs::create_dir_all(p).map_err(|e| e.to_string())?; }
+    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    if existing.contains("[mcp_servers.atlas]") { return Ok(()); }
+    let atlas_block = format!("\n[mcp_servers.atlas]\ncommand = \"node\"\nargs = [\"--liftoff-only\", \"{entry_str}\"]\n");
+    std::fs::write(&path, format!("{}{}", existing.trim_end(), atlas_block)).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn remove_atlas_index(project_path: String) -> Result<(), String> {
     let atlas_dir = std::path::Path::new(&project_path).join(".tempest").join("atlas");
@@ -3141,6 +3193,10 @@ pub fn run() {
             get_atlas_graph,
             atlas_query,
             check_atlas_db,
+            check_goose_atlas_config,
+            write_goose_atlas_config,
+            check_codex_atlas_config,
+            write_codex_atlas_config,
             remove_atlas_index,
             start_atlas_daemon,
             stop_atlas_daemon,
