@@ -851,6 +851,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
         command: agent ?? null,
         args,
         sandbox: sandboxParam,
+        dbIsolation: getSettings().dbIsolation,
         onEvent: channel,
       });
 

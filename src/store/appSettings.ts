@@ -14,6 +14,7 @@ export interface AppSettings {
   atlasAutoIndex: boolean;
   isolateAgents: boolean;
   autoApprove: boolean;
+  dbIsolation: boolean;
 }
 
 export const SETTINGS_DEFAULTS: AppSettings = {
@@ -29,6 +30,7 @@ export const SETTINGS_DEFAULTS: AppSettings = {
   atlasAutoIndex: false,
   isolateAgents: true,
   autoApprove: true,
+  dbIsolation: false,
 };
 
 export const FONT_FAMILY_OPTIONS: { label: string; value: string }[] = [

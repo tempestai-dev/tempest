@@ -475,6 +475,30 @@ fn write_codex_atlas_config(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn db_check_docker() -> bool {
+    dbiso::check_docker_available().await
+}
+
+#[tauri::command]
+fn db_check_ready() -> bool {
+    dbiso::get_current_base_image().is_some()
+}
+
+#[tauri::command]
+async fn db_build(
+    app: tauri::AppHandle,
+    conn_str: String,
+    method: String,
+) -> Result<(), String> {
+    let method = dbiso::SnapshotMethod::from_str(&method);
+    dbiso::build_base_image(&conn_str, method, move |msg| {
+        let _ = app.emit("db:log", &msg);
+    })
+    .await
+    .map(|_| ())
+}
+
+#[tauri::command]
 fn remove_atlas_index(project_path: String) -> Result<(), String> {
     let atlas_dir = std::path::Path::new(&project_path).join(".tempest").join("atlas");
     if atlas_dir.exists() {
@@ -2376,6 +2400,8 @@ struct PtySession {
     /// `None` when the session is running inside the Hephaestus sandbox, when
     /// `process_id()` returned `None` at spawn time, or on non-Windows.
     lifecycle_job: Mutex<Option<hephaestus::LifecycleJob>>,
+    /// DB isolation branch name. Taken on close to fire branch_delete.
+    db_branch_name: Mutex<Option<String>>,
 }
 
 /// Path of the per-worktree PID sidecar file. We persist the PTY's OS PID here
@@ -2502,12 +2528,26 @@ async fn create_pty_session(
     command: Option<String>,
     args: Option<Vec<String>>,
     sandbox: Option<SandboxSpec>,
+    db_isolation: Option<bool>,
     on_event: Channel<PtyOutputPayload>,
     state: tauri::State<'_, PtyState>,
 ) -> Result<(), String> {
     // Resolve (and cache) the shell once. Cheap if already populated; the first
     // call performs the ~100–200ms probe so no individual session pays for it twice.
     SHELL.get_or_init(resolve_shell);
+
+    // DB isolation: spin up a Docker branch of the base image and inject env vars.
+    // Silently skipped if no base image exists or Docker is unavailable.
+    let db_branch: Option<dbiso::DbBranch> = if db_isolation.unwrap_or(false) {
+        if dbiso::get_current_base_image().is_some() {
+            let branch_name = format!("tempest-{}", &session_id[..8.min(session_id.len())]);
+            dbiso::branch_create(&branch_name).await.ok()
+        } else {
+            None
+        }
+    } else {
+        None
+    };
 
     // The environment ID must equal the session ID so isolation state and the
     // PTY session share one key. Cloned because `session_id` is used again after
@@ -2518,6 +2558,7 @@ async fn create_pty_session(
     // runs on a dedicated blocking thread so it never starves Tauri's bounded IPC
     // worker pool. `tauri::State` is not `Send`, so the registry insert happens
     // back on the async side *after* this completes. All owned params move in.
+    let db_branch_name_stored = db_branch.as_ref().map(|b| b.name.clone());
     let session_id_log = session_id.clone();
     let (session, reader) = tauri::async_runtime::spawn_blocking(move || {
         let pty_system = native_pty_system();
@@ -2633,7 +2674,7 @@ async fn create_pty_session(
 
         // Build the CommandBuilder from either the sandbox-transformed command or
         // the plain base command.
-        let cmd = if let Some((_, ref prepared)) = sandboxed {
+        let mut cmd = if let Some((_, ref prepared)) = sandboxed {
             let mut c = CommandBuilder::new(&prepared.program);
             for a in &prepared.args {
                 c.arg(a);
@@ -2654,6 +2695,15 @@ async fn create_pty_session(
             c.cwd(&cwd);
             c
         };
+
+        // Inject DB isolation env vars so agents see an isolated DATABASE_URL.
+        if let Some(ref b) = db_branch {
+            cmd.env("DATABASE_URL", &b.connection_string);
+            cmd.env("PGHOST", "127.0.0.1");
+            cmd.env("PGPORT", b.port.to_string());
+            cmd.env("PGUSER", "postgres");
+            cmd.env("PGDATABASE", "postgres");
+        }
 
         let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
 
@@ -2722,6 +2772,7 @@ async fn create_pty_session(
                 cwd,
                 isolate_handle: Mutex::new(isolate_handle),
                 lifecycle_job: Mutex::new(lifecycle_job),
+                db_branch_name: Mutex::new(db_branch_name_stored),
             },
             reader,
         ))
@@ -2802,6 +2853,13 @@ fn close_pty_session(
             .process_id()
             .or_else(|| read_pid_file(&session.cwd));
 
+        // Fire-and-forget DB branch cleanup.
+        if let Some(branch_name) = session.db_branch_name.lock().unwrap().take() {
+            tauri::async_runtime::spawn(async move {
+                let _ = dbiso::branch_delete(&branch_name).await;
+            });
+        }
+
         // Drop the lifecycle job first: closing the Job Object handle fires
         // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE and terminates the tree atomically.
         // This reaches children that `taskkill /T` cannot (e.g. processes
@@ -2874,6 +2932,13 @@ fn close_and_remove_worktree(
         .or_else(|| read_pid_file(&worktree_path));
 
     if let Some(ref session) = removed {
+        // Fire-and-forget DB branch cleanup.
+        if let Some(branch_name) = session.db_branch_name.lock().unwrap().take() {
+            tauri::async_runtime::spawn(async move {
+                let _ = dbiso::branch_delete(&branch_name).await;
+            });
+        }
+
         // Drop the lifecycle job FIRST: closing the Job Object handle fires
         // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE and terminates the process tree
         // atomically — including processes reparented via Start-Process /
@@ -3197,6 +3262,9 @@ pub fn run() {
             write_goose_atlas_config,
             check_codex_atlas_config,
             write_codex_atlas_config,
+            db_check_docker,
+            db_check_ready,
+            db_build,
             remove_atlas_index,
             start_atlas_daemon,
             stop_atlas_daemon,

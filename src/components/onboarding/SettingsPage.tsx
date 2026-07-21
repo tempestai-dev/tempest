@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Cpu, GitBranch, ShieldCheck, GitCommitHorizontal } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Cpu, GitBranch, ShieldCheck, GitCommitHorizontal, Database } from 'lucide-react';
 import { useSettings, updateSetting } from '../../store/appSettings';
 import { useAttribution, setAttribution } from '../../store/attribution';
 import type { ReactNode } from 'react';
@@ -55,7 +55,7 @@ function SettingRow({ icon, title, description, enabled, onToggle, className }: 
 }
 
 export default function SettingsPage({ onBack, onComplete }: Props) {
-  const { atlasEnabled, isolateAgents, autoApprove } = useSettings();
+  const { atlasEnabled, isolateAgents, autoApprove, dbIsolation } = useSettings();
   const attribution = useAttribution();
 
   return (
@@ -93,6 +93,13 @@ export default function SettingsPage({ onBack, onComplete }: Props) {
               description="Passes the auto-approve flag to agents (e.g. --dangerously-skip-permissions) so they can read, write, and run commands without stopping to ask. Recommended for sandboxed sessions."
               enabled={autoApprove}
               onToggle={() => updateSetting('autoApprove', !autoApprove)}
+            />
+            <SettingRow
+              icon={<Database size={18} />}
+              title="Database Isolation"
+              description="Each agent session gets its own isolated clone of your project's database — agents can run migrations freely without touching each other or your live data. Requires Docker + setup in Settings → Database after onboarding."
+              enabled={dbIsolation}
+              onToggle={() => updateSetting('dbIsolation', !dbIsolation)}
             />
             <SettingRow
               className="ob-card--shine"

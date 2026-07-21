@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "crates/hephaestus"]
+members = [".", "crates/hephaestus", "crates/dbiso"]
 # hephaestus-driver is a kernel-mode `.sys` built with the WDK on its own; a
 # workspace cannot mix it with the user-mode staticlib/cdylib Tauri links, so it
 # is excluded and built separately. See crates/hephaestus-driver/README.md.
@@ -27,6 +27,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 hephaestus = { path = "crates/hephaestus" }
+dbiso = { path = "crates/dbiso" }
 tauri = { version = "2", features = ["protocol-asset", "unstable"] }
 url = "2"
 tauri-plugin-opener = "2"
