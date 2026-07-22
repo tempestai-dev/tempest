@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useLayoutEffect, useState } from "react";
 import type { Theme } from "./types";
 import { applyTheme } from "./applyTheme";
 import { getRuntimeState, setRuntimeState } from "../lib/runtimeState";
@@ -51,7 +51,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     applyTheme(theme);
   }, []);
 

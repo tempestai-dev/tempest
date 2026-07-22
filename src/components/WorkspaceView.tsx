@@ -277,21 +277,24 @@ export function WorkspaceView({ zen, name, path }: Props) {
       const openProjectPaths = new Set<string>();
       const allProjectData: { project: Project; wts: { name: string; path: string }[] }[] = [];
 
-      for (const project of projects) {
-        openProjectPaths.add(project.path);
-        const wts: { name: string; path: string }[] = [];
-        try {
-          const entries = await invoke<{ name: string; path: string; is_dir: boolean }[]>(
+      // Scan all projects' .tempest/ dirs concurrently — serialising this made
+      // launch time scale linearly with project count.
+      const scans = await Promise.all(
+        projects.map((project) =>
+          invoke<{ name: string; path: string; is_dir: boolean }[]>(
             "list_directory",
             { path: `${project.path}/.tempest` }
-          );
-          entries.filter((e) => e.is_dir && !TEMPEST_INTERNAL_DIRS.has(e.name)).forEach((e) => {
-            wts.push({ name: e.name, path: e.path });
-            diskWorktreePaths.add(e.path);
-          });
-        } catch {
-          // .tempest/ doesn't exist or project path is gone
-        }
+          ).catch(() => [] as { name: string; path: string; is_dir: boolean }[])
+        )
+      );
+
+      for (const [i, project] of projects.entries()) {
+        openProjectPaths.add(project.path);
+        const wts: { name: string; path: string }[] = [];
+        scans[i].filter((e) => e.is_dir && !TEMPEST_INTERNAL_DIRS.has(e.name)).forEach((e) => {
+          wts.push({ name: e.name, path: e.path });
+          diskWorktreePaths.add(e.path);
+        });
 
         // Restore user's custom worktree order if persisted from a previous drag.
         const storedWtOrder = getOpenProjects().find(p => p.id === project.id)?.worktreeOrder;

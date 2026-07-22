@@ -13,10 +13,12 @@ import { loadChat } from "./lib/chatHistory";
 // PTY sessions to spawn twice on mount. This matches Termic's design decision.
 (async () => {
   document.addEventListener("contextmenu", (e) => e.preventDefault());
-  // Hydrate every in-memory mirror from SQLite before the first render.
-  // Projects must be hydrated before chat (chat resolves project path → id).
-  await Promise.all([loadAppState(), loadSessions(), loadProjects(), loadRecents(), loadTabs()]);
-  await loadChat();
+  // Hydrate every in-memory mirror from SQLite before the first render. All of
+  // these are independent — loadChat only resolves project path → id lazily at
+  // read time, so it does not need loadProjects to have finished first.
+  await Promise.all([
+    loadAppState(), loadSessions(), loadProjects(), loadRecents(), loadTabs(), loadChat(),
+  ]);
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <ThemeProvider>
       <App />

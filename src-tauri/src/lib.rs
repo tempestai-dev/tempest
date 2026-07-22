@@ -11,7 +11,7 @@ use hephaestus::Isolate;
 static ISOLATE: std::sync::OnceLock<Arc<dyn Isolate>> = std::sync::OnceLock::new();
 
 
-#[tauri::command]
+#[tauri::command(async)]
 fn create_workspace(location: String, name: String) -> Result<String, String> {
     let path = std::path::Path::new(&location).join(&name);
     std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
@@ -25,7 +25,7 @@ struct DirEntry {
     is_dir: bool,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn list_directory(path: String) -> Result<Vec<DirEntry>, String> {
     #[cfg(windows)]
     let path = path.replace('/', "\\");
@@ -52,12 +52,12 @@ fn list_directory(path: String) -> Result<Vec<DirEntry>, String> {
     Ok(entries)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn read_file(path: String) -> Result<String, String> {
     std::fs::read_to_string(&path).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn write_file(path: String, content: String) -> Result<(), String> {
     std::fs::write(&path, content).map_err(|e| e.to_string())
 }
@@ -94,7 +94,7 @@ fn atlas_resource_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, Stri
 /// background. The Node process initialises the .atlas/ directory and builds the
 /// first full code-graph index, then exits. Fire-and-forget — any errors are
 /// written to stderr by the Node process itself.
-#[tauri::command]
+#[tauri::command(async)]
 fn start_atlas_index(app: tauri::AppHandle, project_path: String) -> Result<(), String> {
     let entry = atlas_resource_dir(&app)?
         .join("dist")
@@ -260,7 +260,7 @@ struct GraphData {
     edges: Vec<SymbolEdge>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_atlas_graph(project_path: String) -> Result<GraphData, String> {
     let db_path = std::path::Path::new(&project_path)
         .join(".tempest")
@@ -330,7 +330,7 @@ struct SymbolMatch {
 /// `question`, scores every indexed symbol by name/path matches, and returns the
 /// top matches. Real data from the project's `.tempest/atlas/atlas.db`; used to
 /// answer `@codebase` mentions in Chat.
-#[tauri::command]
+#[tauri::command(async)]
 fn atlas_query(project_path: String, question: String) -> Result<Vec<SymbolMatch>, String> {
     let db_path = std::path::Path::new(&project_path)
         .join(".tempest")
@@ -413,7 +413,7 @@ fn atlas_query(project_path: String, question: String) -> Result<Vec<SymbolMatch
     Ok(scored.into_iter().take(40).map(|(_, s)| s).collect())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn check_atlas_db(project_path: String) -> bool {
     std::path::Path::new(&project_path)
         .join(".tempest")
@@ -430,13 +430,13 @@ fn global_home() -> std::path::PathBuf {
     std::env::var(key).map(std::path::PathBuf::from).unwrap_or_else(|_| std::path::PathBuf::from("."))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn check_goose_atlas_config() -> bool {
     let p = global_home().join(".config").join("goose").join("profiles.yaml");
     std::fs::read_to_string(p).map(|s| s.contains("atlas:")).unwrap_or(false)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn write_goose_atlas_config(app: tauri::AppHandle) -> Result<(), String> {
     let entry = atlas_resource_dir(&app)?.join("dist").join("mcp").join("server-entry.js");
     let entry_str = entry.to_string_lossy().replace('\\', "/");
@@ -456,13 +456,13 @@ fn write_goose_atlas_config(app: tauri::AppHandle) -> Result<(), String> {
     std::fs::write(&path, content).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn check_codex_atlas_config() -> bool {
     let p = global_home().join(".codex").join("config.toml");
     std::fs::read_to_string(p).map(|s| s.contains("[mcp_servers.atlas]")).unwrap_or(false)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn write_codex_atlas_config(app: tauri::AppHandle) -> Result<(), String> {
     let entry = atlas_resource_dir(&app)?.join("dist").join("mcp").join("server-entry.js");
     let entry_str = entry.to_string_lossy().replace('\\', "/");
@@ -479,7 +479,7 @@ async fn db_check_docker() -> bool {
     dbiso::check_docker_available().await
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn db_check_ready(workspace_path: String) -> bool {
     dbiso::get_current_base_image(&workspace_path).is_some()
 }
@@ -567,7 +567,7 @@ fn shell_kill(state: tauri::State<'_, RunState>, session_id: String) -> Result<(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn db_list_branches(workspace_path: String) -> Vec<dbiso::DbBranch> {
     dbiso::all_branches(&workspace_path)
 }
@@ -577,7 +577,7 @@ async fn db_sweep_orphans() -> Result<(), String> {
     dbiso::sweep_orphans().await
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn remove_atlas_index(project_path: String) -> Result<(), String> {
     let atlas_dir = std::path::Path::new(&project_path).join(".tempest").join("atlas");
     if atlas_dir.exists() {
@@ -590,10 +590,10 @@ fn remove_atlas_index(project_path: String) -> Result<(), String> {
 /// Start the atlas daemon for a project (MCP server / file-watcher mode).
 /// If the daemon is already running for this path the call is a no-op.
 /// If it exited, it is restarted so the file watcher resumes.
-#[tauri::command]
+#[tauri::command(async)]
 fn start_atlas_daemon(
     app: tauri::AppHandle,
-    state: tauri::State<DaemonState>,
+    state: tauri::State<'_, DaemonState>,
     project_path: String,
 ) -> Result<(), String> {
     let mut map = state.0.lock().unwrap();
@@ -633,9 +633,9 @@ fn start_atlas_daemon(
 
 /// Kill the atlas daemon for a project. Called when the user removes the project
 /// from Tempest or the app is exiting.
-#[tauri::command]
+#[tauri::command(async)]
 fn stop_atlas_daemon(
-    state: tauri::State<DaemonState>,
+    state: tauri::State<'_, DaemonState>,
     project_path: String,
 ) -> Result<(), String> {
     let mut map = state.0.lock().unwrap();
@@ -736,10 +736,10 @@ fn spawn_atlas_mcp_bridge(app: &tauri::AppHandle, project_path: &str) -> Result<
     Ok(proc)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn atlas_mcp_tools(
     app: tauri::AppHandle,
-    state: tauri::State<AtlasMcpState>,
+    state: tauri::State<'_, AtlasMcpState>,
     project_path: String,
 ) -> Result<String, String> {
     let mut map = state.0.lock().unwrap();
@@ -760,10 +760,10 @@ fn atlas_mcp_tools(
     serde_json::to_string(&tools).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn atlas_mcp_call(
     app: tauri::AppHandle,
-    state: tauri::State<AtlasMcpState>,
+    state: tauri::State<'_, AtlasMcpState>,
     project_path: String,
     tool_name: String,
     args_json: String,
@@ -791,7 +791,7 @@ fn atlas_mcp_call(
     serde_json::to_string(&result).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn git_ls_files(path: String) -> Result<Vec<String>, String> {
     let out = new_command("git")
         .args(["ls-files"])
@@ -981,8 +981,8 @@ pub struct DbSnapshot {
 
 // Read the entire persisted graph for the in-memory mirror. Archived rows are
 // excluded (archiving is a future phase; the column exists but is never set yet).
-#[tauri::command]
-fn db_load(state: tauri::State<DbState>) -> Result<DbSnapshot, String> {
+#[tauri::command(async)]
+fn db_load(state: tauri::State<'_, DbState>) -> Result<DbSnapshot, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
 
     let projects = conn
@@ -1050,8 +1050,8 @@ fn db_load(state: tauri::State<DbState>) -> Result<DbSnapshot, String> {
 // Create a project row if absent, never clobbering fields owned by the projects
 // store (expanded, worktree_order, …). Used by the session write path to
 // guarantee the FK parent exists regardless of write ordering.
-#[tauri::command]
-fn db_ensure_project(state: tauri::State<DbState>, id: String, name: String, path: String) -> Result<(), String> {
+#[tauri::command(async)]
+fn db_ensure_project(state: tauri::State<'_, DbState>, id: String, name: String, path: String) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT INTO projects (id, name, path) VALUES (?1, ?2, ?3) ON CONFLICT(id) DO NOTHING",
@@ -1062,8 +1062,8 @@ fn db_ensure_project(state: tauri::State<DbState>, id: String, name: String, pat
 }
 
 // Full project upsert owned by the projects store.
-#[tauri::command]
-fn db_upsert_project(state: tauri::State<DbState>, project: DbProject) -> Result<(), String> {
+#[tauri::command(async)]
+fn db_upsert_project(state: tauri::State<'_, DbState>, project: DbProject) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     // atlas_indexed / context_tokens / system_prompt are intentionally NOT written
     // here — they are owned by the atlas decision and chat stores respectively, and
@@ -1083,32 +1083,32 @@ fn db_upsert_project(state: tauri::State<DbState>, project: DbProject) -> Result
     Ok(())
 }
 
-#[tauri::command]
-fn db_set_project_atlas_indexed(state: tauri::State<DbState>, id: String, indexed: bool) -> Result<(), String> {
+#[tauri::command(async)]
+fn db_set_project_atlas_indexed(state: tauri::State<'_, DbState>, id: String, indexed: bool) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute("UPDATE projects SET atlas_indexed = ?2 WHERE id = ?1", rusqlite::params![id, indexed])
         .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-#[tauri::command]
-fn db_set_project_context_tokens(state: tauri::State<DbState>, id: String, tokens: Option<i64>) -> Result<(), String> {
+#[tauri::command(async)]
+fn db_set_project_context_tokens(state: tauri::State<'_, DbState>, id: String, tokens: Option<i64>) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute("UPDATE projects SET context_tokens = ?2 WHERE id = ?1", rusqlite::params![id, tokens])
         .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-#[tauri::command]
-fn db_set_project_system_prompt(state: tauri::State<DbState>, id: String, prompt: Option<String>) -> Result<(), String> {
+#[tauri::command(async)]
+fn db_set_project_system_prompt(state: tauri::State<'_, DbState>, id: String, prompt: Option<String>) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute("UPDATE projects SET system_prompt = ?2 WHERE id = ?1", rusqlite::params![id, prompt])
         .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-#[tauri::command]
-fn db_upsert_branch(state: tauri::State<DbState>, branch: DbBranch) -> Result<(), String> {
+#[tauri::command(async)]
+fn db_upsert_branch(state: tauri::State<'_, DbState>, branch: DbBranch) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT INTO branches (id, project_id, name, path) VALUES (?1, ?2, ?3, ?4) \
@@ -1120,8 +1120,8 @@ fn db_upsert_branch(state: tauri::State<DbState>, branch: DbBranch) -> Result<()
     Ok(())
 }
 
-#[tauri::command]
-fn db_upsert_session(state: tauri::State<DbState>, session: DbSession) -> Result<(), String> {
+#[tauri::command(async)]
+fn db_upsert_session(state: tauri::State<'_, DbState>, session: DbSession) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let db_state = if session.closed { "CLOSED" } else { "ACTIVE" };
     conn.execute(
@@ -1150,24 +1150,24 @@ fn db_upsert_session(state: tauri::State<DbState>, session: DbSession) -> Result
     Ok(())
 }
 
-#[tauri::command]
-fn db_delete_session(state: tauri::State<DbState>, id: String) -> Result<(), String> {
+#[tauri::command(async)]
+fn db_delete_session(state: tauri::State<'_, DbState>, id: String) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM sessions WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-#[tauri::command]
-fn db_delete_branch(state: tauri::State<DbState>, id: String) -> Result<(), String> {
+#[tauri::command(async)]
+fn db_delete_branch(state: tauri::State<'_, DbState>, id: String) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM branches WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-#[tauri::command]
-fn db_delete_project(state: tauri::State<DbState>, id: String) -> Result<(), String> {
+#[tauri::command(async)]
+fn db_delete_project(state: tauri::State<'_, DbState>, id: String) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM projects WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;
@@ -1176,8 +1176,8 @@ fn db_delete_project(state: tauri::State<DbState>, id: String) -> Result<(), Str
 
 // Delete every session whose id is not in `valid_ids` (the startup orphan sweep).
 // An empty list clears all sessions, matching `DELETE FROM sessions`.
-#[tauri::command]
-fn db_prune_sessions(state: tauri::State<DbState>, valid_ids: Vec<String>) -> Result<(), String> {
+#[tauri::command(async)]
+fn db_prune_sessions(state: tauri::State<'_, DbState>, valid_ids: Vec<String>) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     if valid_ids.is_empty() {
         conn.execute("DELETE FROM sessions", []).map_err(|e| e.to_string())?;
@@ -1204,8 +1204,8 @@ pub struct DbRecent {
     pub last_opened: String,
 }
 
-#[tauri::command]
-fn db_load_recents(state: tauri::State<DbState>) -> Result<Vec<DbRecent>, String> {
+#[tauri::command(async)]
+fn db_load_recents(state: tauri::State<'_, DbState>) -> Result<Vec<DbRecent>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.prepare("SELECT id, name, path, last_opened FROM recents ORDER BY last_opened DESC")
         .and_then(|mut stmt| {
@@ -1217,8 +1217,8 @@ fn db_load_recents(state: tauri::State<DbState>) -> Result<Vec<DbRecent>, String
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-fn db_upsert_recent(state: tauri::State<DbState>, recent: DbRecent) -> Result<(), String> {
+#[tauri::command(async)]
+fn db_upsert_recent(state: tauri::State<'_, DbState>, recent: DbRecent) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT INTO recents (id, name, path, last_opened) VALUES (?1, ?2, ?3, ?4) \
@@ -1229,8 +1229,8 @@ fn db_upsert_recent(state: tauri::State<DbState>, recent: DbRecent) -> Result<()
     Ok(())
 }
 
-#[tauri::command]
-fn db_delete_recent(state: tauri::State<DbState>, path: String) -> Result<(), String> {
+#[tauri::command(async)]
+fn db_delete_recent(state: tauri::State<'_, DbState>, path: String) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM recents WHERE path = ?1", rusqlite::params![path])
         .map_err(|e| e.to_string())?;
@@ -1251,8 +1251,8 @@ pub struct DbTab {
     pub preview_url: Option<String>,
 }
 
-#[tauri::command]
-fn db_load_tabs(state: tauri::State<DbState>) -> Result<Vec<DbTab>, String> {
+#[tauri::command(async)]
+fn db_load_tabs(state: tauri::State<'_, DbState>) -> Result<Vec<DbTab>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.prepare("SELECT id, project_id, kind, cwd, name, preview_url FROM tabs ORDER BY created_at")
         .and_then(|mut stmt| {
@@ -1267,8 +1267,8 @@ fn db_load_tabs(state: tauri::State<DbState>) -> Result<Vec<DbTab>, String> {
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-fn db_upsert_tab(state: tauri::State<DbState>, tab: DbTab) -> Result<(), String> {
+#[tauri::command(async)]
+fn db_upsert_tab(state: tauri::State<'_, DbState>, tab: DbTab) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT INTO tabs (id, project_id, kind, cwd, name, preview_url) VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
@@ -1280,8 +1280,8 @@ fn db_upsert_tab(state: tauri::State<DbState>, tab: DbTab) -> Result<(), String>
     Ok(())
 }
 
-#[tauri::command]
-fn db_delete_tab(state: tauri::State<DbState>, id: String) -> Result<(), String> {
+#[tauri::command(async)]
+fn db_delete_tab(state: tauri::State<'_, DbState>, id: String) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM tabs WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;
@@ -1290,8 +1290,8 @@ fn db_delete_tab(state: tauri::State<DbState>, id: String) -> Result<(), String>
 
 // ── App state (key/value preferences) ────────────────────────────────────────
 
-#[tauri::command]
-fn db_load_app_state(state: tauri::State<DbState>) -> Result<Vec<(String, String)>, String> {
+#[tauri::command(async)]
+fn db_load_app_state(state: tauri::State<'_, DbState>) -> Result<Vec<(String, String)>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.prepare("SELECT key, value FROM app_state")
         .and_then(|mut stmt| {
@@ -1301,8 +1301,8 @@ fn db_load_app_state(state: tauri::State<DbState>) -> Result<Vec<(String, String
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-fn db_set_app_state(state: tauri::State<DbState>, key: String, value: String) -> Result<(), String> {
+#[tauri::command(async)]
+fn db_set_app_state(state: tauri::State<'_, DbState>, key: String, value: String) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT INTO app_state (key, value) VALUES (?1, ?2) \
@@ -1322,8 +1322,8 @@ pub struct DbChatMessage {
     pub parts: String, // JSON MessagePart[]
 }
 
-#[tauri::command]
-fn db_load_chat(state: tauri::State<DbState>, project_id: String) -> Result<Vec<DbChatMessage>, String> {
+#[tauri::command(async)]
+fn db_load_chat(state: tauri::State<'_, DbState>, project_id: String) -> Result<Vec<DbChatMessage>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.prepare("SELECT id, role, parts FROM chat_messages WHERE project_id = ?1 ORDER BY seq")
         .and_then(|mut stmt| {
@@ -1337,8 +1337,8 @@ fn db_load_chat(state: tauri::State<DbState>, project_id: String) -> Result<Vec<
 
 // Replace a project's entire conversation in one transaction (matches the
 // save-whole-array semantics of the chat store).
-#[tauri::command]
-fn db_replace_chat(state: tauri::State<DbState>, project_id: String, messages: Vec<DbChatMessage>) -> Result<(), String> {
+#[tauri::command(async)]
+fn db_replace_chat(state: tauri::State<'_, DbState>, project_id: String, messages: Vec<DbChatMessage>) -> Result<(), String> {
     let mut conn = state.0.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     tx.execute("DELETE FROM chat_messages WHERE project_id = ?1", rusqlite::params![project_id])
@@ -1464,7 +1464,7 @@ fn copy_file_or_dir(src: &std::path::Path, dst: &std::path::Path) -> std::io::Re
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn git_init(project_path: String) -> Result<(), String> {
     let project = std::path::Path::new(&project_path);
 
@@ -1500,7 +1500,7 @@ fn git_init(project_path: String) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn check_git_initialized(path: String) -> bool {
     let p = std::path::Path::new(&path);
     let initialized = run_git(p, &["rev-parse", "--git-dir"])
@@ -1512,7 +1512,7 @@ fn check_git_initialized(path: String) -> bool {
     initialized
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn git_add_remote(repo_path: String, remote_url: String) -> Result<(), String> {
     let path = std::path::Path::new(&repo_path);
     let out = run_git(path, &["remote", "add", "origin", &remote_url])?;
@@ -1724,7 +1724,7 @@ struct GitStatusEntry {
     path: String,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn check_program_available(program: String) -> bool {
     let check_cmd = if cfg!(windows) { "where" } else { "which" };
     // Multi-word hints like "gh copilot" — only check the base executable name.
@@ -1745,7 +1745,7 @@ struct BranchInfo {
     worktree_path: Option<String>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn git_status(path: String) -> Result<Vec<GitStatusEntry>, String> {
     let output = new_command("git")
         .args(["status", "--short", "--untracked-files=all"])
@@ -1774,7 +1774,7 @@ fn git_status(path: String) -> Result<Vec<GitStatusEntry>, String> {
     Ok(entries)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_git_branch(path: String) -> Result<String, String> {
     // symbolic-ref works even on repos with no commits; rev-parse fails there
     let output = new_command("git")
@@ -1800,7 +1800,7 @@ struct CommitInfo {
 
 /// Return the most recent commits as structured records. An empty repo (no
 /// commits yet) yields an empty list rather than an error.
-#[tauri::command]
+#[tauri::command(async)]
 fn git_recent_commits(path: String, count: u32) -> Result<Vec<CommitInfo>, String> {
     let n = if count == 0 { 5 } else { count.min(50) };
     let output = new_command("git")
@@ -1839,7 +1839,7 @@ fn git_recent_commits(path: String, count: u32) -> Result<Vec<CommitInfo>, Strin
 }
 
 /// Return the `origin` remote URL, or an empty string when no remote is set.
-#[tauri::command]
+#[tauri::command(async)]
 fn git_remote_url(path: String) -> Result<String, String> {
     let output = new_command("git")
         .args(["remote", "get-url", "origin"])
@@ -1854,7 +1854,7 @@ fn git_remote_url(path: String) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn git_list_branches(repo_path: String) -> Result<Vec<BranchInfo>, String> {
     let dir = std::path::Path::new(&repo_path);
 
@@ -1920,7 +1920,7 @@ fn git_list_branches(repo_path: String) -> Result<Vec<BranchInfo>, String> {
     Ok(branches)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn git_switch_branch(repo_path: String, branch: String) -> Result<(), String> {
     let dir = std::path::Path::new(&repo_path);
 
@@ -1967,7 +1967,7 @@ fn git_switch_branch(repo_path: String, branch: String) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn git_delete_branch(repo_path: String, branch: String, force: bool, delete_remote: bool) -> Result<(), String> {
     let dir = std::path::Path::new(&repo_path);
     let flag = if force { "-D" } else { "-d" };
@@ -1982,7 +1982,7 @@ fn git_delete_branch(repo_path: String, branch: String, force: bool, delete_remo
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn git_worktree_remove(repo_path: String, worktree_path: String) -> Result<(), String> {
     #[cfg(windows)]
     let worktree_path = worktree_path.replace('/', "\\");
@@ -2043,7 +2043,7 @@ fn git_worktree_remove(repo_path: String, worktree_path: String) -> Result<(), S
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn git_branch_delete(repo_path: String, branch_name: String) -> Result<(), String> {
     let out = new_command("git")
         .args(["-C", &repo_path, "branch", "-D", &branch_name])
@@ -2108,7 +2108,7 @@ struct FileStats {
     dels: u32,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn git_numstat(repo_path: String) -> Result<Vec<FileStats>, String> {
     let dir = std::path::Path::new(&repo_path);
 
@@ -2235,7 +2235,7 @@ fn parse_unified_diff(text: &str) -> Vec<FileDiff> {
     results
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn git_diff(path: String) -> Result<Vec<FileDiff>, String> {
     let dir = std::path::Path::new(&path);
     // Show only uncommitted changes (working tree + staged) vs HEAD.
@@ -2306,7 +2306,7 @@ async fn git_push_branch(repo_path: String, commit_message: Option<String>) -> R
 
 // ── Push (no auto-commit) ────────────────────────────────────────────────────
 
-#[tauri::command]
+#[tauri::command(async)]
 fn git_push_current_branch(repo_path: String) -> Result<String, String> {
     let dir = std::path::Path::new(&repo_path);
 
@@ -2334,7 +2334,7 @@ fn git_push_current_branch(repo_path: String) -> Result<String, String> {
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn git_create_push_branch(repo_path: String, branch_name: String) -> Result<String, String> {
     let branch_name = branch_name.trim().to_string();
     if branch_name.is_empty() {
@@ -2367,21 +2367,21 @@ fn git_create_push_branch(repo_path: String, branch_name: String) -> Result<Stri
 
 // ── Staging ──────────────────────────────────────────────────────────────────
 
-#[tauri::command]
+#[tauri::command(async)]
 fn git_stage(repo_path: String, file_path: String) -> Result<(), String> {
     let dir = std::path::Path::new(&repo_path);
     let out = run_git(dir, &["add", "--", &file_path])?;
     if out.status.success() { Ok(()) } else { Err(git_stderr(&out)) }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn git_unstage(repo_path: String, file_path: String) -> Result<(), String> {
     let dir = std::path::Path::new(&repo_path);
     let out = run_git(dir, &["restore", "--staged", "--", &file_path])?;
     if out.status.success() { Ok(()) } else { Err(git_stderr(&out)) }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn git_discard(repo_path: String, file_path: String, untracked: bool) -> Result<(), String> {
     let dir = std::path::Path::new(&repo_path);
     if untracked {
@@ -2395,7 +2395,7 @@ fn git_discard(repo_path: String, file_path: String, untracked: bool) -> Result<
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn git_commit_staged(repo_path: String, message: String) -> Result<(), String> {
     if message.trim().is_empty() {
         return Err("Commit message cannot be empty".to_string());
@@ -2405,7 +2405,7 @@ fn git_commit_staged(repo_path: String, message: String) -> Result<(), String> {
     if out.status.success() { Ok(()) } else { Err(git_stderr(&out)) }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn git_diff_file(path: String, file_path: String, staged: bool, untracked: bool) -> Result<Vec<DiffLine>, String> {
     let dir = std::path::Path::new(&path);
 
@@ -2540,7 +2540,7 @@ pub struct AtlasMcpState(pub(crate) Mutex<std::collections::HashMap<String, McpB
 #[tauri::command]
 fn open_zen_window(
     app: tauri::AppHandle,
-    state: tauri::State<ZenState>,
+    state: tauri::State<'_, ZenState>,
     path: String,
     name: String,
 ) -> Result<(), String> {
@@ -2569,7 +2569,7 @@ fn open_zen_window(
 
 #[tauri::command]
 fn get_zen_config(
-    state: tauri::State<ZenState>,
+    state: tauri::State<'_, ZenState>,
     label: String,
 ) -> Option<(String, String)> {
     state.0.lock().unwrap().get(&label).cloned()
@@ -2891,7 +2891,7 @@ async fn create_pty_session(
 fn write_to_pty(
     session_id: String,
     data: Vec<u8>,
-    state: tauri::State<PtyState>,
+    state: tauri::State<'_, PtyState>,
 ) -> Result<(), String> {
     let session_arc = state.0.get(&session_id).map(|r| Arc::clone(&*r));
     if let Some(session) = session_arc {
@@ -2905,7 +2905,7 @@ fn resize_pty(
     session_id: String,
     rows: u16,
     cols: u16,
-    state: tauri::State<PtyState>,
+    state: tauri::State<'_, PtyState>,
 ) -> Result<(), String> {
     let session_arc = state.0.get(&session_id).map(|r| Arc::clone(&*r));
     if let Some(session) = session_arc {
@@ -2916,10 +2916,10 @@ fn resize_pty(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn close_pty_session(
     session_id: String,
-    state: tauri::State<PtyState>,
+    state: tauri::State<'_, PtyState>,
 ) -> Result<(), String> {
     // Atomically remove the session from the map and operate through its Arc.
     let removed = state.0.remove(&session_id).map(|(_, arc)| arc);
@@ -2992,12 +2992,12 @@ fn close_pty_session(
 /// race where React state updates between two separate invokes drop the pending
 /// `close_pty_session` callback before Rust finishes killing the process — which
 /// left the PowerShell child alive and the worktree dir locked (os error 32).
-#[tauri::command]
+#[tauri::command(async)]
 fn close_and_remove_worktree(
     session_id: String,
     repo_path: String,
     worktree_path: String,
-    state: tauri::State<PtyState>,
+    state: tauri::State<'_, PtyState>,
 ) -> Result<(), String> {
     // 1-4. Kill the PTY child and wait for it to fully exit, then drop handles.
     //      If the session isn't in the map (already closed), skip straight to
@@ -3131,7 +3131,7 @@ const HOOK_END:   &str = "# Tempest-attribution-end";
 
 /// Write (or append) a `prepare-commit-msg` hook that adds a co-author trailer.
 /// Idempotent — calling it twice has no extra effect.
-#[tauri::command]
+#[tauri::command(async)]
 fn write_coauthor_hook(repo_path: String, coauthor_line: String) -> Result<(), String> {
     let hooks_dir = std::path::Path::new(&repo_path).join(".git").join("hooks");
     std::fs::create_dir_all(&hooks_dir).map_err(|e| e.to_string())?;
@@ -3172,7 +3172,7 @@ fn write_coauthor_hook(repo_path: String, coauthor_line: String) -> Result<(), S
 
 /// Remove the Tempest co-author block from the `prepare-commit-msg` hook.
 /// Deletes the file entirely if nothing else remains.
-#[tauri::command]
+#[tauri::command(async)]
 fn remove_coauthor_hook(repo_path: String) -> Result<(), String> {
     let hook_path = std::path::Path::new(&repo_path)
         .join(".git").join("hooks").join("prepare-commit-msg");

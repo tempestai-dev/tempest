@@ -1365,6 +1365,13 @@
   border-radius: 8px;
   overflow: hidden;
   background: #ffffff;
+  /* "All files" renders every hunk of every changed file. content-visibility
+     lets the engine skip layout+paint for off-screen blocks; contain-intrinsic-size
+     gives the scrollbar a placeholder height so it doesn't jump while scrolling.
+     ponytail: native skip-rendering, not virtualisation — the React tree is still
+     fully built, so a 10k-file diff still costs reconciliation. Virtualise then. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 400px;
 }
 
 [data-theme="dark"] .dv-file-block {

@@ -61,7 +61,18 @@ export interface DbChatMessage {
   parts: string; // JSON MessagePart[]
 }
 
-export const dbLoad = (): Promise<DbSnapshot> => invoke("db_load");
+// Three independent stores (sessions, projects, chat) each hydrate from the full
+// snapshot at boot. Share one in-flight request between concurrent callers so the
+// projects+branches+sessions query set runs once instead of three times. The
+// promise is dropped as soon as it settles, so later callers always get fresh data.
+let _snapshotInFlight: Promise<DbSnapshot> | null = null;
+export const dbLoad = (): Promise<DbSnapshot> => {
+  if (!_snapshotInFlight) {
+    _snapshotInFlight = invoke<DbSnapshot>("db_load");
+    _snapshotInFlight.finally(() => { _snapshotInFlight = null; }).catch(() => {});
+  }
+  return _snapshotInFlight;
+};
 
 export const dbEnsureProject = (id: string, name: string, path: string): Promise<void> =>
   invoke("db_ensure_project", { id, name, path });
