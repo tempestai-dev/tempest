@@ -32,10 +32,11 @@ pub struct BaseImage {
     pub created_at: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct DbBranch {
     pub name: String,
     pub container_id: String,
     pub port: u16,
     pub connection_string: String,
+    pub created_at: String,
 }

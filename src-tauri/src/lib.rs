@@ -480,8 +480,8 @@ async fn db_check_docker() -> bool {
 }
 
 #[tauri::command]
-fn db_check_ready() -> bool {
-    dbiso::get_current_base_image().is_some()
+fn db_check_ready(workspace_path: String) -> bool {
+    dbiso::get_current_base_image(&workspace_path).is_some()
 }
 
 #[tauri::command]
@@ -489,13 +489,92 @@ async fn db_build(
     app: tauri::AppHandle,
     conn_str: String,
     method: String,
+    workspace_path: String,
+    project_name: String,
 ) -> Result<(), String> {
     let method = dbiso::SnapshotMethod::from_str(&method);
-    dbiso::build_base_image(&conn_str, method, move |msg| {
+    dbiso::build_base_image(&conn_str, method, &workspace_path, &project_name, move |msg| {
         let _ = app.emit("db:log", &msg);
     })
     .await
     .map(|_| ())
+}
+
+#[tauri::command]
+async fn shell_run(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, RunState>,
+    session_id: String,
+    cwd: String,
+    cmd: String,
+) -> Result<(), String> {
+    #[cfg(windows)]
+    let mut child = std::process::Command::new("cmd")
+        .args(["/C", &cmd])
+        .current_dir(&cwd)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    #[cfg(not(windows))]
+    let mut child = std::process::Command::new("sh")
+        .args(["-c", &cmd])
+        .current_dir(&cwd)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    let stdout = child.stdout.take().ok_or("no stdout")?;
+    let stderr = child.stderr.take().ok_or("no stderr")?;
+    state.0.lock().unwrap().insert(session_id.clone(), child);
+
+    use std::sync::{Arc, atomic::{AtomicU8, Ordering}};
+    let done = Arc::new(AtomicU8::new(0));
+
+    let app2 = app.clone(); let sid2 = session_id.clone(); let ev = format!("run:{sid2}");
+    let done2 = done.clone(); let app_d2 = app.clone(); let sid_d2 = session_id.clone();
+    std::thread::spawn(move || {
+        use std::io::{BufRead, BufReader};
+        for line in BufReader::new(stdout).lines().flatten() {
+            let _ = app2.emit(&ev, &line);
+        }
+        if done2.fetch_add(1, Ordering::SeqCst) == 1 {
+            let _ = app_d2.emit(&format!("run:{sid_d2}:done"), ());
+        }
+    });
+
+    let app3 = app.clone(); let sid3 = session_id.clone(); let ev3 = format!("run:{sid3}");
+    let done3 = done.clone(); let app_d3 = app.clone(); let sid_d3 = session_id.clone();
+    std::thread::spawn(move || {
+        use std::io::{BufRead, BufReader};
+        for line in BufReader::new(stderr).lines().flatten() {
+            let _ = app3.emit(&ev3, &line);
+        }
+        if done3.fetch_add(1, Ordering::SeqCst) == 1 {
+            let _ = app_d3.emit(&format!("run:{sid_d3}:done"), ());
+        }
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+fn shell_kill(state: tauri::State<'_, RunState>, session_id: String) -> Result<(), String> {
+    if let Some(mut child) = state.0.lock().unwrap().remove(&session_id) {
+        let _ = child.kill();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn db_list_branches(workspace_path: String) -> Vec<dbiso::DbBranch> {
+    dbiso::all_branches(&workspace_path)
+}
+
+#[tauri::command]
+async fn db_sweep_orphans() -> Result<(), String> {
+    dbiso::sweep_orphans().await
 }
 
 #[tauri::command]
@@ -2445,6 +2524,8 @@ pub struct ZenState(pub Mutex<std::collections::HashMap<String, (String, String)
 
 pub struct DaemonState(pub Mutex<std::collections::HashMap<String, std::process::Child>>);
 
+pub struct RunState(pub Mutex<std::collections::HashMap<String, std::process::Child>>);
+
 pub struct DbState(pub Mutex<rusqlite::Connection>);
 
 struct McpBridgeProcess {
@@ -2539,9 +2620,9 @@ async fn create_pty_session(
     // DB isolation: spin up a Docker branch of the base image and inject env vars.
     // Silently skipped if no base image exists or Docker is unavailable.
     let db_branch: Option<dbiso::DbBranch> = if db_isolation.unwrap_or(false) {
-        if dbiso::get_current_base_image().is_some() {
+        if dbiso::get_current_base_image(&cwd).is_some() {
             let branch_name = format!("tempest-{}", &session_id[..8.min(session_id.len())]);
-            dbiso::branch_create(&branch_name).await.ok()
+            dbiso::branch_create(&branch_name, &cwd).await.ok()
         } else {
             None
         }
@@ -3202,6 +3283,7 @@ pub fn run() {
         .manage(PtyState(Arc::new(DashMap::new())))
         .manage(ZenState(Mutex::new(std::collections::HashMap::new())))
         .manage(DaemonState(Mutex::new(std::collections::HashMap::new())))
+        .manage(RunState(Mutex::new(std::collections::HashMap::new())))
         .manage(AtlasMcpState(Mutex::new(std::collections::HashMap::new())))
         .setup(|app| {
             use tauri::Manager;
@@ -3211,6 +3293,7 @@ pub fn run() {
             let conn = init_db(app.handle())
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
             app.manage(DbState(Mutex::new(conn)));
+            tauri::async_runtime::spawn(async { let _ = dbiso::sweep_orphans().await; });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -3265,6 +3348,10 @@ pub fn run() {
             db_check_docker,
             db_check_ready,
             db_build,
+            db_list_branches,
+            db_sweep_orphans,
+            shell_run,
+            shell_kill,
             remove_atlas_index,
             start_atlas_daemon,
             stop_atlas_daemon,

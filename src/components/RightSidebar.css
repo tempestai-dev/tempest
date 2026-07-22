@@ -146,11 +146,461 @@
 /* ── Body / scroll ──────────────────────────────────────────────────────── */
 
 .rs-body {
-  flex: 1;
+  flex: 3;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   position: relative;
+}
+
+/* ── Bottom panel (DB Clones / Run) ─────────────────────────────────────── */
+
+.rs-bottom {
+  flex: 2;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.rs-bottom-header {
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  padding: 0 12px;
+  background: var(--tempest-bg-panel);
+}
+
+.rs-btab-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.rs-btab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0 4px 2px;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 450;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.rs-btab:hover {
+  color: var(--tempest-fg-default);
+}
+
+.rs-btab--active {
+  color: var(--tempest-fg-default);
+  font-weight: 500;
+  border-bottom-color: var(--tempest-accent-blue);
+}
+
+.rs-btab-sep {
+  color: var(--tempest-border-subtle);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  padding: 0 2px;
+}
+
+.rs-bottom-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* DB clone list rows */
+
+.rs-clone-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px 4px 8px;
+  min-width: 0;
+}
+
+.rs-clone-icon {
+  flex-shrink: 0;
+  color: var(--tempest-fg-subtle);
+}
+
+.rs-clone-name {
+  flex: 1;
+  font-size: 11px;
+  font-family: "Geist Mono", monospace;
+  color: var(--tempest-fg-default);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.rs-clone-port {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-family: "Geist Mono", monospace;
+  color: var(--tempest-accent-blue);
+  font-weight: 600;
+}
+
+.rs-clone-time {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--tempest-fg-subtle);
+}
+
+/* ── Run tab activity dot ────────────────────────────────────────────────── */
+
+.rs-btab-running {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--tempest-accent-green, #4ade80);
+  margin-left: 3px;
+  flex-shrink: 0;
+}
+
+/* ── Run tab ─────────────────────────────────────────────────────────────── */
+
+.rs-empty--sm {
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--tempest-fg-subtle);
+  user-select: none;
+}
+
+.rs-run-section-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--tempest-fg-subtle);
+  padding: 6px 10px 3px;
+}
+
+.rs-run-script-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px 3px 10px;
+  min-width: 0;
+}
+
+.rs-run-script-row:hover {
+  background: var(--tempest-bg-hover);
+}
+
+.rs-run-script-name {
+  font-size: 11px;
+  color: var(--tempest-fg-default);
+  flex-shrink: 0;
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rs-run-script-name--full {
+  flex: 1;
+  max-width: none;
+  font-family: "Geist Mono", monospace;
+  font-size: 10.5px;
+}
+
+.rs-run-script-desc {
+  flex: 1;
+  font-size: 10.5px;
+  font-family: "Geist Mono", monospace;
+  color: var(--tempest-fg-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.rs-run-play-btn,
+.rs-run-del-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.rs-run-play-btn {
+  color: var(--tempest-accent-blue);
+  opacity: 0;
+}
+
+.rs-run-script-row:hover .rs-run-play-btn {
+  opacity: 1;
+}
+
+.rs-run-play-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--tempest-accent-blue) 15%, transparent);
+}
+
+.rs-run-play-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.rs-run-del-btn {
+  color: var(--tempest-fg-subtle);
+  opacity: 0;
+}
+
+.rs-run-script-row:hover .rs-run-del-btn {
+  opacity: 1;
+}
+
+.rs-run-del-btn:hover {
+  background: color-mix(in srgb, var(--tempest-accent-red) 15%, transparent);
+  color: var(--tempest-accent-red);
+}
+
+.rs-run-add-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px 6px 10px;
+  margin-top: auto;
+}
+
+.rs-run-add-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: var(--tempest-accent-blue);
+  color: white;
+  cursor: pointer;
+  transition: opacity 0.1s;
+}
+
+.rs-run-add-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* ── Terminal tab ────────────────────────────────────────────────────────── */
+
+.rs-run-btn--sm {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+}
+
+.rs-terminal {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  font-family: "Geist Mono", monospace;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.rs-terminal-output {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 10px 2px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tempest-border-subtle) transparent;
+}
+
+.rs-terminal-output::-webkit-scrollbar { width: 4px; }
+.rs-terminal-output::-webkit-scrollbar-track { background: transparent; }
+.rs-terminal-output::-webkit-scrollbar-thumb { background: var(--tempest-border-subtle); border-radius: 2px; }
+
+.rs-terminal-pre {
+  margin: 0;
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  color: var(--tempest-fg-default);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.rs-terminal-placeholder {
+  color: var(--tempest-fg-subtle);
+  font-size: 11px;
+  padding: 8px 0;
+  display: block;
+}
+
+.rs-terminal-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px 6px;
+  flex-shrink: 0;
+}
+
+.rs-terminal-ps {
+  color: var(--tempest-accent-blue);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.rs-terminal-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--tempest-fg-default);
+  caret-color: var(--tempest-accent-blue);
+  line-height: 1.65;
+}
+
+.rs-terminal-input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.rs-terminal-ps--running {
+  color: var(--tempest-accent-green, #4ade80);
+  font-size: 8px;
+}
+
+.rs-terminal-running-label {
+  flex: 1;
+  font-size: 10.5px;
+  color: var(--tempest-fg-subtle);
+}
+
+.rs-terminal-stop-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border: 1px solid var(--tempest-accent-red);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tempest-accent-red);
+  font-size: 10px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.rs-terminal-stop-btn:hover {
+  background: color-mix(in srgb, var(--tempest-accent-red) 15%, transparent);
+}
+
+.rs-run {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.rs-run-bar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px;
+  flex-shrink: 0;
+}
+
+.rs-run-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--tempest-bg-hover);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 5px;
+  color: var(--tempest-fg-default);
+  font-family: "Geist Mono", monospace;
+  font-size: 11px;
+  padding: 4px 7px;
+  outline: none;
+  transition: border-color 0.12s;
+}
+
+.rs-run-input:focus {
+  border-color: var(--tempest-accent-blue);
+}
+
+.rs-run-input:disabled {
+  opacity: 0.5;
+}
+
+.rs-run-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 5px;
+  background: var(--tempest-accent-blue);
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+
+.rs-run-btn:hover:not(:disabled) { opacity: 0.85; }
+.rs-run-btn:disabled { opacity: 0.35; cursor: default; }
+
+.rs-run-btn--stop {
+  background: var(--tempest-accent-red);
+}
+
+.rs-run-log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2px 8px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tempest-border-subtle) transparent;
+}
+
+.rs-run-log::-webkit-scrollbar { width: 4px; }
+.rs-run-log::-webkit-scrollbar-track { background: transparent; }
+.rs-run-log::-webkit-scrollbar-thumb { background: var(--tempest-border-subtle); border-radius: 2px; }
+
+.rs-run-line {
+  font-family: "Geist Mono", monospace;
+  font-size: 10.5px;
+  color: var(--tempest-fg-default);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.rs-run-line--cmd {
+  color: var(--tempest-fg-subtle);
+  margin-bottom: 2px;
 }
 
 .rs-body::after {
@@ -159,7 +609,7 @@
   bottom: 0;
   left: 0;
   right: 0;
-  height: 100px;
+  height: 10px;
   background: linear-gradient(to bottom, transparent, var(--tempest-bg-sidebar));
   pointer-events: none;
   z-index: 2;

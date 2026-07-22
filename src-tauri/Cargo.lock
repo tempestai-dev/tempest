@@ -769,6 +769,7 @@ dependencies = [
  "bollard",
  "futures-util",
  "rusqlite",
+ "serde",
  "tokio",
  "url",
  "uuid",

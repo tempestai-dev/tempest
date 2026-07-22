@@ -8,7 +8,6 @@ import { TerminalSection } from "./SettingsPanel/TerminalSection";
 import { GitSection } from "./SettingsPanel/GitSection";
 import { SecuritySection } from "./SettingsPanel/SecuritySection";
 import { TokenIntelligenceSection } from "./SettingsPanel/TokenIntelligenceSection";
-import { DatabaseSection } from "./SettingsPanel/DatabaseSection";
 import { ApiKeysSection } from "./SettingsPanel/ApiKeysSection";
 import { PromptsSection } from "./SettingsPanel/PromptsSection";
 import { KeyboardSection } from "./SettingsPanel/KeyboardSection";
@@ -18,7 +17,7 @@ import "./SettingsPanel.css";
 
 export { AttributionSection } from "./SettingsPanel/AttributionSection";
 
-type Section = "appearance" | "terminal" | "git" | "intelligence" | "security" | "database" | "apikeys" | "prompts" | "keyboard" | "attribution" | "about";
+type Section = "appearance" | "terminal" | "git" | "intelligence" | "security" | "apikeys" | "prompts" | "keyboard" | "attribution" | "about";
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -89,14 +88,7 @@ export function SettingsPanel({ onClose, onAttributionToggle, initialSection }: 
               <Shield size={14} />
               Security
             </button>
-            <button
-              className={`sp-nav-item${activeSection === "database" ? " sp-nav-item--active" : ""}`}
-              onClick={() => setActiveSection("database")}
-            >
-              <GitBranch size={14} />
-              Database
-            </button>
-            <button
+<button
               className={`sp-nav-item${activeSection === "apikeys" ? " sp-nav-item--active" : ""}`}
               onClick={() => setActiveSection("apikeys")}
             >
@@ -142,7 +134,6 @@ export function SettingsPanel({ onClose, onAttributionToggle, initialSection }: 
             {activeSection === "git" && <GitSection />}
             {activeSection === "intelligence" && <TokenIntelligenceSection />}
             {activeSection === "security" && <SecuritySection />}
-            {activeSection === "database" && <DatabaseSection />}
             {activeSection === "apikeys" && <ApiKeysSection />}
             {activeSection === "prompts" && <PromptsSection />}
             {activeSection === "keyboard" && <KeyboardSection />}

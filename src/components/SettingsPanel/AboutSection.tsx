@@ -1,6 +1,14 @@
+import { useState, useEffect } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import { Mark } from "../../assets/Mark";
 
 export function AboutSection() {
+  const [version, setVersion] = useState("…");
+
+  useEffect(() => {
+    getVersion().then(setVersion).catch(() => setVersion("—"));
+  }, []);
+
   return (
     <div className="sp-section">
       <div className="sp-about-logo">
@@ -11,7 +19,7 @@ export function AboutSection() {
       <div className="sp-about-rows">
         <div className="sp-about-row">
           <span className="sp-about-key">Version</span>
-          <span className="sp-about-val">0.1.0</span>
+          <span className="sp-about-val">{version}</span>
         </div>
         <div className="sp-about-row">
           <span className="sp-about-key">Built with</span>

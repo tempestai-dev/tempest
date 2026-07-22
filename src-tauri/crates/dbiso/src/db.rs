@@ -25,16 +25,21 @@ fn open() -> DbResult<Connection> {
             method TEXT NOT NULL,
             size_bytes INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
-            is_current INTEGER NOT NULL DEFAULT 0
+            is_current INTEGER NOT NULL DEFAULT 0,
+            workspace_path TEXT NOT NULL DEFAULT ''
         );
         CREATE TABLE IF NOT EXISTS branches (
             name TEXT PRIMARY KEY,
             container_id TEXT NOT NULL,
             port INTEGER NOT NULL,
             connection_string TEXT NOT NULL,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            workspace_path TEXT NOT NULL DEFAULT ''
         );",
     )?;
+    // Migrate pre-workspace_path tables (no-op after first run)
+    let _ = conn.execute_batch("ALTER TABLE base_images ADD COLUMN workspace_path TEXT NOT NULL DEFAULT '';");
+    let _ = conn.execute_batch("ALTER TABLE branches ADD COLUMN workspace_path TEXT NOT NULL DEFAULT '';");
     Ok(conn)
 }
 
@@ -46,12 +51,12 @@ fn now_ts() -> String {
         .unwrap_or_else(|_| "0".to_string())
 }
 
-pub fn get_current_base_image() -> Option<BaseImage> {
+pub fn get_current_base_image(workspace_path: &str) -> Option<BaseImage> {
     let conn = open().ok()?;
     conn.query_row(
         "SELECT id, image_name, pg_version, method, size_bytes, created_at \
-         FROM base_images WHERE is_current = 1 LIMIT 1",
-        [],
+         FROM base_images WHERE workspace_path = ?1 AND is_current = 1 LIMIT 1",
+        params![workspace_path],
         |row| {
             let method_str: String = row.get(3)?;
             Ok(BaseImage {
@@ -67,13 +72,13 @@ pub fn get_current_base_image() -> Option<BaseImage> {
     .ok()
 }
 
-pub fn insert_base_image(img: &BaseImage) -> DbResult<()> {
+pub fn insert_base_image(img: &BaseImage, workspace_path: &str) -> DbResult<()> {
     let conn = open()?;
-    conn.execute("UPDATE base_images SET is_current = 0", [])?;
+    conn.execute("UPDATE base_images SET is_current = 0 WHERE workspace_path = ?1", params![workspace_path])?;
     conn.execute(
         "INSERT OR REPLACE INTO base_images \
-         (id, image_name, pg_version, method, size_bytes, created_at, is_current) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1)",
+         (id, image_name, pg_version, method, size_bytes, created_at, is_current, workspace_path) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7)",
         params![
             img.id,
             img.image_name,
@@ -81,23 +86,25 @@ pub fn insert_base_image(img: &BaseImage) -> DbResult<()> {
             img.method.as_str(),
             img.size_bytes as i64,
             img.created_at,
+            workspace_path,
         ],
     )?;
     Ok(())
 }
 
-pub fn insert_branch(branch: &DbBranch) -> DbResult<()> {
+pub fn insert_branch(branch: &DbBranch, workspace_path: &str) -> DbResult<()> {
     let conn = open()?;
     conn.execute(
         "INSERT OR REPLACE INTO branches \
-         (name, container_id, port, connection_string, created_at) \
-         VALUES (?1, ?2, ?3, ?4, ?5)",
+         (name, container_id, port, connection_string, created_at, workspace_path) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![
             branch.name,
             branch.container_id,
             branch.port as i64,
             branch.connection_string,
             now_ts(),
+            workspace_path,
         ],
     )?;
     Ok(())
@@ -106,7 +113,7 @@ pub fn insert_branch(branch: &DbBranch) -> DbResult<()> {
 pub fn get_branch(name: &str) -> Option<DbBranch> {
     let conn = open().ok()?;
     conn.query_row(
-        "SELECT name, container_id, port, connection_string FROM branches WHERE name = ?1",
+        "SELECT name, container_id, port, connection_string, created_at FROM branches WHERE name = ?1",
         params![name],
         |row| {
             Ok(DbBranch {
@@ -114,10 +121,61 @@ pub fn get_branch(name: &str) -> Option<DbBranch> {
                 container_id: row.get(1)?,
                 port: row.get::<_, i64>(2)? as u16,
                 connection_string: row.get(3)?,
+                created_at: row.get(4)?,
             })
         },
     )
     .ok()
+}
+
+pub fn all_branches(workspace_path: &str) -> Vec<DbBranch> {
+    open()
+        .ok()
+        .and_then(|conn| {
+            let mut stmt = conn
+                .prepare("SELECT name, container_id, port, connection_string, created_at FROM branches WHERE workspace_path = ?1 ORDER BY created_at DESC")
+                .ok()?;
+            let rows = stmt
+                .query_map(params![workspace_path], |row| {
+                    Ok(DbBranch {
+                        name: row.get(0)?,
+                        container_id: row.get(1)?,
+                        port: row.get::<_, i64>(2)? as u16,
+                        connection_string: row.get(3)?,
+                        created_at: row.get(4)?,
+                    })
+                })
+                .ok()?
+                .flatten()
+                .collect();
+            Some(rows)
+        })
+        .unwrap_or_default()
+}
+
+pub fn all_branches_global() -> Vec<DbBranch> {
+    open()
+        .ok()
+        .and_then(|conn| {
+            let mut stmt = conn
+                .prepare("SELECT name, container_id, port, connection_string, created_at FROM branches")
+                .ok()?;
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok(DbBranch {
+                        name: row.get(0)?,
+                        container_id: row.get(1)?,
+                        port: row.get::<_, i64>(2)? as u16,
+                        connection_string: row.get(3)?,
+                        created_at: row.get(4)?,
+                    })
+                })
+                .ok()?
+                .flatten()
+                .collect();
+            Some(rows)
+        })
+        .unwrap_or_default()
 }
 
 pub fn remove_branch(name: &str) -> DbResult<()> {

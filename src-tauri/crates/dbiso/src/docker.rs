@@ -209,6 +209,7 @@ fn parse_pg_url(conn_str: &str) -> Result<(String, u16, String, Option<String>),
 pub async fn build_base_image(
     conn_str: &str,
     mut method: SnapshotMethod,
+    project_name: &str,
     on_progress: impl Fn(String) + Send + 'static,
 ) -> Result<BaseImage, String> {
     // Pooler connections can't do basebackup
@@ -267,7 +268,7 @@ pub async fn build_base_image(
         .await
         .map_err(|e| e.to_string())?;
 
-    let result = build_inner(&docker, &staging_id, conn_str, &method, &on_progress).await;
+    let result = build_inner(&docker, &staging_id, conn_str, &method, project_name, &on_progress).await;
 
     // Always clean up staging container
     let _ = docker
@@ -288,6 +289,7 @@ async fn build_inner(
     staging_id: &str,
     conn_str: &str,
     method: &SnapshotMethod,
+    project_name: &str,
     on_progress: &(impl Fn(String) + Send),
 ) -> Result<BaseImage, String> {
     let pg_version: u32 = 16;
@@ -422,7 +424,12 @@ async fn build_inner(
 
     // Commit the staged container as the base image
     let image_id = uuid::Uuid::new_v4().to_string().replace('-', "");
-    let image_name = format!("tempest-db-base-{image_id}");
+    let raw: String = project_name.to_lowercase().chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    let slug = raw.trim_matches('-');
+    let slug = if slug.is_empty() { "project" } else { slug };
+    let image_name = format!("tempest-db-base-{slug}-{image_id}");
     on_progress(format!("Committing base image {image_name}…"));
     docker
         .commit_container(
@@ -526,6 +533,7 @@ pub async fn branch_create(
         container_id: create_resp.id,
         port,
         connection_string,
+        created_at: String::new(),
     })
 }
 

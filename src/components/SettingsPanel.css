@@ -13,8 +13,8 @@
 /* ── Panel shell ─────────────────────────────────────────────────────────── */
 
 .sp-panel {
-  width: 660px;
-  height: 460px;
+  width: 800px;
+  height: 580px;
   background: var(--tempest-bg-sidebar);
   border: 1px solid var(--tempest-border-default);
   border-radius: 12px;
@@ -74,7 +74,7 @@
 /* ── Left nav ────────────────────────────────────────────────────────────── */
 
 .sp-nav {
-  width: 180px;
+  width: 210px;
   flex-shrink: 0;
   border-right: 1px solid var(--tempest-border-default);
   padding: 10px 8px;

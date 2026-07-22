@@ -9,6 +9,7 @@ import { addRecent, getRecents, removeRecent } from "../store/recents";
 import { getOpenProjects, saveOpenProjects } from "../store/openProjects";
 import { getSession, getBranchSessions, getWorktreeAgentSession, getRootSessionsForProject, getAllSessions, getBranchPath, getProjectPath, saveSession, setSessionConversationId, markSessionClosed, markSessionOpen, removeBranchByPath, pruneSessions, type WorktreeSession } from "../store/sessions";
 import { getRuntimeState, setRuntimeState } from "../lib/runtimeState";
+import { dbLoadAppState } from "../lib/db";
 import { getTabs, upsertTab, removeTab, type PersistedTab } from "../store/tabs";
 import { saveChatHistory } from "../lib/chatHistory";
 import type { BranchInfo } from "../types/git";
@@ -45,6 +46,7 @@ import {
   PanelRight,
   SunMoon,
   GitBranch,
+  Cog,
 } from "lucide-react";
 import { setWorkState, clearWorkState, getWorkState, setAttention, getAttention } from "../store/workState";
 import { useKeybindings, matchesEvent, formatShortcut } from "../store/keybindings";
@@ -59,6 +61,7 @@ import { RightSidebar } from "./RightSidebar";
 import { NewSessionMenu, NewSessionPlacement, AgentConfig, AGENT_CONFIGS, AgentIcon } from "./NewSessionMenu";
 import { BranchSessionMenu } from "./BranchSessionMenu";
 import { SettingsPanel } from "./SettingsPanel";
+import { ProjectSettingsPanel } from "./ProjectSettingsPanel";
 import { Tooltip } from "./Tooltip";
 import { BroadcastDialog, BroadcastSession } from "./BroadcastDialog";
 import "./BroadcastDialog.css";
@@ -152,6 +155,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
   const [gitRevision, setGitRevision] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [projectSettingsPanelId, setProjectSettingsPanelId] = useState<string | null>(null);
   const [compactOpen, setCompactOpen] = useState(false);
   const [settingsInitialSection, setSettingsInitialSection] = useState<string>("appearance");
   const [broadcastOpen, setBroadcastOpen] = useState(false);
@@ -851,7 +855,11 @@ export function WorkspaceView({ zen, name, path }: Props) {
         command: agent ?? null,
         args,
         sandbox: sandboxParam,
-        dbIsolation: getSettings().dbIsolation,
+        dbIsolation: await dbLoadAppState().then(rows => {
+          const raw = new Map(rows).get(`project-settings:${projectId}`);
+          const s = raw ? (JSON.parse(raw) as { database?: { isolationEnabled?: boolean } }) : {};
+          return s.database?.isolationEnabled ?? false;
+        }).catch(() => false),
         onEvent: channel,
       });
 
@@ -1892,6 +1900,18 @@ export function WorkspaceView({ zen, name, path }: Props) {
                         {(isGitProject || canonRoots.size > 0) && (
                           <span className="sidebar-project-count">{project.worktrees.length + (canonRoots.size > 0 ? 1 : 0)}</span>
                         )}
+                        <Tooltip content="Project settings" placement="right">
+                          <button
+                            className="sidebar-project-settings-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setProjectSettingsPanelId(project.id);
+                            }}
+                            aria-label="Project settings"
+                          >
+                            <Cog size={12} />
+                          </button>
+                        </Tooltip>
                         <Tooltip content="New session" placement="right">
                           <button
                             className="sidebar-project-add-btn"
@@ -2823,6 +2843,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
 
 
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} initialSection={settingsInitialSection as any} />}
+      {projectSettingsPanelId && (() => {
+        const p = projects.find((pr) => pr.id === projectSettingsPanelId);
+        return p ? <ProjectSettingsPanel projectId={p.id} projectPath={p.path} projectName={p.name} onClose={() => setProjectSettingsPanelId(null)} /> : null;
+      })()}
 
       {atlasPromptPath && createPortal(
         <div className="naming-modal-overlay" onClick={() => setAtlasPromptPath(null)}>

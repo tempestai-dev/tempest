@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Folder,
@@ -12,12 +13,34 @@ import {
   ChevronsUpDown,
   ChevronsDownUp,
   SplitSquareHorizontal,
+  Database,
+  Play,
+  Square,
+  Plus,
+  X as XIcon,
+  Terminal,
 } from "lucide-react";
 import { Tooltip } from "./Tooltip";
 import type { DiffLine, FileStats } from "../types/git";
 import "./RightSidebar.css";
 
 type RightTab = "files" | "changes";
+type BottomTab = "db-clones" | "run" | "terminal";
+
+interface DbClone {
+  name: string;
+  port: number;
+  connection_string: string;
+  created_at: string;
+}
+
+function relTime(ts: string): string {
+  const secs = Math.floor(Date.now() / 1000) - parseInt(ts, 10);
+  if (secs < 60) return "just now";
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
+  return `${Math.floor(secs / 86400)}d ago`;
+}
 
 interface TreeNode {
   name: string;
@@ -158,6 +181,14 @@ const DEFAULT_WIDTH = 260;
 
 export function RightSidebar({ cwd, rootPath, open, gitRevision, noGit, onOpenDiff, onOpenFile }: Props) {
   const [activeTab, setActiveTab] = useState<RightTab>("files");
+  const [bottomTab, setBottomTab] = useState<BottomTab>("db-clones");
+  const [dbBranches, setDbBranches] = useState<DbClone[]>([]);
+  const [pkgScripts, setPkgScripts] = useState<Record<string, string>>({});
+  const [customCmds, setCustomCmds] = useState<string[]>([]);
+  const [newCustomCmd, setNewCustomCmd] = useState("");
+  const [runLog, setRunLog] = useState<string[]>([]);
+  const [runningId, setRunningId] = useState<string | null>(null);
+  const runLogRef = useRef<HTMLDivElement>(null);
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [changes, setChanges] = useState<GitChange[]>([]);
   const [reloading, setReloading] = useState(false);
@@ -316,6 +347,79 @@ export function RightSidebar({ cwd, rootPath, open, gitRevision, noGit, onOpenDi
     if (!filesPath) return;
     reload(filesPath, noGit ? null : (cwd ?? null));
   }, [cwd, rootPath, noGit]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!cwd) { setDbBranches([]); return; }
+    invoke<DbClone[]>("db_list_branches", { workspacePath: cwd })
+      .then(setDbBranches)
+      .catch(() => setDbBranches([]));
+  }, [cwd]);
+
+  useEffect(() => {
+    if (!cwd) { setPkgScripts({}); return; }
+    invoke<string>("read_file", { path: `${cwd}/package.json` })
+      .then(content => {
+        const pkg = JSON.parse(content) as { scripts?: Record<string, string> };
+        setPkgScripts(pkg.scripts ?? {});
+      })
+      .catch(() => setPkgScripts({}));
+  }, [cwd]);
+
+  useEffect(() => {
+    if (!cwd) { setCustomCmds([]); return; }
+    const saved = localStorage.getItem(`tempest-run-custom:${cwd}`);
+    setCustomCmds(saved ? (JSON.parse(saved) as string[]) : []);
+    setNewCustomCmd("");
+  }, [cwd]);
+
+  useEffect(() => {
+    if (runLogRef.current) runLogRef.current.scrollTop = runLogRef.current.scrollHeight;
+  }, [runLog]);
+
+  async function runScript(cmd: string) {
+    if (!cwd || runningId) return;
+    const id = crypto.randomUUID();
+    setRunLog([`$ ${cmd}`]);
+    setRunningId(id);
+    setBottomTab("terminal");
+    const unlistenLine = await listen<string>(`run:${id}`, (e) => {
+      setRunLog((prev) => [...prev.slice(-999), e.payload]);
+    });
+    const unlistenDone = await listen<null>(`run:${id}:done`, () => {
+      setRunningId(null);
+      unlistenLine();
+      unlistenDone();
+    });
+    try {
+      await invoke("shell_run", { sessionId: id, cwd, cmd });
+    } catch (e) {
+      setRunLog((prev) => [...prev, `Error: ${e}`]);
+      setRunningId(null);
+      unlistenLine();
+      unlistenDone();
+    }
+  }
+
+  function stopRun() {
+    if (!runningId) return;
+    invoke("shell_kill", { sessionId: runningId }).catch(() => {});
+    setRunningId(null);
+  }
+
+  function addCustomCmd() {
+    const cmd = newCustomCmd.trim();
+    if (!cmd || !cwd) return;
+    const next = [...customCmds, cmd];
+    setCustomCmds(next);
+    localStorage.setItem(`tempest-run-custom:${cwd}`, JSON.stringify(next));
+    setNewCustomCmd("");
+  }
+
+  function removeCustomCmd(cmd: string) {
+    const next = customCmds.filter(c => c !== cmd);
+    setCustomCmds(next);
+    if (cwd) localStorage.setItem(`tempest-run-custom:${cwd}`, JSON.stringify(next));
+  }
 
   const prevRevision = useRef(0);
   useEffect(() => {
@@ -502,6 +606,150 @@ export function RightSidebar({ cwd, rootPath, open, gitRevision, noGit, onOpenDi
         )}
 
       </div>
+
+      {/* Bottom panel: DB Clones | Run | Terminal */}
+      <div className="rs-bottom">
+        <div className="rs-bottom-header">
+          <div className="rs-btab-bar">
+            <button
+              className={`rs-btab${bottomTab === "db-clones" ? " rs-btab--active" : ""}`}
+              onClick={() => setBottomTab("db-clones")}
+            >
+              <Database size={11} /> DB Clones
+              {dbBranches.length > 0 && (
+                <span className="rs-tab-pill-badge">{dbBranches.length}</span>
+              )}
+            </button>
+            <span className="rs-btab-sep">|</span>
+            <button
+              className={`rs-btab${bottomTab === "run" ? " rs-btab--active" : ""}`}
+              onClick={() => setBottomTab("run")}
+            >
+              <Play size={11} /> Run
+            </button>
+            <span className="rs-btab-sep">|</span>
+            <button
+              className={`rs-btab${bottomTab === "terminal" ? " rs-btab--active" : ""}`}
+              onClick={() => setBottomTab("terminal")}
+            >
+              <Terminal size={11} /> Terminal
+              {runningId && <span className="rs-btab-running" />}
+            </button>
+          </div>
+        </div>
+
+        <div className="rs-bottom-body">
+          {bottomTab === "db-clones" && (
+            <div className="rs-scroll">
+              {dbBranches.length === 0 ? (
+                <div className="rs-empty">No active DB clones</div>
+              ) : (
+                dbBranches.map((b) => (
+                  <div key={b.name} className="rs-clone-row">
+                    <Database size={11} className="rs-clone-icon" />
+                    <span className="rs-clone-name" title={b.connection_string}>{b.name}</span>
+                    <span className="rs-clone-port">:{b.port}</span>
+                    <span className="rs-clone-time">{relTime(b.created_at)}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {bottomTab === "run" && (
+            <div className="rs-run">
+              {Object.keys(pkgScripts).length > 0 && (
+                <>
+                  <div className="rs-run-section-label">package.json</div>
+                  {Object.entries(pkgScripts).map(([name, script]) => (
+                    <div key={name} className="rs-run-script-row">
+                      <span className="rs-run-script-name">{name}</span>
+                      <span className="rs-run-script-desc">{script}</span>
+                      <button
+                        className="rs-run-play-btn"
+                        title={`npm run ${name}`}
+                        disabled={!cwd || !!runningId}
+                        onClick={() => runScript(`npm run ${name}`)}
+                      >
+                        <Play size={10} />
+                      </button>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {customCmds.length > 0 && (
+                <>
+                  <div className="rs-run-section-label">Custom</div>
+                  {customCmds.map((cmd) => (
+                    <div key={cmd} className="rs-run-script-row">
+                      <span className="rs-run-script-name rs-run-script-name--full">{cmd}</span>
+                      <button
+                        className="rs-run-play-btn"
+                        disabled={!cwd || !!runningId}
+                        onClick={() => runScript(cmd)}
+                      >
+                        <Play size={10} />
+                      </button>
+                      <button
+                        className="rs-run-del-btn"
+                        onClick={() => removeCustomCmd(cmd)}
+                      >
+                        <XIcon size={10} />
+                      </button>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {Object.keys(pkgScripts).length === 0 && customCmds.length === 0 && (
+                <div className="rs-empty rs-empty--sm">No scripts detected</div>
+              )}
+
+              <div className="rs-run-add-row">
+                <input
+                  className="rs-run-input"
+                  value={newCustomCmd}
+                  onChange={(e) => setNewCustomCmd(e.target.value)}
+                  placeholder="Add command…"
+                  onKeyDown={(e) => { if (e.key === "Enter") addCustomCmd(); }}
+                />
+                <button
+                  className="rs-run-add-btn"
+                  disabled={!newCustomCmd.trim()}
+                  onClick={addCustomCmd}
+                >
+                  <Plus size={11} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {bottomTab === "terminal" && (
+            <div className="rs-terminal">
+              {runLog.length > 0 ? (
+                <div ref={runLogRef} className="rs-terminal-output">
+                  <pre className="rs-terminal-pre">{runLog.join("\n")}</pre>
+                </div>
+              ) : (
+                <div className="rs-terminal-output">
+                  <span className="rs-terminal-placeholder">Run a script from the Run tab</span>
+                </div>
+              )}
+              {runningId && (
+                <div className="rs-terminal-row">
+                  <span className="rs-terminal-ps rs-terminal-ps--running">●</span>
+                  <span className="rs-terminal-running-label">Running…</span>
+                  <button className="rs-terminal-stop-btn" onClick={stopRun} title="Stop">
+                    <Square size={9} /> Stop
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
     </div>
   );
 }

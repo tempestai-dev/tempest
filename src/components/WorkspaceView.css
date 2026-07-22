@@ -1918,6 +1918,26 @@
   color: var(--tempest-fg-default);
 }
 
+.sidebar-project-settings-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.sidebar-project-settings-btn:hover {
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
+}
+
 /* "main" badge on sidebar root sessions */
 .sidebar-root-badge {
   margin-left: auto;

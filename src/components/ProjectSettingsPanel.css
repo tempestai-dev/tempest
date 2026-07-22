@@ -1,0 +1,453 @@
+.psp-panel {
+  width: 620px;
+  height: 500px;
+}
+
+/* ── Header ── */
+
+.psp-header-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.psp-header-text .topbar-slash {
+  background: var(--tempest-border-default);
+}
+
+.psp-project-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--tempest-fg-muted);
+  letter-spacing: -0.01em;
+}
+
+/* ── Shared input ── */
+
+.psp-input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  background: var(--tempest-bg-panel);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 6px;
+  color: var(--tempest-fg-default);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.psp-input:focus {
+  border-color: var(--tempest-accent-blue);
+}
+
+.psp-input--mono {
+  font-family: "Geist Mono", monospace;
+}
+
+.psp-input--sm {
+  width: 100px;
+  flex: none;
+}
+
+/* ── Sandbox section: mode cards ── */
+
+.psp-mode-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--tempest-bg-hover);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.15s;
+  user-select: none;
+  text-align: left;
+}
+
+.psp-mode-card:hover {
+  background: var(--tempest-bg-active);
+}
+
+.psp-mode-card--active {
+  border-color: var(--tempest-accent-blue);
+  background: var(--tempest-bg-active);
+}
+
+.psp-mode-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--tempest-border-subtle);
+  flex-shrink: 0;
+  transition: border-color 0.15s;
+}
+
+.psp-mode-dot--on {
+  border-color: var(--tempest-accent-blue);
+  background: var(--tempest-accent-blue);
+  box-shadow: inset 0 0 0 2px var(--tempest-bg-panel);
+}
+
+/* ── Tag list (network / filesystem paths) ── */
+
+.psp-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.psp-tag {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 22px 3px 10px;
+  background: var(--tempest-bg-active);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 20px;
+  font-size: 11.5px;
+  color: var(--tempest-fg-default);
+  user-select: none;
+}
+
+.psp-tag--mono {
+  font-family: "Geist Mono", monospace;
+  font-size: 11px;
+  border-radius: 6px;
+}
+
+.psp-tag--danger {
+  border-color: var(--tempest-accent-red, #e05252);
+  color: var(--tempest-accent-red, #e05252);
+}
+
+.psp-tag-text {
+  display: block;
+  white-space: nowrap;
+}
+
+.psp-tag:hover .psp-tag-text {
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 18px), transparent 100%);
+  mask-image:         linear-gradient(to right, black calc(100% - 18px), transparent 100%);
+}
+
+.psp-tag-remove {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s, color 0.1s;
+}
+
+.psp-tag:hover .psp-tag-remove {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.psp-tag-remove:hover {
+  color: var(--tempest-fg-default);
+}
+
+/* ── Add row (shared by network + filesystem) ── */
+
+.psp-add-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.psp-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* ── Filesystem path groups ── */
+
+.psp-path-group {
+  margin-bottom: 20px;
+}
+
+.psp-path-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tempest-fg-default);
+  margin-bottom: 2px;
+}
+
+.psp-path-desc {
+  font-size: 11px;
+  color: var(--tempest-fg-subtle);
+  margin-bottom: 8px;
+}
+
+/* ── Resources section ── */
+
+.psp-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.psp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.psp-field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tempest-fg-default);
+}
+
+.psp-field-desc {
+  font-size: 11px;
+  color: var(--tempest-fg-subtle);
+  margin-bottom: 6px;
+}
+
+.psp-field-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.psp-field-unit {
+  font-size: 12px;
+  color: var(--tempest-fg-subtle);
+  flex-shrink: 0;
+}
+
+/* ── Agent grid ── */
+
+.psp-agent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 8px;
+}
+
+.psp-agent-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 8px;
+  background: var(--tempest-bg-hover);
+  border: 1.5px solid var(--tempest-border-default);
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s, background 0.1s;
+}
+
+.psp-agent-card:hover {
+  background: var(--tempest-bg-active);
+}
+
+.psp-agent-card--active {
+  border-color: var(--tempest-accent-blue);
+  background: var(--tempest-bg-active);
+}
+
+.psp-agent-card-name {
+  font-size: 10.5px;
+  color: var(--tempest-fg-default);
+  text-align: center;
+  line-height: 1.3;
+  user-select: none;
+}
+
+.psp-agent-card-name--muted {
+  color: var(--tempest-fg-subtle);
+}
+
+/* ── Instructions textarea ── */
+
+.psp-instructions-textarea {
+  width: 100%;
+  height: 180px;
+  padding: 10px 12px;
+  background: var(--tempest-bg-panel);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 8px;
+  color: var(--tempest-fg-default);
+  font-size: 12px;
+  font-family: "Geist Mono", monospace;
+  line-height: 1.6;
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.psp-instructions-textarea:focus {
+  border-color: var(--tempest-accent-blue);
+}
+
+.psp-instructions-textarea::placeholder {
+  color: var(--tempest-fg-subtle);
+}
+
+.psp-instructions-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.psp-btn-ghost {
+  background: transparent !important;
+  border-color: var(--tempest-border-default) !important;
+}
+
+/* ── Network policy toggle (pill style matching RightSidebar) ── */
+
+.psp-policy-toggle {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--tempest-ui-tab-pill-bg);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 999px;
+  padding: 2px;
+  margin-bottom: 20px;
+}
+
+.psp-policy-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 450;
+  color: var(--tempest-ui-tab-inactive-fg);
+  cursor: pointer;
+  border-radius: 999px;
+  transition: color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+
+.psp-policy-btn:hover {
+  color: var(--tempest-ui-tab-hover-fg);
+}
+
+.psp-policy-btn--active {
+  background: var(--tempest-ui-tab-active);
+  color: var(--tempest-fg-default);
+  font-weight: 500;
+  box-shadow: 0 1px 3px var(--tempest-ui-shadow-sm);
+}
+
+/* ── Database build log ── */
+
+.psp-db-log {
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--tempest-bg-subtle);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: "Geist Mono", monospace;
+  max-height: 160px;
+  overflow-y: auto;
+  color: var(--tempest-fg-muted);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ── Danger path label ── */
+
+.psp-path-label--danger {
+  color: var(--tempest-accent-red, #e05252);
+}
+
+/* ── Agent multi-select ── */
+
+.psp-agent-select-all {
+  margin-bottom: 12px;
+}
+
+.psp-select-all-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  background: var(--tempest-bg-hover);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 8px;
+  color: var(--tempest-fg-muted);
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.15s;
+  width: 100%;
+}
+
+.psp-select-all-btn:hover {
+  background: var(--tempest-bg-active);
+}
+
+.psp-select-all-btn--active {
+  border-color: var(--tempest-accent-blue);
+  color: var(--tempest-fg-default);
+}
+
+.psp-select-all-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1.5px solid var(--tempest-border-subtle);
+  flex-shrink: 0;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.psp-select-all-check--on {
+  background: var(--tempest-accent-blue);
+  border-color: var(--tempest-accent-blue);
+  color: #fff;
+}
+
+.psp-agent-card {
+  position: relative;
+}
+
+.psp-agent-check {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--tempest-accent-blue);
+  color: #fff;
+  flex-shrink: 0;
+}
