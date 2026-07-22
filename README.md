@@ -12,7 +12,7 @@
   <a href="https://github.com/tempestai-dev/tempest/releases">
     <img src="https://img.shields.io/github/v/release/tempestai-dev/tempest" alt="Version" />
   </a>
-  <a href="https://github.com/Origin-AI-IDE/origin/releases">
+  <a href="https://github.com/tempestai-dev/tempest/releases">
     <img src="https://img.shields.io/github/downloads/tempestai-dev/tempest/total?color=2ea043" alt="Downloads" />
   </a>
   <img src="https://img.shields.io/badge/macOS-Supported-grey?logo=apple&logoColor=white&labelColor=000000" alt="macOS" />
@@ -71,7 +71,7 @@ Both behaviours are toggles in **Settings → Security**. You stay in control.
 
 ## What's next
 
-**Database Branches** — isolated Postgres instances per agent session, so parallel runs never corrupt each other's data. Real copy, no shared state, no coordination required.
+**Database Branches** — per-project Docker-based DB isolation is shipping now. Each project gets its own branched database container so agents can migrate, break, and restore data without touching anything else.
 
 See [ROADMAP.md](ROADMAP.md) for the full picture. **Star this repo** — we announce here first.
 

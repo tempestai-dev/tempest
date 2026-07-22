@@ -1,24 +1,25 @@
 ---
 title: "Right Sidebar"
-description: "File browser and git changes panel in the Tempest workspace."
+description: "File browser, git changes, and project tooling panel in the Tempest workspace."
 icon: "bars"
 ---
 
-# Right Sidebar: File Browser and Git Changes
+# Right Sidebar
 
-The right sidebar is a contextual panel that provides two different views of your workspace: a complete file tree for navigation and a live list of git changes from the current session. It appears when a session is active and can be collapsed entirely to maximize editor space.
+The right sidebar is a contextual panel that provides file navigation, live git changes, and project tooling. It appears when a session is active and can be collapsed entirely to maximize editor space.
 
 ## Overview
 
 The right sidebar occupies the right edge of the Tempest window and resizes via a drag handle on its left border. It contains:
 
 1. A header with tab buttons and action buttons
-2. A scrollable body showing either the file tree or git changes
-3. A collapsible design that slides smoothly out of view when toggled
+2. A scrollable body showing files, git changes, or the Run panel
+3. A bottom panel with DB Clones, Run, and Terminal tabs
+4. A collapsible design that slides smoothly out of view when toggled
 
 The sidebar starts with a default width of 300px and can be resized between 180px and 560px. Its width persists across sessions. When collapsed, it disappears entirely with a smooth opacity and border transition.
 
-## The Two Panels
+## Upper Tabs
 
 ### All Files Tab
 
@@ -125,7 +126,7 @@ Two tab buttons sit at the top of the sidebar:
 1. **All Files** - Always available, shows the file tree
 2. **Changes** - Shows git changes; displays a count badge if changes exist
 
-Clicking a tab switches the view. The active tab is highlighted with a blue bottom border and different background color.
+Clicking a tab switches the view. The active tab is highlighted with a bottom border.
 
 ### Action Buttons
 
@@ -135,7 +136,36 @@ Two icon buttons sit on the right side of the header:
 
 2. **Refresh icon** - Manually reloads both the file tree and git changes. The button shows a spinning animation while reloading (`rs-reload-btn--spinning` class). It is disabled when reloading is in progress or when there is no active session. A 600ms minimum delay ensures visual feedback even on fast systems.
 
-## Styling and Theming
+## Bottom Panel
+
+A three-tab panel sits at the bottom of the right sidebar, below the file tree and git changes. Tabs are separated by `|` dividers with a line under the active tab. The panel is always visible when a session is active.
+
+### DB Clones
+
+Shows Docker-based database branches for the current project. Each clone is an isolated container that can be started, stopped, or deleted independently. This lets agents run migrations and schema changes without affecting your main database or other sessions.
+
+Database isolation is configured per-project via **Project Settings → Database**.
+
+### Run
+
+Detects and lists runnable scripts from the project's `package.json` automatically. Each script appears with its name and command; hovering a row reveals a play button to launch it.
+
+Custom commands can also be added manually. These are persisted per-project in localStorage (`tempest-run-custom:{cwd}`) and survive app restarts. Each custom command has a delete button to remove it.
+
+Running a script:
+1. Clicks invoke `shell_run` with the command and the project CWD
+2. Output streams to the **Terminal** tab
+3. The sidebar switches to the Terminal tab automatically
+
+### Terminal
+
+Shows streamed output from the most recent Run tab command. Output is displayed in a `pre`-formatted block that inherits the sidebar's theme color (`--tempest-bg-sidebar`). The panel auto-scrolls to the latest line as output arrives.
+
+While a command is running, a green dot and "Running…" label appear at the bottom with a **Stop** button that calls `shell_kill` to terminate the process.
+
+When no script has been run yet, a placeholder message prompts the user to run a script from the Run tab. The Terminal tab also shows a green running dot indicator on its tab label while a process is active.
+
+
 
 The sidebar uses Tempest's CSS variable theme system. Key variables:
 

@@ -65,9 +65,9 @@ More agents can be added to the platform.
 
 ## What's Coming
 
-**Database Branches** (in active development)
+**Database Branches** (shipping now)
 
-Parallel agents doing real backend work need real databases. Tempest is adding isolated Postgres connections per agent session: each agent gets its own live database copy to migrate, modify, or break without touching production or other agent sessions.
+Parallel agents doing real backend work need real databases. Tempest now ships per-project Docker-based database isolation: each project gets its own branched container to migrate, modify, or break without touching production or other sessions. Accessible from **Project Settings → Database** and visible in the right sidebar's DB Clones panel.
 
 Planned features include macOS support, multi-agent coordination, and enterprise controls for audit logs, SSO, and team workspaces.
 
