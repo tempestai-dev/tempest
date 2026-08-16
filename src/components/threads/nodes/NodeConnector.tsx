@@ -11,10 +11,11 @@ import { Hexagon } from "lucide-react";
 // other side reads as inactive). An in-progress drag from this node fills yellow.
 export function NodeConnector({ nodeId, side }: { nodeId: string; side: "left" | "right" }) {
   const connecting = useConnection((c) => c.inProgress && c.fromNode?.id === nodeId);
-  const connected = useNodeConnections({
+  const connections = useNodeConnections({
     id: nodeId,
     handleType: side === "left" ? "target" : "source",
-  }).length > 0;
+  });
+  const connected = connections.length > 0;
 
   const fill = connecting
     ? "var(--tempest-accent-yellow, #f5c518)"
@@ -22,6 +23,9 @@ export function NodeConnector({ nodeId, side }: { nodeId: string; side: "left" |
     ? "currentColor"
     : "none";
 
+  // Issue #14: a small count badge on the incoming (left/target) handle so a
+  // node fed by several sources shows how many at a glance — the hexagon's
+  // fill state alone can't distinguish 1 wire from many.
   const handle = (
     <Handle
       type={side === "left" ? "target" : "source"}
@@ -31,6 +35,9 @@ export function NodeConnector({ nodeId, side }: { nodeId: string; side: "left" |
       title={side === "left" ? "Connect into this node" : "Click to connect"}
     >
       <Hexagon size={13} fill={fill} />
+      {side === "left" && connections.length > 1 && (
+        <span className="tnode-connector-badge">{connections.length}</span>
+      )}
     </Handle>
   );
   if (side === "right") return handle;

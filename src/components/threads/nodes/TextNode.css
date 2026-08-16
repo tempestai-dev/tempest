@@ -146,6 +146,24 @@
 .react-flow__handle.tnode-connector.clickconnecting { color: var(--tempest-accent-yellow, #f5c518); }
 .react-flow__handle.tnode-connector.clickconnecting svg { fill: var(--tempest-accent-yellow, #f5c518); }
 
+.tnode-connector-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 12px;
+  height: 12px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--tempest-accent-yellow, #f5c518);
+  color: var(--tempest-bg-base, #0a0a0a);
+  font: 700 8.5px "Geist", system-ui, sans-serif;
+  line-height: 1;
+  pointer-events: none;
+}
+
 /* Midpoint × on each connection edge (ThreadEdge). EdgeLabelRenderer children
    are pointer-events:none by default, so re-enable it here. */
 .thread-edge-del {
