@@ -15,6 +15,7 @@ import { CollapsedNode } from "./CollapsedNode";
 import { markdownLivePreview, livePreviewTheme } from "./markdownLivePreview";
 import { applyWrap, applyLineOp, type LineOp } from "./markdownEdit";
 import { getNodeData, patchNodeData, patchNodeDataLocal } from "../../../store/threads";
+import { useZoomCounterScale } from "./useZoomCounterScale";
 import "./TextNode.css";
 
 // Free-form markdown note node (threads-plan.md §5). A CodeMirror editor with
@@ -106,6 +107,7 @@ export function TextNode({ id, data }: { id: string; data?: { collapsed?: boolea
   const [title, setTitle] = useState(() => getNodeData<{ title?: string }>(id).title ?? "new note");
   const [editingTitle, setEditingTitle] = useState(false);
   const [copied, setCopied] = useState(false);
+  const titleScale = useZoomCounterScale();
   // Screen coords of the floating selection toolbar, or null when hidden.
   const [bubble, setBubble] = useState<{ left: number; top: number } | null>(null);
 
@@ -257,6 +259,7 @@ export function TextNode({ id, data }: { id: string; data?: { collapsed?: boolea
         <div
           className="tnode-title-pill nodrag"
           onDoubleClick={() => setEditingTitle(true)}
+          style={{ transform: `scale(${titleScale})`, transformOrigin: "left center" }}
         >
           {editingTitle ? (
             <input

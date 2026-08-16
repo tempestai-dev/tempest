@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { NodeResizeControl, ResizeControlVariant, useReactFlow, useNodeConnections } from "@xyflow/react";
 import { Trash2, Pencil, Plus, ArrowUp, ChevronDown, Search, Terminal } from "lucide-react";
 import { NodeConnector } from "./NodeConnector";
+import { useZoomCounterScale } from "./useZoomCounterScale";
 import { CollapsedNode } from "./CollapsedNode";
 import { getNodeData, patchNodeData, getThreadNode, getThreadNodes, getThreadEdges } from "../../../store/threads";
 import { setNodeGenerating } from "../../../store/nodeActivity";
@@ -157,6 +158,7 @@ export function ChatNode({ id, data }: { id: string; data?: { collapsed?: boolea
 
   const [title, setTitle] = useState(() => getNodeData<{ title?: string }>(id).title ?? "new chat");
   const [editingTitle, setEditingTitle] = useState(false);
+  const titleScale = useZoomCounterScale();
   // Launch target for proposals fired from this chat: "" = project root,
   // "__new__" = cut a new worktree, else a worktree path. Resolved on launch.
   const [target, setTarget] = useState("");
@@ -572,7 +574,11 @@ export function ChatNode({ id, data }: { id: string; data?: { collapsed?: boolea
       >
         <NodeConnector nodeId={id} side="left" />
 
-        <div className="tnode-title-pill nodrag" onDoubleClick={() => setEditingTitle(true)}>
+        <div
+          className="tnode-title-pill nodrag"
+          onDoubleClick={() => setEditingTitle(true)}
+          style={{ transform: `scale(${titleScale})`, transformOrigin: "left center" }}
+        >
           {editingTitle ? (
             <input
               className="tnode-title-input"
