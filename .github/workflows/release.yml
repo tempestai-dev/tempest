@@ -103,6 +103,43 @@ jobs:
 
       - run: npm ci
 
+      # Notarization rejects any unsigned nested Mach-O (e.g. onnxruntime-node
+      # dylibs/.node files that atlas ships as bundled resources). Pre-sign
+      # them with the same Developer ID + secure timestamp Tauri uses on the
+      # outer .app.
+      - name: Pre-sign nested macOS Mach-O binaries
+        if: matrix.os == 'macos-latest'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          KEYCHAIN_PATH="$RUNNER_TEMP/presign.keychain-db"
+          CERT_PATH="$RUNNER_TEMP/apple-cert.p12"
+
+          echo -n "$APPLE_CERTIFICATE" | base64 --decode --output "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychain -d user | tr -d '"')
+          rm -f "$CERT_PATH"
+
+          find src-tauri/resources -type f \( -name "*.dylib" -o -name "*.node" -o -name "*.so" \) -print0 |
+            while IFS= read -r -d '' f; do
+              if file "$f" | grep -q "Mach-O"; then
+                echo "signing: $f"
+                codesign --force --timestamp --options=runtime \
+                  --sign "$APPLE_SIGNING_IDENTITY" "$f"
+              fi
+            done
+
       - name: Build
         run: npx tauri build --bundles ${{ matrix.bundles }} ${{ matrix.args }}
         env:
