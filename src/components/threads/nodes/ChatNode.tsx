@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useContext } from "react";
+import { Fragment, useState, useRef, useCallback, useEffect, useContext } from "react";
 import { createPortal } from "react-dom";
 import { NodeResizeControl, ResizeControlVariant, useReactFlow, useNodeConnections } from "@xyflow/react";
 import { Trash2, Pencil, Plus, ArrowUp, ChevronDown, Search, Terminal } from "lucide-react";
@@ -13,7 +13,7 @@ import { getNodeMessages, loadNodeMessages, saveNodeMessages } from "../../../st
 import { chatGist, firstLine, formatCanvasGraph, type CanvasNodeMeta } from "../canvasContext";
 import { getRuntimeState, setRuntimeState } from "../../../lib/runtimeState";
 import { track } from "../../../lib/telemetry";
-import { CDN, CHAT_PROVIDERS, CLAUDE_CODE, CLAUDE_CODE_MODELS, WARP, WARP_MODELS, type ChatProvider, type ChatModel } from "../../../lib/chatModels";
+import { CDN, CHAT_PROVIDERS, CLAUDE_CODE, CLI_AGENTS, CLI_AGENT_LABELS, CLI_AGENT_MODELS, WARP, WARP_MODELS, getCliAgentModel, type ChatProvider, type ChatModel, type CliAgent } from "../../../lib/chatModels";
 import { useModelManifest, contextSizeFor } from "../../../lib/remoteConfig";
 import { streamChat, type ChatStreamEvent } from "../../../lib/chat";
 import { streamClaudeCode, type ClaudeCodeStream } from "../../../lib/claudeCode";
@@ -170,9 +170,13 @@ export function ChatNode({ id, data }: { id: string; data?: { collapsed?: boolea
   ];
 
   const manifest = useModelManifest();
-  // "api" = BYOK (Vercel AI SDK); "cli" = Claude Code harness (sidecar). Persisted per node.
+  // "api" = BYOK (Vercel AI SDK); "cli" = one of the CLI-agent harnesses (sidecar,
+  // picks agent via cliAgent). Persisted per node.
   const [backend, setBackend] = useState<"api" | "cli" | "warp">(
     () => getNodeData<{ backend?: "api" | "cli" | "warp" }>(id).backend ?? "api",
+  );
+  const [cliAgent, setCliAgent] = useState<CliAgent>(
+    () => getNodeData<{ cliAgent?: CliAgent }>(id).cliAgent ?? "claude",
   );
   const [provider, setProvider] = useState<ChatProvider>(() => {
     const saved = getRuntimeState().chatProvider;
@@ -180,8 +184,8 @@ export function ChatNode({ id, data }: { id: string; data?: { collapsed?: boolea
   });
   const settings = useSettings();
   const [model, setModel] = useState<ChatModel>(() => {
-    const data = getNodeData<{ backend?: "api" | "cli" | "warp"; cliModel?: string; warpModel?: string }>(id);
-    if (data.backend === "cli") return CLAUDE_CODE_MODELS.find((m) => m.id === data.cliModel) ?? CLAUDE_CODE_MODELS[0];
+    const data = getNodeData<{ backend?: "api" | "cli" | "warp"; cliAgent?: CliAgent; cliModel?: string; warpModel?: string }>(id);
+    if (data.backend === "cli") return getCliAgentModel(data.cliAgent ?? "claude", data.cliModel);
     if (data.backend === "warp") return WARP_MODELS.find((m) => m.id === data.warpModel) ?? WARP_MODELS[0];
     const { chatProvider, chatModel } = getRuntimeState();
     const models = manifest.providers[chatProvider ?? "anthropic"] ?? [];
@@ -369,14 +373,20 @@ export function ChatNode({ id, data }: { id: string; data?: { collapsed?: boolea
         }
 
         case "session": {
-          patchNodeData(id, { claudeSessionId: event.sessionId });
+          const prev = getNodeData<{ cliSessionIds?: Record<string, string> }>(id).cliSessionIds ?? {};
+          patchNodeData(id, { cliSessionIds: { ...prev, [cliAgent]: event.sessionId } });
           break;
         }
 
         case "finish": {
           const used = event.inputTokens + event.outputTokens;
           setContextTokens(used);
-          patchNodeData(id, { contextTokens: used, ...(event.sessionId ? { claudeSessionId: event.sessionId } : {}) });
+          const patch: Record<string, unknown> = { contextTokens: used };
+          if (event.sessionId) {
+            const prev = getNodeData<{ cliSessionIds?: Record<string, string> }>(id).cliSessionIds ?? {};
+            patch.cliSessionIds = { ...prev, [cliAgent]: event.sessionId };
+          }
+          patchNodeData(id, patch);
           setIsLoading(false);
           streamingIdRef.current = null;
           persistChat([...prior, userMsg, { id: assistantId, role: "assistant", parts: assistantPartsRef.current }]);
@@ -395,13 +405,15 @@ export function ChatNode({ id, data }: { id: string; data?: { collapsed?: boolea
     };
 
     if (backend === "cli") {
-      const data = getNodeData<{ claudeSessionId?: string }>(id);
-      // Chat nodes have no branch binding in v1 → Claude Code runs in the project root.
-      // model.id is the resolved CLI alias (legacy "default" already collapsed to Haiku).
+      // Session id is stored per-agent so switching agents mid-canvas doesn't
+      // try to resume a session that belongs to a different CLI.
+      const data = getNodeData<{ cliSessionIds?: Record<string, string> }>(id);
+      const resume = data.cliSessionIds?.[cliAgent];
       cancelRef.current = streamClaudeCode({
         prompt: rawText,
         cwd: projectPath ?? ".",
-        resume: data.claudeSessionId,
+        agent: cliAgent,
+        resume,
         model: model.id,
         projectId,
         onEvent,
@@ -425,7 +437,7 @@ export function ChatNode({ id, data }: { id: string; data?: { collapsed?: boolea
         onEvent,
       });
     }
-  }, [isLoading, backend, provider, model, projectPath, projectId, atlasIndexed, id, threadId, persistChat]);
+  }, [isLoading, backend, cliAgent, provider, model, projectPath, projectId, atlasIndexed, id, threadId, persistChat]);
 
   // Resolve a Claude Code permission prompt: tell the sidecar, freeze the card.
   // Update the streaming buffer too so the next token snapshot keeps the decision.
@@ -484,9 +496,7 @@ export function ChatNode({ id, data }: { id: string; data?: { collapsed?: boolea
 
   function selectModel(m: ChatModel) {
     if (pickerProvider === CLAUDE_CODE) {
-      setBackend("cli");
-      setModel(m);
-      patchNodeData(id, { backend: "cli", cliModel: m.id });
+      selectCliAgentModel("claude", m.id);
     } else {
       const p = CHAT_PROVIDERS.find((cp) => cp.id === pickerProvider);
       if (p) { setProvider(p); setRuntimeState({ chatProvider: p.id }); }
@@ -498,13 +508,14 @@ export function ChatNode({ id, data }: { id: string; data?: { collapsed?: boolea
     setPickerOpen(false);
   }
 
-  // Pick a model for a CLI agent (Claude Code) from its inline dropdown → activate
-  // the cli backend on this node.
-  function selectCliModel(modelId: string) {
-    const m = CLAUDE_CODE_MODELS.find((x) => x.id === modelId) ?? CLAUDE_CODE_MODELS[0];
+  // Pick a model for a CLI agent (claude/codex/opencode/gemini) → activate
+  // the cli backend on this node, bound to that agent.
+  function selectCliAgentModel(agent: CliAgent, modelId: string) {
+    const m = getCliAgentModel(agent, modelId);
     setBackend("cli");
+    setCliAgent(agent);
     setModel(m);
-    patchNodeData(id, { backend: "cli", cliModel: m.id });
+    patchNodeData(id, { backend: "cli", cliAgent: agent, cliModel: m.id });
     setPickerOpen(false);
   }
 
@@ -741,7 +752,7 @@ export function ChatNode({ id, data }: { id: string; data?: { collapsed?: boolea
               onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
             />
           )}
-          {backend === "cli" ? `Claude Code · ${model.label}`
+          {backend === "cli" ? `${CLI_AGENT_LABELS[cliAgent]} · ${model.label}`
             : backend === "warp" ? `Warp · ${model.label}`
             : model.label}
           <ChevronDown size={11} style={{ transform: pickerOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
@@ -837,7 +848,11 @@ export function ChatNode({ id, data }: { id: string; data?: { collapsed?: boolea
                   const q = search.trim().toLowerCase();
                   const matches = (m: ChatModel, group: string) =>
                     !q || group.includes(q) || m.label.toLowerCase().includes(q) || m.id.toLowerCase().includes(q);
-                  const cliShown = CLAUDE_CODE_MODELS.filter((m) => matches(m, "claude code"));
+                  const agentGroups = CLI_AGENTS.map((a) => ({
+                    agent: a,
+                    label: CLI_AGENT_LABELS[a],
+                    shown: CLI_AGENT_MODELS[a].filter((m) => matches(m, CLI_AGENT_LABELS[a].toLowerCase())),
+                  })).filter((g) => g.shown.length > 0);
                   const warpShown = settings.experimentalWarp ? WARP_MODELS.filter((m) => matches(m, "warp")) : [];
                   return (
                     <>
@@ -854,12 +869,12 @@ export function ChatNode({ id, data }: { id: string; data?: { collapsed?: boolea
                         </div>
                       </div>
                       <div className="chat-picker-list">
-                        {cliShown.length === 0 && warpShown.length === 0 && (
+                        {agentGroups.length === 0 && warpShown.length === 0 && (
                           <div className="chat-picker-empty">No agents found</div>
                         )}
 
-                        {cliShown.length > 0 && (
-                          <>
+                        {agentGroups.map((g) => (
+                          <Fragment key={g.agent}>
                             <div style={{
                               display: "flex", alignItems: "center", gap: 6,
                               padding: "6px 8px 4px", fontSize: 10, fontWeight: 600,
@@ -867,23 +882,23 @@ export function ChatNode({ id, data }: { id: string; data?: { collapsed?: boolea
                               letterSpacing: "0.07em",
                             }}>
                               <Terminal size={11} />
-                              Claude Code
+                              {g.label}
                             </div>
-                            {cliShown.map((m) => (
+                            {g.shown.map((m) => (
                               <button
-                                key={`cli-${m.id}`}
-                                className={`chat-picker-item${backend === "cli" && model.id === m.id ? " chat-picker-item--active" : ""}`}
-                                onClick={() => selectCliModel(m.id)}
+                                key={`cli-${g.agent}-${m.id}`}
+                                className={`chat-picker-item${backend === "cli" && cliAgent === g.agent && model.id === m.id ? " chat-picker-item--active" : ""}`}
+                                onClick={() => selectCliAgentModel(g.agent, m.id)}
                               >
                                 <div className="chat-picker-item-logo"><Terminal size={16} /></div>
                                 <div className="chat-picker-item-text">
                                   <span className="chat-picker-item-name">{m.label}</span>
                                 </div>
-                                {backend === "cli" && model.id === m.id && <div className="chat-picker-item-dot" />}
+                                {backend === "cli" && cliAgent === g.agent && model.id === m.id && <div className="chat-picker-item-dot" />}
                               </button>
                             ))}
-                          </>
-                        )}
+                          </Fragment>
+                        ))}
 
                         {warpShown.length > 0 && (
                           <>

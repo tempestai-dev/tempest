@@ -38,6 +38,86 @@ export const CLAUDE_CODE_MODELS: ChatModel[] = [
   { id: "opus",    label: "Opus"    },
 ];
 
+// Additional CLI coding agents that ride the same "cli" backend + bridge sidecar
+// (dispatched by cfg.agent). Each has its own `--model` alias set.
+export const CLI_AGENTS = ["claude", "codex", "opencode", "gemini"] as const;
+export type CliAgent = typeof CLI_AGENTS[number];
+
+export const CLI_AGENT_LABELS: Record<CliAgent, string> = {
+  claude:   "Claude Code",
+  codex:    "Codex",
+  opencode: "OpenCode",
+  gemini:   "Gemini CLI",
+};
+
+// Codex CLI passes -m through to the OpenAI Responses API. Any model that
+// endpoint accepts works; this is the picker's default shortlist. Order = default first.
+export const CODEX_MODELS: ChatModel[] = [
+  { id: "gpt-5-codex",  label: "GPT-5 Codex"  },
+  { id: "gpt-5.5",      label: "GPT-5.5"      },
+  { id: "gpt-5.4",      label: "GPT-5.4"      },
+  { id: "gpt-5.4-mini", label: "GPT-5.4 Mini" },
+  { id: "gpt-5",        label: "GPT-5"        },
+  { id: "gpt-5-mini",   label: "GPT-5 Mini"   },
+  { id: "o4-mini",      label: "o4 Mini"      },
+  { id: "o3",           label: "o3"           },
+];
+
+// OpenCode routes through many providers; model ids are `provider/model`.
+// This list mirrors `opencode models` output verbatim — paid `opencode-go/*`
+// tier first (coding-strongest at top), then `opencode/*` free tier.
+export const OPENCODE_MODELS: ChatModel[] = [
+  { id: "opencode-go/gpt-5.6-luna",                label: "GPT-5.6 Luna"       },
+  { id: "opencode-go/grok-4.5",                    label: "Grok 4.5"           },
+  { id: "opencode-go/kimi-k3",                     label: "Kimi K3"            },
+  { id: "opencode-go/kimi-k2.7-code",              label: "Kimi K2.7 Code"     },
+  { id: "opencode-go/kimi-k2.6",                   label: "Kimi K2.6"          },
+  { id: "opencode-go/deepseek-v4-pro",             label: "DeepSeek V4 Pro"    },
+  { id: "opencode-go/deepseek-v4-flash",           label: "DeepSeek V4 Flash"  },
+  { id: "opencode-go/glm-5.3",                     label: "GLM 5.3"            },
+  { id: "opencode-go/glm-5.2",                     label: "GLM 5.2"            },
+  { id: "opencode-go/glm-5.1",                     label: "GLM 5.1"            },
+  { id: "opencode-go/qwen3.8-max",                 label: "Qwen 3.8 Max"       },
+  { id: "opencode-go/qwen3.7-max",                 label: "Qwen 3.7 Max"       },
+  { id: "opencode-go/qwen3.7-plus",                label: "Qwen 3.7 Plus"      },
+  { id: "opencode-go/qwen3.6-plus",                label: "Qwen 3.6 Plus"      },
+  { id: "opencode-go/minimax-m3",                  label: "MiniMax M3"         },
+  { id: "opencode-go/minimax-m2.7",                label: "MiniMax M2.7"       },
+  { id: "opencode-go/mimo-v2.5-pro",               label: "MiMo v2.5 Pro"      },
+  { id: "opencode-go/mimo-v2.5",                   label: "MiMo v2.5"          },
+  { id: "opencode-go/hy3",                         label: "Hy3"                },
+  { id: "opencode/big-pickle",                     label: "Big Pickle (free)"  },
+  { id: "opencode/nemotron-3-ultra-free",          label: "Nemotron 3 Ultra (free)"     },
+  { id: "opencode/nemotron-3.5-lightning-free",    label: "Nemotron 3.5 Lightning (free)" },
+  { id: "opencode/deepseek-v4-flash-free",         label: "DeepSeek V4 Flash (free)"    },
+  { id: "opencode/laguna-s-2.1-free",              label: "Laguna S 2.1 (free)"         },
+  { id: "opencode/mimo-v2.5-free",                 label: "MiMo v2.5 (free)"            },
+  { id: "opencode/hy3-free",                       label: "Hy3 (free)"                  },
+];
+
+// Gemini CLI's -m accepts any Gemini API model id. Kept in sync with the
+// Gemini rows in PROVIDER_MODELS so the two pickers don't drift again.
+export const GEMINI_CLI_MODELS: ChatModel[] = [
+  { id: "gemini-3.5-flash",              label: "Gemini 3.5 Flash"      },
+  { id: "gemini-3.1-pro-preview",        label: "Gemini 3.1 Pro"        },
+  { id: "gemini-3.1-flash-lite-preview", label: "Gemini 3.1 Flash Lite" },
+  { id: "gemini-3-flash-preview",        label: "Gemini 3 Flash"        },
+  { id: "gemini-2.5-pro",                label: "Gemini 2.5 Pro"        },
+  { id: "gemini-2.5-flash",              label: "Gemini 2.5 Flash"      },
+];
+
+export const CLI_AGENT_MODELS: Record<CliAgent, ChatModel[]> = {
+  claude:   CLAUDE_CODE_MODELS,
+  codex:    CODEX_MODELS,
+  opencode: OPENCODE_MODELS,
+  gemini:   GEMINI_CLI_MODELS,
+};
+
+export function getCliAgentModel(agent: CliAgent, modelId: string | undefined): ChatModel {
+  const list = CLI_AGENT_MODELS[agent];
+  return list.find((m) => m.id === modelId) ?? list[0];
+}
+
 // Warp (warpllm) — experimental Rust chat backend. Its own category alongside
 // CLAUDE_CODE in the picker; gated by settings.experimentalWarp. Model ids are
 // warpllm's `provider/model` routing strings — the prefix is required.

@@ -1,0 +1,6 @@
+{
+  "name": "@tempest/codex-bridge",
+  "private": true,
+  "type": "module",
+  "description": "Node sidecar that drives the Codex CLI (`codex exec --json`) and streams NDJSON events to Tempest. Run via system node; not part of the Vite/renderer bundle. No external deps."
+}

@@ -1,12 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { ChatStreamEvent } from "./chat";
+import type { CliAgent } from "./chatModels";
 
-// CLI chat backend: drive Claude Code via the Node sidecar (claude-agent-sdk) and
-// map its NDJSON events onto the SAME `ChatStreamEvent` union the BYOK path emits,
-// so ChatNode renders both identically. The sidecar streams over a per-turn
-// `claude://{streamId}` Tauri channel; permission decisions + cancel go back
-// through Rust commands. Session id is surfaced so the node can `resume` next turn.
+// CLI chat backend: drive one of four CLI coding agents (Claude Code, Codex,
+// OpenCode, Gemini CLI) via the Node sidecar bridge, and map its NDJSON events
+// onto the SAME `ChatStreamEvent` union the BYOK path emits so ChatNode renders
+// them identically. The sidecar streams over a per-turn `claude://{streamId}`
+// Tauri channel; permission decisions + cancel go back through Rust commands.
+// Session id is surfaced so the node can `resume` next turn.
 
 // Raw event shapes the bridge prints (see resources/claude-bridge/bridge.mjs).
 type BridgeEvent =
@@ -22,12 +24,14 @@ type BridgeEvent =
 export interface StreamClaudeCodeOptions {
   prompt: string;
   cwd: string;
-  /** Persisted Claude session id from a prior turn; enables multi-turn continuity. */
+  /** Which CLI agent to drive. Defaults to "claude". */
+  agent?: CliAgent;
+  /** Persisted session id from a prior turn; enables multi-turn continuity. */
   resume?: string;
-  /** CLI model alias ("haiku" | "sonnet" | "opus"). Defaults to Haiku. */
+  /** CLI model alias — meaning is per-agent (see chatModels.CLI_AGENT_MODELS). */
   model?: string;
   systemPrompt?: string;
-  /** Project id → wires the tempest-canvas MCP so Claude can read the canvas. */
+  /** Project id → wires the tempest-canvas MCP so the agent can read the canvas. */
   projectId?: string;
   onEvent: (event: ChatStreamEvent) => void;
 }
@@ -37,8 +41,16 @@ export interface ClaudeCodeStream {
   decide: (id: string, behavior: "allow" | "deny", message?: string) => void;
 }
 
+const AGENT_LABEL: Record<string, string> = {
+  claude:   "Claude Code",
+  codex:    "Codex",
+  opencode: "OpenCode",
+  gemini:   "Gemini CLI",
+};
+
 export function streamClaudeCode(options: StreamClaudeCodeOptions): ClaudeCodeStream {
-  const { prompt, cwd, resume, model, systemPrompt, projectId, onEvent } = options;
+  const { prompt, cwd, agent, resume, model, systemPrompt, projectId, onEvent } = options;
+  const agentLabel = AGENT_LABEL[agent ?? "claude"] ?? (agent ?? "Agent");
   const streamId = crypto.randomUUID();
 
   let unlisten: UnlistenFn | null = null;
@@ -72,7 +84,7 @@ export function streamClaudeCode(options: StreamClaudeCodeOptions): ClaudeCodeSt
             onEvent({ type: "permission-request", id: ev.id, toolName: ev.name, title: ev.title, description: ev.description, input: ev.input });
             break;
           case "result":
-            if (ev.isError) onEvent({ type: "error", message: `Claude Code error: ${ev.errorSubtype ?? "unknown"}` });
+            if (ev.isError) onEvent({ type: "error", message: `${agentLabel} error: ${ev.errorSubtype ?? "unknown"}` });
             onEvent({ type: "finish", inputTokens: ev.inputTokens, outputTokens: ev.outputTokens, sessionId: ev.sessionId });
             break;
           case "closed":
@@ -91,6 +103,7 @@ export function streamClaudeCode(options: StreamClaudeCodeOptions): ClaudeCodeSt
         config: {
           prompt,
           cwd,
+          ...(agent ? { agent } : {}),
           ...(resume ? { resume } : {}),
           ...(model ? { model } : {}),
           ...(systemPrompt ? { systemPrompt } : {}),

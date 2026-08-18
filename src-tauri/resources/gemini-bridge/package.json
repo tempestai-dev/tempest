@@ -1,0 +1,6 @@
+{
+  "name": "@tempest/gemini-bridge",
+  "private": true,
+  "type": "module",
+  "description": "Node sidecar that drives the Gemini CLI in Agent Client Protocol mode (`gemini --experimental-acp`) and streams NDJSON events to Tempest. Run via system node; not part of the Vite/renderer bundle. No external deps."
+}

@@ -32,6 +32,8 @@ Parallel agent sessions are the foundation. Tempest is an engineering platform w
 
 ## On the roadmap
 
+**Tasks tab — issues where the work happens.** A first-class tab that pulls issues from GitHub and Linear (Slack to follow) into Tempest itself, so you see what's on your plate without leaving the app. One click sends an agent to work on an issue in its own isolated branch — the same isolation and database-branch guarantees as any other agent session, tied back to the source ticket. GitHub and Linear are the priorities; Slack lands after.
+
 **Mobile apps (iOS + Android).** Built with Expo. Not a mini IDE — a companion surface: check on agents, approve or redirect them mid-run, review diffs, get notified when something needs you. Backed by remote agents (below) so the desktop app can be closed.
 
 **Remote agents.** Agents still execute locally on your machine — but the control plane is remote-accessible. Launch, monitor, and steer them from the mobile app, from another laptop, or from a script. Local-only execution keeps the isolation and cost story intact; remote control unlocks the "my agents are working, I'm not at my desk" use case.

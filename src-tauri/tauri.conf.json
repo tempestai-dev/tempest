@@ -46,6 +46,10 @@
     "targets": ["nsis", "msi"],
     "resources": [
       "resources/atlas/**/*",
+      "resources/claude-bridge/**/*",
+      "resources/codex-bridge/**/*",
+      "resources/opencode-bridge/**/*",
+      "resources/gemini-bridge/**/*",
       "icons/128x128.png"
     ],
     "icon": [

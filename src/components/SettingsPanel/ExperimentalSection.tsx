@@ -15,7 +15,7 @@ export function ExperimentalSection() {
           <div className="sp-toggle-text">
             <span className="sp-toggle-label">Warp chat backend</span>
             <span className="sp-toggle-desc">
-              Adds "Warp" alongside Claude Code in the chat node's Agents picker.
+              Adds "Warp" alongside the built-in CLI agents in the chat node's Agents picker.
               Backed by warpllm — Jin Lee's Rust AI gateway (OpenAI, DeepSeek,
               OpenRouter, Kimi via <code>provider/model</code> strings). Requires
               the provider's API key in your environment

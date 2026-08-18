@@ -160,6 +160,24 @@
   letter-spacing: -0.01em;
 }
 
+.quota-pin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.quota-pin:hover { background: var(--tempest-bg-hover); color: var(--tempest-fg-default); }
+.quota-pin--on { color: var(--tempest-fg-default); }
+
 .quota-row-plan {
   color: var(--tempest-fg-subtle);
   font-size: 11px;

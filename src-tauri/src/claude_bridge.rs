@@ -25,14 +25,24 @@ pub struct ClaudeProc {
 
 pub struct ClaudeState(pub Arc<DashMap<String, ClaudeProc>>);
 
-/// Dev: src-tauri/resources/claude-bridge/bridge.mjs
-/// Release: <exe>/resources/claude-bridge/bridge.mjs
-fn bridge_entry(_app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+/// Dev: src-tauri/resources/<agent>-bridge/bridge.mjs
+/// Release: <exe>/resources/<agent>-bridge/bridge.mjs
+///
+/// `agent` is one of "claude" | "codex" | "opencode" | "gemini". Anything else
+/// is rejected — no silent fallback so a typo in a chat node is visible.
+fn bridge_entry(_app: &tauri::AppHandle, agent: &str) -> Result<std::path::PathBuf, String> {
+    let dir_name = match agent {
+        "claude"   => "claude-bridge",
+        "codex"    => "codex-bridge",
+        "opencode" => "opencode-bridge",
+        "gemini"   => "gemini-bridge",
+        other      => return Err(format!("Unknown agent: {other}")),
+    };
     #[cfg(debug_assertions)]
     {
         Ok(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("resources")
-            .join("claude-bridge")
+            .join(dir_name)
             .join("bridge.mjs"))
     }
     #[cfg(not(debug_assertions))]
@@ -41,7 +51,7 @@ fn bridge_entry(_app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
         // drive-relative path that breaks Node script resolution (see atlas).
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         let dir = exe.parent().ok_or_else(|| "no exe dir".to_string())?;
-        Ok(dir.join("resources").join("claude-bridge").join("bridge.mjs"))
+        Ok(dir.join("resources").join(dir_name).join("bridge.mjs"))
     }
 }
 
@@ -56,9 +66,10 @@ pub fn claude_stream_start(
     stream_id: String,
     mut config: Value,
 ) -> Result<(), String> {
-    let entry = bridge_entry(&app)?;
+    let agent = config.get("agent").and_then(Value::as_str).unwrap_or("claude").to_string();
+    let entry = bridge_entry(&app, &agent)?;
     if !entry.exists() {
-        return Err(format!("Claude bridge not staged — not found at {}", entry.display()));
+        return Err(format!("{agent} bridge not staged — not found at {}", entry.display()));
     }
 
     // Inject the canvas MCP server (mirrors write_canvas_mcp_config's wiring).

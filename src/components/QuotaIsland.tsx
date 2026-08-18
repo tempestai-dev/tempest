@@ -5,18 +5,31 @@
 // user always sees the full picture without leaving the title bar.
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Pin } from "lucide-react";
 import {
   CRIT, WARN, formatReset, levelOf, peakQuota, pct,
   windowsFromProviders,
-  type Balance, type ProviderUsage, type Window,
+  type Balance, type ProviderUsage, type QuotaWindow, type Window,
 } from "../lib/quota";
 import { refreshQuotas, startQuotaPolling, useQuotas } from "../store/quotas";
 import "./QuotaIsland.css";
 
+const PIN_KEY = "tempest.quotaPin";
+
 export function QuotaIsland() {
   const providers = useQuotas();
   useEffect(() => { startQuotaPolling(); }, []);
+
+  const [pinned, setPinned] = useState<string | null>(
+    () => (typeof localStorage !== "undefined" ? localStorage.getItem(PIN_KEY) : null),
+  );
+  function togglePin(providerId: string) {
+    setPinned((cur) => {
+      const next = cur === providerId ? null : providerId;
+      if (next) localStorage.setItem(PIN_KEY, next); else localStorage.removeItem(PIN_KEY);
+      return next;
+    });
+  }
 
   const [hover, setHover] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -37,7 +50,8 @@ export function QuotaIsland() {
   }
 
   const windows = windowsFromProviders(providers);
-  const peak = peakQuota(windows);
+  const pinnedWin = pinned ? peakQuota(windows.filter((w: QuotaWindow) => w.id.startsWith(`${pinned}:`))) : null;
+  const peak = pinnedWin ?? peakQuota(windows);
   const level = peak ? levelOf(peak.used) : null;
   const anyProvider = providers.some((p) => p.status !== "unavailable");
 
@@ -45,7 +59,7 @@ export function QuotaIsland() {
   // reads as broken; absence reads as "no quota providers configured".
   if (!anyProvider) return null;
 
-  const expanded = hover || (level && level !== "ok");
+  const expanded = hover || (level && level !== "ok") || !!pinnedWin;
 
   return (
     <div className="quota-island-wrap"
@@ -76,18 +90,33 @@ export function QuotaIsland() {
               {refreshing ? "Refreshing" : "Refresh"}
             </button>
           </div>
-          {providers.map((p) => <ProviderRow key={p.providerId} p={p} />)}
+          {providers.map((p) => (
+            <ProviderRow key={p.providerId} p={p} pinned={pinned === p.providerId} onPin={() => togglePin(p.providerId)} />
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-function ProviderRow({ p }: { p: ProviderUsage }) {
+function ProviderRow({ p, pinned, onPin }: { p: ProviderUsage; pinned: boolean; onPin: () => void }) {
+  const canPin = p.status === "available" && p.windows.some((w) => w.used != null);
   return (
     <div className={`quota-row quota-row--${p.status}`}>
       <div className="quota-row-head">
         <span className="quota-row-name">{p.displayName}</span>
+        {canPin && (
+          <button
+            type="button"
+            className={`quota-pin${pinned ? " quota-pin--on" : ""}`}
+            aria-label={pinned ? "Unpin from title bar" : "Pin to title bar"}
+            aria-pressed={pinned}
+            title={pinned ? "Unpin from title bar" : "Pin to title bar"}
+            onClick={onPin}
+          >
+            <Pin size={11} fill={pinned ? "currentColor" : "none"} strokeWidth={1.75} />
+          </button>
+        )}
         {p.planLabel && <span className="quota-row-plan">{p.planLabel}</span>}
         <StatusChip p={p} />
       </div>
