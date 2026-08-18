@@ -44,6 +44,20 @@ export function getChildByField(node: SyntaxNode, fieldName: string): SyntaxNode
 }
 
 /**
+ * Strip `<...>` generic type arguments, handling nesting (`List<Dict<K,V>>` → `List`).
+ * Repeatedly removes innermost `<...>` groups until no `<` remains.
+ */
+export function stripAngleGenerics(s: string): string {
+  let prev: string;
+  let cur = s;
+  do {
+    prev = cur;
+    cur = cur.replace(/<[^<>]*>/g, '');
+  } while (cur !== prev);
+  return cur;
+}
+
+/**
  * Node types that *wrap* a declaration so a leading comment is a sibling of the
  * wrapper, not of the emitted (inner) declaration node. Atlas emits the
  * inner node, so before looking for its preceding comment we climb out through

@@ -961,7 +961,14 @@ function inferJavaFieldReceiverType(
   const typeRaw = beforeName.trim();
   if (!typeRaw) return null;
 
-  const typeNoGenerics = typeRaw.replace(/<[^>]*>/g, '').trim();
+  // Strip generics, looping so nested `Map<K, List<V>>` fully collapses.
+  let typeNoGenerics = typeRaw;
+  for (;;) {
+    const next = typeNoGenerics.replace(/<[^<>]*>/g, '');
+    if (next === typeNoGenerics) break;
+    typeNoGenerics = next;
+  }
+  typeNoGenerics = typeNoGenerics.trim();
   const typeNoArray = typeNoGenerics.replace(/\[\s*\]/g, '').replace(/\.\.\.$/, '').trim();
   const parts = typeNoArray.split(/[.\s]+/).filter(Boolean);
   const lastPart = parts[parts.length - 1];

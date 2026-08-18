@@ -130,7 +130,7 @@ export class VueExtractor {
       isTypeScript: boolean;
     }> = [];
 
-    const scriptRegex = /<script(\s[^>]*)?>(?<content>[\s\S]*?)<\/script>/g;
+    const scriptRegex = /<script(\b[^>]*)?>(?<content>[\s\S]*?)<\/script\s*>/gi;
     let match;
 
     while ((match = scriptRegex.exec(this.source)) !== null) {
@@ -248,7 +248,7 @@ export class VueExtractor {
     // also correctly handles nested <template> tags (v-if / slots), which a
     // single non-greedy <template>…</template> match would mis-bound.
     const coveredRanges: Array<[number, number]> = [];
-    const blockRegex = /<(script|style)(\s[^>]*)?>[\s\S]*?<\/\1>/g;
+    const blockRegex = /<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
     let blockMatch;
     while ((blockMatch = blockRegex.exec(this.source)) !== null) {
       const startLine = (this.source.substring(0, blockMatch.index).match(/\n/g) || []).length;

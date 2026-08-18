@@ -276,12 +276,20 @@ export class LiquidExtractor {
    * Extract {% schema %}...{% endschema %} blocks
    */
   private extractSchema(fileNodeId: string): void {
-    // Match {% schema %}...{% endschema %}
-    const schemaRegex = /\{%[-]?\s*schema\s*[-]?%\}([\s\S]*?)\{%[-]?\s*endschema\s*[-]?%\}/g;
+    // Match {% schema %}...{% endschema %} — split open/close to avoid a
+    // single regex that ReDoS's on `{% schema %}` repeated without `{% endschema %}`.
+    const openRegex = /\{%-?\s*schema\s*-?%\}/g;
+    const closeRegex = /\{%-?\s*endschema\s*-?%\}/g;
     let match;
 
-    while ((match = schemaRegex.exec(this.source)) !== null) {
-      const [fullMatch, schemaContent] = match;
+    while ((match = openRegex.exec(this.source)) !== null) {
+      const contentStart = match.index + match[0].length;
+      closeRegex.lastIndex = contentStart;
+      const closeMatch = closeRegex.exec(this.source);
+      if (!closeMatch) break;
+      const schemaContent = this.source.slice(contentStart, closeMatch.index);
+      const fullMatch = this.source.slice(match.index, closeMatch.index + closeMatch[0].length);
+      openRegex.lastIndex = closeMatch.index + closeMatch[0].length;
       const startLine = this.getLineNumber(match.index);
       const endLine = this.getLineNumber(match.index + fullMatch.length);
 

@@ -1,5 +1,5 @@
 import type { Node as SyntaxNode } from 'web-tree-sitter';
-import { getNodeText } from '../tree-sitter-helpers';
+import { getNodeText, stripAngleGenerics } from '../tree-sitter-helpers';
 import type { LanguageExtractor } from '../tree-sitter-types';
 
 /**
@@ -46,7 +46,7 @@ function extractCsharpReturnType(node: SyntaxNode, source: string): string | und
   if (typeNode.type === 'predefined_type' || typeNode.type === 'array_type') return undefined;
   let t = getNodeText(typeNode, source).trim();
   t = t.replace(/\?+$/, ''); // nullable `Foo?`
-  t = t.replace(/<[^>]*>/g, ''); // generics `List<Foo>` → `List`
+  t = stripAngleGenerics(t); // generics `List<Foo>` → `List` (handles nesting)
   const last = t.split('.').pop()?.trim(); // namespace `Ns.Foo` → `Foo`
   if (!last || !/^[A-Za-z_]\w*$/.test(last)) return undefined;
   return last;

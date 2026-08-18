@@ -227,7 +227,7 @@ export function applyAliases(
 
     const out: string[] = [];
     for (const target of pat.replacements) {
-      const filled = pat.hasWildcard ? target.replace('*', captured) : target;
+      const filled = pat.hasWildcard ? target.replaceAll('*', captured) : target;
       // baseUrl is absolute; produce a path relative to projectRoot
       const absolute = path.resolve(aliases.baseUrl, filled);
       const relative = path.relative(projectRoot, absolute);

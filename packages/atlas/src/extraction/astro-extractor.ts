@@ -156,7 +156,7 @@ export class AstroExtractor {
   private extractScriptBlocks(): Array<{ content: string; startLine: number }> {
     const blocks: Array<{ content: string; startLine: number }> = [];
 
-    const scriptRegex = /<script(\s[^>]*)?>(?<content>[\s\S]*?)<\/script>/g;
+    const scriptRegex = /<script\b[^>]*>(?<content>[\s\S]*?)<\/script\s*>/gi;
     let match;
 
     while ((match = scriptRegex.exec(this.source)) !== null) {
@@ -254,7 +254,7 @@ export class AstroExtractor {
       coveredRanges.push([frontmatter.startLine - 1, frontmatter.endLine]);
     }
 
-    const tagRegex = /<(script|style)(\s[^>]*)?>[\s\S]*?<\/\1>/g;
+    const tagRegex = /<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
     let tagMatch;
     while ((tagMatch = tagRegex.exec(this.source)) !== null) {
       const startLine = (this.source.substring(0, tagMatch.index).match(/\n/g) || []).length;
@@ -281,9 +281,9 @@ export class AstroExtractor {
   ): void {
     const lines = this.source.split('\n');
     // Complete groups: {...} — excluding JSX comments ({/* ... */})
-    const exprRegex = /\{([^}/][^}]*)\}/g;
+    const exprRegex = /\{(?![/}])([^}]*)\}/g;
     // A group opened but not closed on this line
-    const openExprRegex = /\{([^}/][^}]*)$/;
+    const openExprRegex = /\{(?![/}])([^}]*)$/;
 
     for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
       if (coveredRanges.some(([start, end]) => lineIdx >= start && lineIdx <= end)) continue;

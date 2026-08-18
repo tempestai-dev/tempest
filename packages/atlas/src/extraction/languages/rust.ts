@@ -1,5 +1,5 @@
 import type { Node as SyntaxNode } from 'web-tree-sitter';
-import { getNodeText, getChildByField } from '../tree-sitter-helpers';
+import { getNodeText, getChildByField, stripAngleGenerics } from '../tree-sitter-helpers';
 import type { LanguageExtractor } from '../tree-sitter-types';
 
 /**
@@ -26,7 +26,7 @@ function extractRustReturnType(node: SyntaxNode, source: string): string | undef
   if (!rt || rt.type === 'primitive_type' || rt.type === 'unit_type' || rt.type === 'tuple_type') {
     return undefined;
   }
-  const text = getNodeText(rt, source).trim().replace(/<[^>]*>/g, '');
+  const text = stripAngleGenerics(getNodeText(rt, source).trim());
   const last = text.split('::').pop()?.trim();
   if (!last || !/^[A-Za-z_]\w*$/.test(last)) return undefined;
   return last === 'Self' ? 'self' : last;

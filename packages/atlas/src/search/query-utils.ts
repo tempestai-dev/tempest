@@ -159,7 +159,7 @@ export function extractSearchTerms(query: string, options?: { stems?: boolean })
 
   // First, extract and preserve compound identifiers before splitting
   // CamelCase: scrapeLoop, UserService, getCallGraph
-  const compoundPattern = /\b([a-zA-Z][a-zA-Z0-9]*(?:[A-Z][a-z]+)+|[A-Z][a-z]+(?:[A-Z][a-z]*)+)\b/g;
+  const compoundPattern = /\b([a-zA-Z][a-z0-9]*(?:[A-Z][a-z0-9]*)+)\b/g;
   let match;
   while ((match = compoundPattern.exec(query)) !== null) {
     if (match[1] && match[1].length >= 3) {

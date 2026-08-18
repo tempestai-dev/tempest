@@ -122,7 +122,7 @@ export class SvelteExtractor {
       isTypeScript: boolean;
     }> = [];
 
-    const scriptRegex = /<script(\s[^>]*)?>(?<content>[\s\S]*?)<\/script>/g;
+    const scriptRegex = /<script(\b[^>]*)?>(?<content>[\s\S]*?)<\/script\s*>/gi;
     let match;
 
     while ((match = scriptRegex.exec(this.source)) !== null) {
@@ -235,7 +235,7 @@ export class SvelteExtractor {
     const coveredRanges: Array<[number, number]> = [];
 
     // Find all <script>...</script> and <style>...</style> ranges
-    const tagRegex = /<(script|style)(\s[^>]*)?>[\s\S]*?<\/\1>/g;
+    const tagRegex = /<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
     let tagMatch;
     while ((tagMatch = tagRegex.exec(this.source)) !== null) {
       const startLine = (this.source.substring(0, tagMatch.index).match(/\n/g) || []).length;
@@ -246,7 +246,7 @@ export class SvelteExtractor {
     // Find template expressions: {...} outside of script/style blocks
     // Matches curly-brace expressions, excluding Svelte block syntax ({#if}, {:else}, {/if}, {@html}, {@render})
     const lines = this.source.split('\n');
-    const exprRegex = /\{([^}#/:@][^}]*)\}/g;
+    const exprRegex = /\{(?![}#/:@])([^}]*)\}/g;
 
     for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
       // Skip lines inside script/style blocks
@@ -291,7 +291,7 @@ export class SvelteExtractor {
   private extractTemplateComponents(componentNodeId: string): void {
     // Build ranges covered by <script> and <style> blocks to skip them
     const coveredRanges: Array<[number, number]> = [];
-    const tagRegex = /<(script|style)(\s[^>]*)?>[\s\S]*?<\/\1>/g;
+    const tagRegex = /<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
     let tagMatch;
     while ((tagMatch = tagRegex.exec(this.source)) !== null) {
       const startLine = (this.source.substring(0, tagMatch.index).match(/\n/g) || []).length;

@@ -1,5 +1,5 @@
 import type { Node as SyntaxNode } from 'web-tree-sitter';
-import { getNodeText, getChildByField } from '../tree-sitter-helpers';
+import { getNodeText, getChildByField, stripAngleGenerics } from '../tree-sitter-helpers';
 import type { LanguageExtractor } from '../tree-sitter-types';
 
 /**
@@ -28,11 +28,10 @@ function extractGoReturnType(node: SyntaxNode, source: string): string | undefin
       ) ?? result;
   }
   if (!result) return undefined;
-  const text = getNodeText(result, source)
-    .trim()
-    .replace(/^\*/, '')
-    .replace(/<[^>]*>/g, '')
-    .replace(/\[[^\]]*\]/g, ''); // strip generic args `Foo[T]`
+  const text = stripAngleGenerics(getNodeText(result, source).trim().replace(/^\*/, '')).replace(
+    /\[[^\]]*\]/g,
+    '',
+  ); // strip generic args `Foo[T]`
   const last = text.split('.').pop()?.trim(); // qualified `pkg.Foo` → `Foo`
   if (!last || !/^[A-Za-z_]\w*$/.test(last)) return undefined;
   return last;
