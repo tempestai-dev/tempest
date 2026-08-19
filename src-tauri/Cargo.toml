@@ -72,6 +72,9 @@ libc = "0.2"
 [target.'cfg(windows)'.dependencies]
 junction = "1"
 
+[profile.dev]
+debug = "line-tables-only"  # smaller debuginfo -> much faster linking on Windows
+
 [profile.release]
 opt-level     = "z"     # optimize for size, not speed
 lto           = "thin"  # cross-crate dead-code elimination

@@ -15,6 +15,9 @@ const API_KEY_PROVIDERS = [
   { id: "groq",       label: "Groq",       icon: "groq.svg",            invert: true,  local: false },
   { id: "openrouter", label: "OpenRouter", icon: "openrouter.svg",      invert: true,  local: false },
   { id: "ollama",     label: "Ollama",     icon: "ollama.svg",          invert: true,  local: true  },
+  // Non-LLM integrations use the same keyring slot pattern (byok/<id>). Linear
+  // powers the Tasks tab; the Rust `tasks_linear_*` commands read this slot.
+  { id: "linear",     label: "Linear",     icon: "linear.svg",          invert: true,  local: false },
 ];
 
 function maskKey(key: string) {
@@ -71,8 +74,8 @@ export function ApiKeysSection() {
     <div className="sp-section">
       <div className="sp-section-heading">API Keys</div>
       <p className="sp-section-desc">
-        Keys are stored locally in your browser and never leave your device.
-        They power the Chat tab via your own provider accounts.
+        Keys are stored in your OS credential manager and never leave your device.
+        LLM providers power the Chat tab; the Linear key powers the Tasks tab.
       </p>
 
       <div className="sp-apikeys-list">

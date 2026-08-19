@@ -20,6 +20,7 @@ import { DeleteWorkspaceDialog, type DeleteDialogState } from "./WorkspaceView/D
 import { UpdateConfirmDialog } from "./WorkspaceView/UpdateConfirmDialog";
 import { DiffPickerModal } from "./WorkspaceView/DiffPickerModal";
 import { PromptPickerPopover } from "./WorkspaceView/PromptPickerPopover";
+import { NotesPopover } from "./WorkspaceView/NotesPopover";
 import { ContextMenu, type CtxMenuState } from "./WorkspaceView/ContextMenu";
 import { TitleBar } from "./WorkspaceView/TitleBar";
 import {
@@ -42,6 +43,7 @@ import {
   BookOpen,
   Cpu,
   SplitSquareHorizontal,
+  PencilLine,
   Keyboard,
   PanelLeft,
   PanelRight,
@@ -52,6 +54,7 @@ import {
   Waypoints,
   Trash2,
   Workflow,
+  List,
 } from "lucide-react";
 import { setWorkState, clearWorkState, getWorkState, setAttention, getAttention } from "../store/workState";
 import { useKeybindings, matchesEvent, formatShortcut } from "../store/keybindings";
@@ -87,6 +90,7 @@ import { startModelManifestFetch } from "../lib/remoteConfig";
 import { startAgentHooks } from "../store/agentHooks";
 import { AtlasIndexModal } from "./AtlasIndexModal";
 import { KnowledgeBasePage } from "./KnowledgeBasePage";
+import { TasksPage } from "./TasksPage";
 import { AutomationsPage } from "./Automations/AutomationsPage";
 import { Toolbar } from "./Toolbar";
 import AgentTabs from "./AgentTabs";
@@ -191,6 +195,9 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const promptPickerRef = useRef<HTMLDivElement>(null);
   const promptBtnRef = useRef<SVGSVGElement>(null);
   const [promptPickerPos, setPromptPickerPos] = useState<{ top: number; right: number } | null>(null);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [notesPos, setNotesPos] = useState<{ top: number; right: number } | null>(null);
+  const notesBtnRef = useRef<SVGSVGElement>(null);
   const [diffPickerOpen, setDiffPickerOpen] = useState(false);
   const [diffPickerBranches, setDiffPickerBranches] = useState<Record<string, BranchInfo[]>>({});
   const [diffPickerLoading, setDiffPickerLoading] = useState(false);
@@ -1763,6 +1770,22 @@ export function WorkspaceView({ zen, name, path }: Props) {
   }, [activeSession?.cwd]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    if (!notesOpen) return;
+    if (notesBtnRef.current) {
+      const r = notesBtnRef.current.getBoundingClientRect();
+      setNotesPos({ top: r.bottom + 8, right: window.innerWidth - r.right });
+    }
+    function onDown(e: MouseEvent) {
+      const target = e.target as Node;
+      const inBtn = notesBtnRef.current?.contains(target);
+      const inPicker = (e.target as Element)?.closest?.(".sub-bar-notes-picker");
+      if (!inBtn && !inPicker) setNotesOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [notesOpen]);
+
+  useEffect(() => {
     if (!promptPickerOpen) return;
     setPromptPickerItems(getPrompts().filter((p) => p.enabled));
     if (promptBtnRef.current) {
@@ -1901,6 +1924,20 @@ export function WorkspaceView({ zen, name, path }: Props) {
         projectName={activeSessionProject?.name ?? projects[0]?.name ?? ""}
         rightActions={
           <>
+            <Tooltip content="Notes" placement="bottom">
+              <PencilLine
+                ref={notesBtnRef}
+                className={`topbar-icon${notesOpen ? " active" : ""}`}
+                onClick={() => setNotesOpen((o) => !o)}
+              />
+            </Tooltip>
+            {notesOpen && notesPos && (
+              <NotesPopover
+                pos={notesPos}
+                projectPath={activeSessionProject?.path ?? (zen ? path : projects[0]?.path)}
+                projectName={activeSessionProject?.name ?? (zen ? name : projects[0]?.name)}
+              />
+            )}
             <Tooltip content="Open diff view" placement="bottom">
               <SplitSquareHorizontal
                 className={`topbar-icon${diffPickerOpen || sessions.some(s => s.kind === "diff") ? " active" : ""}`}
@@ -1958,6 +1995,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
             <button className={navBtn("knowledge-base")} onClick={() => goTo("knowledge-base")}>
               <Brain size={16} />
               <span>Knowledge Base</span>
+            </button>
+            <button className={navBtn("tasks")} onClick={() => goTo("tasks")}>
+              <List size={16} />
+              <span>My Tasks</span>
             </button>
             <button className={navBtn("automations")} onClick={() => goTo("automations")}>
               <Workflow size={16} />
@@ -2682,10 +2723,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
               const slotStyle: React.CSSProperties = rect
                 ? {
                     position: "absolute",
-                    top:    `${rect.top    * 100}%`,
-                    left:   `${rect.left   * 100}%`,
-                    width:  `${rect.width  * 100}%`,
-                    height: `${rect.height * 100}%`,
+                    top:    `calc(${rect.top    * 100}% + 6px)`,
+                    left:   `calc(${rect.left   * 100}% + 6px)`,
+                    width:  `calc(${rect.width  * 100}% - 12px)`,
+                    height: `calc(${rect.height * 100}% - 12px)`,
                   }
                 : {};
               return (
@@ -2696,15 +2737,14 @@ export function WorkspaceView({ zen, name, path }: Props) {
                   onClick={isInSplit ? () => setActiveSessionId(s.id) : undefined}
                 >
                   {isInSplit && (
-                    <Tooltip content="Close pane" placement="top">
-                      <button
-                        className="pane-close-btn"
-                        onClick={(e) => { e.stopPropagation(); closeSession(s.id); }}
-                        aria-label="Close pane"
-                      >
-                        <X size={10} />
-                      </button>
-                    </Tooltip>
+                    <button
+                      className="pane-close-btn"
+                      onClick={(e) => { e.stopPropagation(); closeSession(s.id); }}
+                      aria-label="Close pane"
+                      title="Close pane"
+                    >
+                      <X size={10} />
+                    </button>
                   )}
                   {!s.kind && s.agent && !hidden && queueOpenSessionId === s.id && (
                     <QueuePanel
@@ -2767,18 +2807,18 @@ export function WorkspaceView({ zen, name, path }: Props) {
               const handleStyle: React.CSSProperties = isV
                 ? {
                     position: "absolute",
-                    top:    `${h.parentRect.top    * 100}%`,
+                    top:    `calc(${h.parentRect.top    * 100}% + 8px)`,
                     left:   `${(h.parentRect.left + h.parentRect.width * h.ratio) * 100}%`,
                     width:  "4px",
-                    height: `${h.parentRect.height * 100}%`,
+                    height: `calc(${h.parentRect.height * 100}% - 16px)`,
                     transform: "translateX(-50%)",
                     cursor: "col-resize",
                   }
                 : {
                     position: "absolute",
                     top:    `${(h.parentRect.top + h.parentRect.height * h.ratio) * 100}%`,
-                    left:   `${h.parentRect.left  * 100}%`,
-                    width:  `${h.parentRect.width  * 100}%`,
+                    left:   `calc(${h.parentRect.left  * 100}% + 8px)`,
+                    width:  `calc(${h.parentRect.width  * 100}% - 16px)`,
                     height: "4px",
                     transform: "translateY(-50%)",
                     cursor: "row-resize",
@@ -2811,6 +2851,9 @@ export function WorkspaceView({ zen, name, path }: Props) {
             </div>
             {!activeSessionId && activeSection === "knowledge-base" && (
               <KnowledgeBasePage />
+            )}
+            {!activeSessionId && activeSection === "tasks" && (
+              <TasksPage />
             )}
             {!activeSessionId && activeSection === "automations" && (
               <AutomationsPage />

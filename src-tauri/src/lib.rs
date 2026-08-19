@@ -10,9 +10,11 @@ mod agent_hooks;
 mod automations;
 mod canvas_mcp;
 mod claude_bridge;
+mod notes;
 mod quota;
 mod secrets;
 mod service_proxy;
+mod tasks;
 mod warp_bridge;
 
 /// Managed slug → dev-server-port map, read by the reverse proxy in
@@ -1291,6 +1293,15 @@ CREATE TABLE IF NOT EXISTS automation_prompt_versions (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_automation_prompt_versions_bucket
   ON automation_prompt_versions(automation_id, bucket_at);
+
+CREATE TABLE IF NOT EXISTS notes (
+  id         TEXT PRIMARY KEY,
+  title      TEXT,
+  body       TEXT NOT NULL DEFAULT '',
+  scope      TEXT NOT NULL DEFAULT 'global',
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at DESC);
 ";
 
 fn init_db(handle: &tauri::AppHandle) -> Result<rusqlite::Connection, String> {
@@ -4150,6 +4161,12 @@ pub fn run() {
             secrets::secret_get,
             secrets::secret_set,
             secrets::secret_delete,
+            tasks::tasks_github_auth,
+            tasks::tasks_github_repos,
+            tasks::tasks_github_list,
+            tasks::tasks_linear_bootstrap,
+            tasks::tasks_linear_list,
+            tasks::tasks_cache_invalidate,
             atlas_mcp_tools,
             atlas_mcp_call,
             git_ls_files,
@@ -4195,6 +4212,9 @@ pub fn run() {
             automations::upsert_automation_run,
             automations::list_prompt_versions,
             automations::save_prompt_version,
+            notes::notes_list,
+            notes::notes_upsert,
+            notes::notes_delete,
             claude_bridge::claude_stream_start,
             claude_bridge::claude_permission_decision,
             claude_bridge::claude_stream_cancel,

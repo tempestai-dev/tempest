@@ -373,6 +373,216 @@
   color: var(--tempest-fg-default);
 }
 
+.sub-bar-notes-picker {
+  width: 640px;
+  height: 440px;
+  display: flex;
+  flex-direction: column;
+  background: var(--tempest-bg-panel);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  z-index: 200;
+}
+
+.sub-bar-notes-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  padding: 0 8px 0 14px;
+  border-bottom: 1px solid var(--tempest-border-default);
+}
+
+.sub-bar-notes-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tempest-fg-default);
+}
+
+.sub-bar-notes-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 8px;
+  background: transparent;
+  color: var(--tempest-fg-default);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  transition: background 120ms;
+}
+.sub-bar-notes-new:hover {
+  background: var(--tempest-bg-hover);
+}
+
+.sub-bar-notes-body {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+}
+
+.sub-bar-notes-list {
+  flex: 0 0 200px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border-right: 1px solid var(--tempest-border-default);
+}
+
+.sub-bar-notes-item {
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 120ms;
+}
+.sub-bar-notes-item:hover {
+  background: var(--tempest-bg-hover);
+}
+.sub-bar-notes-item--active {
+  background: var(--tempest-bg-hover);
+}
+
+.sub-bar-notes-item-title {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--tempest-fg-default);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 4px;
+}
+.sub-bar-notes-item--active .sub-bar-notes-item-title {
+  color: var(--tempest-accent-blue);
+}
+
+.sub-bar-notes-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--tempest-fg-muted);
+}
+
+.sub-bar-notes-item-scope {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.sub-bar-notes-item-time {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--tempest-fg-subtle);
+}
+
+.sub-bar-notes-pane {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sub-bar-notes-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 44px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--tempest-border-default);
+}
+
+.sub-bar-notes-toolbar-spacer { flex: 1; }
+
+.sub-bar-notes-title-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 260px;
+  height: 28px;
+  padding: 0 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--tempest-fg-default);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: text;
+  transition: background 120ms, border-color 120ms;
+}
+.sub-bar-notes-title-btn:hover {
+  background: var(--tempest-bg-hover);
+  border-color: var(--tempest-border-default);
+}
+.sub-bar-notes-title-btn:hover .sub-bar-notes-title-edit-icon {
+  opacity: 1;
+}
+
+.sub-bar-notes-title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.sub-bar-notes-title-edit-icon {
+  flex-shrink: 0;
+  color: var(--tempest-fg-muted);
+  opacity: 0;
+  transition: opacity 120ms;
+}
+
+.sub-bar-notes-title-input {
+  width: 260px;
+  height: 28px;
+  padding: 0 8px;
+  background: var(--tempest-bg-hover);
+  border: 1px solid var(--tempest-accent-blue);
+  border-radius: 6px;
+  color: var(--tempest-fg-default);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  outline: none;
+}
+.sub-bar-notes-title-input::placeholder {
+  color: var(--tempest-fg-subtle);
+  font-weight: 400;
+}
+
+.sub-bar-notes-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  color: var(--tempest-fg-muted);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+.sub-bar-notes-icon-btn:hover {
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
+}
+
+.sub-bar-notes-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .sub-bar-prompt-item {
   display: flex;
   flex-direction: row;
@@ -2515,6 +2725,8 @@
   inset: 0;
   /* Re-enable clicks disabled on the .panes-viewport container. */
   pointer-events: auto;
+  border-radius: 6px;
+  overflow: hidden;
 }
 
 .pane-slot--split:not(.pane-slot--focused) {
@@ -2529,8 +2741,8 @@
 /* Close button that appears on hover inside a split pane */
 .pane-close-btn {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 8px;
+  right: 8px;
   z-index: 10;
   display: flex;
   align-items: center;
@@ -2561,6 +2773,7 @@
   z-index: 20;
   background: var(--tempest-border-subtle);
   transition: background 0.15s;
+  border-radius: 999px;
   /* Re-enable drag interaction disabled on the .panes-viewport container. */
   pointer-events: auto;
 }

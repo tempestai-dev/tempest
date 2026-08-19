@@ -22,6 +22,20 @@ class BulletWidget extends WidgetType {
   }
 }
 
+class ImageWidget extends WidgetType {
+  constructor(readonly url: string, readonly alt: string) { super(); }
+  eq(o: ImageWidget) { return o.url === this.url && o.alt === this.alt; }
+  toDOM() {
+    const img = document.createElement("img");
+    img.src = this.url;
+    img.alt = this.alt;
+    img.className = "cm-md-img";
+    return img;
+  }
+  // Prevent CM from treating clicks as caret placements inside the widget.
+  ignoreEvent() { return false; }
+}
+
 const hide       = Decoration.replace({});
 const bullet     = Decoration.replace({ widget: new BulletWidget() });
 const strongMk   = Decoration.mark({ class: "cm-md-strong" });
@@ -69,6 +83,22 @@ function build(view: EditorView): DecorationSet {
           case "Emphasis":        deco.push(emMk.range(node.from, node.to)); break;
           case "InlineCode":      deco.push(codeMk.range(node.from, node.to)); break;
           case "Link":            deco.push(linkMk.range(node.from, node.to)); break;
+          case "Image": {
+            // Parse `![alt](url)` from the source range; skip if malformed.
+            const src = doc.sliceString(node.from, node.to);
+            const m = /^!\[([^\]]*)\]\(([^)]+)\)$/.exec(src);
+            if (!m) break;
+            const [, alt, url] = m;
+            // While the cursor sits on the image, show the raw markdown so
+            // the URL is editable; otherwise replace it with the rendered img.
+            if (!touches(node.from, node.to)) {
+              deco.push(
+                Decoration.replace({ widget: new ImageWidget(url, alt), block: false })
+                  .range(node.from, node.to),
+              );
+            }
+            break;
+          }
           case "ListMark":
             if (/^[-*+]$/.test(doc.sliceString(node.from, node.to)))
               deco.push(bullet.range(node.from, node.to));
@@ -120,4 +150,9 @@ export const livePreviewTheme = EditorView.theme({
   },
   ".cm-md-link": { color: "var(--tempest-accent-blue)", textDecoration: "underline" },
   ".cm-md-bullet": { color: "var(--tempest-fg-muted)", paddingRight: "4px" },
+  ".cm-md-img": {
+    display: "block", maxWidth: "100%", maxHeight: "320px",
+    borderRadius: "6px", margin: "6px 0",
+    border: "1px solid var(--tempest-border-subtle)",
+  },
 });
