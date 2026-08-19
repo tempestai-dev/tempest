@@ -1,7 +1,8 @@
+import type { ReactElement } from "react";
 import { Icon } from "./icons";
 import type { Source } from "./types";
 
-const TABS: { id: Source; label: string; glyph: () => JSX.Element }[] = [
+const TABS: { id: Source; label: string; glyph: () => ReactElement }[] = [
   { id: "unified", label: "Unified", glyph: Icon.tabUnified },
   { id: "github", label: "GitHub", glyph: Icon.ghMark },
   { id: "linear", label: "Linear", glyph: Icon.linearMark },

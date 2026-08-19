@@ -14,29 +14,29 @@ use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 // ────────────────────────────────────────────────────────────────────────
 // Shared types (mirrored on the TS side in src/components/tasks/types.ts)
 // ────────────────────────────────────────────────────────────────────────
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Label {
     pub n: String,
     pub c: String,
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GhRepo {
     pub id: String,
     pub full: String,
     pub favorite: bool,
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GhItem {
-    pub kind: &'static str, // "issue" | "pr"
+    pub kind: String, // "issue" | "pr"
     pub number: i64,
     pub repo: String,        // owner/repo
     pub state: String,       // "open" | "closed"
@@ -51,7 +51,7 @@ pub struct GhItem {
     pub body: String,
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct LinearItem {
     pub id: String,          // e.g. ENG-88
     pub title: String,
@@ -67,28 +67,28 @@ pub struct LinearItem {
     pub body: String,
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct LinearTeam {
     pub id: String,
     pub name: String,
     pub color: String,
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct LinearProject {
     pub id: String,
     pub name: String,
     pub team: String,
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct LinearView {
     pub id: String,
     pub name: String,
     pub builtin: bool,
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct LinearBootstrap {
     pub viewer_name: String,
     pub teams: Vec<LinearTeam>,
@@ -393,7 +393,7 @@ fn gh_item_from(v: Value, kind_str: &str) -> Option<GhItem> {
         .to_string();
     let body = v.get("body").and_then(|s| s.as_str()).unwrap_or("").to_string();
     Some(GhItem {
-        kind: if kind_str == "prs" { "pr" } else { "issue" },
+        kind: if kind_str == "prs" { "pr".into() } else { "issue".into() },
         number,
         repo,
         state,

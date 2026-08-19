@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, type ReactElement } from "react";
 import { RowAccordion } from "./RowAccordion";
 import { TaskRow } from "./TaskRow";
 import { Icon, statusGlyph } from "./icons";
@@ -104,9 +104,9 @@ export function TaskList({
 
 function renderLinearGrouped(
   items: UnifiedItem[],
-  renderRow: (it: UnifiedItem) => JSX.Element,
+  renderRow: (it: UnifiedItem) => ReactElement,
 ) {
-  const groups: Record<string, { label: string; glyph: JSX.Element; items: UnifiedItem[] }> = {
+  const groups: Record<string, { label: string; glyph: ReactElement; items: UnifiedItem[] }> = {
     inprog:  { label: "In progress", glyph: Icon.sInprog(),  items: [] },
     todo:    { label: "Todo",        glyph: Icon.sTodo(),    items: [] },
     review:  { label: "In review",   glyph: Icon.sReview(),  items: [] },
