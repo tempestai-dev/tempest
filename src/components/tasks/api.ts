@@ -8,6 +8,7 @@ import type {
   LinearBootstrap,
   LinearItem,
   LinearScope,
+  TaskThread,
 } from "./types";
 
 export async function fetchGhAuth(): Promise<GhAuthState> {
@@ -35,6 +36,14 @@ export async function fetchLinearList(scope: LinearScope): Promise<LinearItem[]>
     scopeKind: scope.kind,
     scopeId: scope.id,
   });
+}
+
+export async function fetchGhThread(repo: string, number: number): Promise<TaskThread> {
+  return invoke<TaskThread>("tasks_github_thread", { repo, number });
+}
+
+export async function fetchLinearThread(id: string): Promise<TaskThread> {
+  return invoke<TaskThread>("tasks_linear_thread", { id });
 }
 
 export async function invalidateTasksCache(): Promise<void> {

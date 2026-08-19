@@ -210,7 +210,7 @@
 .tasks-page .list-header .count {
   color: var(--fg-faint); font-variant-numeric: tabular-nums;
 }
-.tasks-page .list-body { overflow: auto; padding: 4px 0 60px; }
+.tasks-page .list-body { overflow: auto; padding: 0 0 60px; }
 
 .tasks-page .tasks-banner {
   margin: 12px 14px;
@@ -266,7 +266,7 @@
   font-size: 10.5px; font-weight: 500;
   letter-spacing: 0.06em; text-transform: uppercase;
   position: sticky; top: 0; z-index: 2;
-  background: transparent;
+  background: var(--tempest-bg-canvas-wrap);
 }
 .tasks-page .table-head > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tasks-page .table-head .align-right { text-align: right; }
@@ -533,6 +533,18 @@
   border: 1px solid var(--border);
   color: var(--fg);
 }
+
+.tasks-page .thread-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.tasks-page .thread-comment {
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--bg-elev); padding: 12px 14px;
+}
+.tasks-page .thread-head { display: flex; gap: 8px; align-items: baseline; margin-bottom: 6px; }
+.tasks-page .thread-author { color: var(--fg); font-weight: 500; font-size: 12.5px; }
+.tasks-page .thread-time { color: var(--fg-subtle); font-size: 11.5px; }
+.tasks-page .thread-list.activity { gap: 6px; }
+.tasks-page .thread-event { color: var(--fg-muted); font-size: 12.5px; padding: 2px 0; }
+.tasks-page .thread-event .thread-detail { color: var(--fg); }
 
 .tasks-page .side-card {
   border: 1px solid var(--border);

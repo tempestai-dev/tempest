@@ -55,6 +55,26 @@ export type GhAuthState = {
   message: string | null;
 };
 
+export type TaskComment = {
+  id: string;
+  author: string;
+  body: string;
+  created: string;
+};
+
+export type TaskActivity = {
+  id: string;
+  author: string;
+  kind: string;
+  detail: string;
+  created: string;
+};
+
+export type TaskThread = {
+  comments: TaskComment[];
+  activity: TaskActivity[];
+};
+
 export type UnifiedItem = (GhItem | LinearItem) & { key: string };
 
 export type Source = "unified" | "github" | "linear";

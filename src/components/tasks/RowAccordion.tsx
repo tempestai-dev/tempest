@@ -1,28 +1,57 @@
-import { useState, type MouseEvent } from "react";
-import { relativeTime } from "./api";
+import { useEffect, useState, type MouseEvent } from "react";
+import { fetchGhThread, fetchLinearThread, relativeTime } from "./api";
 import { Icon, priGlyph, statusGlyph } from "./icons";
-import type { GhItem, LinearItem, LinearProject, LinearTeam, UnifiedItem } from "./types";
+import { Markdown } from "../Markdown";
+import type { GhItem, LinearItem, LinearProject, LinearTeam, TaskThread, UnifiedItem } from "./types";
 import { isGh } from "./types";
 
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 const statusLabel = (s: string) =>
   (({ backlog: "Backlog", todo: "Todo", inprog: "In progress", review: "In review", done: "Done", cancel: "Canceled" } as Record<string, string>)[s] ?? s);
 
-// Render body text with paragraph + linebreak preservation. Not markdown —
-// the mockup didn't render markdown; real fidelity comes later.
 function BodyText({ text }: { text: string }) {
   const t = (text ?? "").trim();
   if (!t) return <p style={{ color: "var(--fg-subtle)", fontStyle: "italic" }}>No description.</p>;
+  return <Markdown>{t}</Markdown>;
+}
+
+type ThreadPaneProps = { thread: TaskThread | null; err: string | null; loading: boolean };
+
+function ThreadComments({ thread, err, loading }: ThreadPaneProps) {
+  if (loading) return <p style={{ color: "var(--fg-subtle)" }}>Loading comments…</p>;
+  if (err) return <p style={{ color: "var(--tempest-semantic-error, tomato)" }}>{err}</p>;
+  const items = thread?.comments ?? [];
+  if (!items.length) return <p style={{ color: "var(--fg-subtle)", fontStyle: "italic" }}>No comments yet.</p>;
   return (
-    <>
-      {t.split(/\n{2,}/).map((para, i) => (
-        <p key={i}>
-          {para.split("\n").map((line, j, arr) => (
-            <span key={j}>{line}{j < arr.length - 1 && <br />}</span>
-          ))}
-        </p>
+    <ul className="thread-list">
+      {items.map((c) => (
+        <li key={c.id} className="thread-comment">
+          <div className="thread-head">
+            <span className="thread-author">{c.author || "unknown"}</span>
+            <span className="thread-time">{relativeTime(c.created)} ago</span>
+          </div>
+          <div className="prose"><Markdown>{c.body}</Markdown></div>
+        </li>
       ))}
-    </>
+    </ul>
+  );
+}
+
+function ThreadActivity({ thread, err, loading }: ThreadPaneProps) {
+  if (loading) return <p style={{ color: "var(--fg-subtle)" }}>Loading activity…</p>;
+  if (err) return <p style={{ color: "var(--tempest-semantic-error, tomato)" }}>{err}</p>;
+  const items = thread?.activity ?? [];
+  if (!items.length) return <p style={{ color: "var(--fg-subtle)", fontStyle: "italic" }}>No activity yet.</p>;
+  return (
+    <ul className="thread-list activity">
+      {items.map((a) => (
+        <li key={a.id} className="thread-event">
+          <span className="thread-author">{a.author || "system"}</span>
+          <span className="thread-detail"> {a.detail}</span>
+          <span className="thread-time"> · {relativeTime(a.created)} ago</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -49,6 +78,28 @@ export function RowAccordion({
     ? ["Description", "Comments", "Files", "Checks", "Activity"]
     : ["Description", "Comments", "Activity"];
   const [tab, setTab] = useState(0);
+
+  const [thread, setThread] = useState<TaskThread | null>(null);
+  const [threadErr, setThreadErr] = useState<string | null>(null);
+  const [threadLoading, setThreadLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setThread(null);
+    setThreadErr(null);
+    setThreadLoading(true);
+    const p = gh
+      ? fetchGhThread((it as GhItem).repo, (it as GhItem).number)
+      : fetchLinearThread((it as LinearItem).id);
+    p.then((t) => { if (!cancelled) setThread(t); })
+      .catch((e) => { if (!cancelled) setThreadErr(String(e?.message ?? e)); })
+      .finally(() => { if (!cancelled) setThreadLoading(false); });
+    return () => { cancelled = true; };
+  }, [it.key, gh]);
+
+  const activityLabel = tabs[tab] === "Activity";
+  const commentsLabel = tabs[tab] === "Comments";
+  const stubLabel = tabs[tab] === "Files" || tabs[tab] === "Checks";
 
   const openBrowser = async () => {
     if (!it.url) return;
@@ -125,7 +176,9 @@ export function RowAccordion({
       <div className="exp-body">
         <div className="main">
           {tab === 0 && <div className="prose"><BodyText text={it.body} /></div>}
-          {tab !== 0 && <p style={{ color: "var(--fg-subtle)" }}>Loads from the provider on demand — not wired yet.</p>}
+          {commentsLabel && <ThreadComments thread={thread} err={threadErr} loading={threadLoading} />}
+          {activityLabel && <ThreadActivity thread={thread} err={threadErr} loading={threadLoading} />}
+          {stubLabel && <p style={{ color: "var(--fg-subtle)" }}>Loads from the provider on demand — not wired yet.</p>}
         </div>
 
         <aside className="side">

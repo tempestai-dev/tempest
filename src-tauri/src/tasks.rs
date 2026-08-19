@@ -96,6 +96,29 @@ pub struct LinearBootstrap {
     pub views: Vec<LinearView>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TaskComment {
+    pub id: String,
+    pub author: String,
+    pub body: String,
+    pub created: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TaskActivity {
+    pub id: String,
+    pub author: String,
+    pub kind: String,    // "labeled" | "closed" | "assigned" | ...
+    pub detail: String,  // human-readable one-liner
+    pub created: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TaskThread {
+    pub comments: Vec<TaskComment>,
+    pub activity: Vec<TaskActivity>,
+}
+
 #[derive(Serialize, Clone, Debug)]
 pub struct GhAuthState {
     pub available: bool,      // `gh` binary on PATH
@@ -413,6 +436,82 @@ fn gh_item_from(v: Value, kind_str: &str) -> Option<GhItem> {
     })
 }
 
+/// Comments + timeline for one issue/PR. Timeline events with `event == "commented"`
+/// duplicate comments so we drop them; everything else is folded into Activity.
+#[tauri::command(async)]
+pub fn tasks_github_thread(repo: String, number: i64) -> Result<TaskThread, String> {
+    let key = format!("gh:thread:{repo}:{number}");
+    if let Some(v) = cache_get(&key) {
+        return serde_json::from_value(v).map_err(|e| e.to_string());
+    }
+
+    let comments_path = format!("/repos/{repo}/issues/{number}/comments?per_page=100");
+    let raw = run_gh(&["api", &comments_path])?;
+    let comments: Vec<TaskComment> = serde_json::from_str::<Vec<Value>>(&raw)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|v| TaskComment {
+            id: v.get("id").and_then(|n| n.as_i64()).map(|n| n.to_string()).unwrap_or_default(),
+            author: v.get("user").and_then(|u| u.get("login")).and_then(|s| s.as_str()).unwrap_or("").to_string(),
+            body: v.get("body").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+            created: v.get("created_at").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+        })
+        .collect();
+
+    let timeline_path = format!("/repos/{repo}/issues/{number}/timeline?per_page=100");
+    let raw = run_gh(&["api", &timeline_path])?;
+    let activity: Vec<TaskActivity> = serde_json::from_str::<Vec<Value>>(&raw)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(gh_event_from)
+        .collect();
+
+    let thread = TaskThread { comments, activity };
+    cache_put(key, serde_json::to_value(&thread).unwrap_or(Value::Null));
+    Ok(thread)
+}
+
+fn gh_event_from(v: Value) -> Option<TaskActivity> {
+    let event = v.get("event").and_then(|s| s.as_str())?.to_string();
+    if event == "commented" { return None; } // dedup with comments list
+    let author = v.get("actor").and_then(|a| a.get("login")).and_then(|s| s.as_str()).unwrap_or("").to_string();
+    let created = v.get("created_at").and_then(|s| s.as_str()).unwrap_or("").to_string();
+    let id = v.get("id")
+        .and_then(|n| n.as_i64())
+        .map(|n| n.to_string())
+        .or_else(|| v.get("node_id").and_then(|s| s.as_str()).map(String::from))
+        .unwrap_or_else(|| format!("{event}-{created}"));
+    let detail = match event.as_str() {
+        "labeled" | "unlabeled" => {
+            let name = v.get("label").and_then(|l| l.get("name")).and_then(|s| s.as_str()).unwrap_or("");
+            let verb = if event == "labeled" { "added label" } else { "removed label" };
+            format!("{verb} {name}")
+        }
+        "assigned" | "unassigned" => {
+            let name = v.get("assignee").and_then(|a| a.get("login")).and_then(|s| s.as_str()).unwrap_or("");
+            format!("{event} {name}")
+        }
+        "renamed" => {
+            let to = v.get("rename").and_then(|r| r.get("to")).and_then(|s| s.as_str()).unwrap_or("");
+            format!("renamed to \"{to}\"")
+        }
+        "closed" => "closed this".into(),
+        "reopened" => "reopened this".into(),
+        "merged" => "merged".into(),
+        "review_requested" => {
+            let who = v.get("requested_reviewer").and_then(|r| r.get("login")).and_then(|s| s.as_str()).unwrap_or("");
+            format!("requested review from {who}")
+        }
+        "reviewed" => {
+            let st = v.get("state").and_then(|s| s.as_str()).unwrap_or("reviewed");
+            format!("review {st}")
+        }
+        "referenced" | "cross-referenced" => "referenced this".into(),
+        _ => event.replace('_', " "),
+    };
+    Some(TaskActivity { id, author, kind: event, detail, created })
+}
+
 // ────────────────────────────────────────────────────────────────────────
 // Linear (personal API key in OS keyring under "byok/linear")
 // ────────────────────────────────────────────────────────────────────────
@@ -710,6 +809,125 @@ fn linear_item_from(v: &Value) -> Option<LinearItem> {
     })
 }
 
+const THREAD_QUERY: &str = r#"
+query Thread($team: String!, $number: Float!) {
+  issues(filter: { team: { key: { eq: $team } }, number: { eq: $number } }, first: 1) {
+    nodes {
+      comments(first: 100) {
+        nodes { id body createdAt user { name } }
+      }
+      history(first: 100) {
+        nodes {
+          id createdAt
+          actor { name }
+          fromState { name } toState { name }
+          fromAssignee { name } toAssignee { name }
+          addedLabels { name } removedLabels { name }
+          fromPriority toPriority
+        }
+      }
+    }
+  }
+}
+"#;
+
+#[tauri::command(async)]
+pub fn tasks_linear_thread(id: String) -> Result<TaskThread, String> {
+    let key = format!("linear:thread:{id}");
+    if let Some(v) = cache_get(&key) {
+        return serde_json::from_value(v).map_err(|e| e.to_string());
+    }
+    let (team, number) = id
+        .split_once('-')
+        .ok_or_else(|| format!("bad linear identifier: {id}"))?;
+    let number: i64 = number
+        .parse()
+        .map_err(|_| format!("bad linear number in: {id}"))?;
+    let variables = serde_json::json!({ "team": team, "number": number });
+    let data = linear_post(THREAD_QUERY, variables)?;
+
+    let node = data
+        .get("issues")
+        .and_then(|i| i.get("nodes"))
+        .and_then(|a| a.as_array())
+        .and_then(|arr| arr.first())
+        .cloned()
+        .unwrap_or(Value::Null);
+
+    let comments: Vec<TaskComment> = node
+        .get("comments")
+        .and_then(|c| c.get("nodes"))
+        .and_then(|a| a.as_array())
+        .map(|arr| {
+            arr.iter()
+                .map(|v| TaskComment {
+                    id: v.get("id").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+                    author: v.get("user").and_then(|u| u.get("name")).and_then(|s| s.as_str()).unwrap_or("").to_string(),
+                    body: v.get("body").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+                    created: v.get("createdAt").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let activity: Vec<TaskActivity> = node
+        .get("history")
+        .and_then(|h| h.get("nodes"))
+        .and_then(|a| a.as_array())
+        .map(|arr| arr.iter().filter_map(linear_event_from).collect())
+        .unwrap_or_default();
+
+    let thread = TaskThread { comments, activity };
+    cache_put(key, serde_json::to_value(&thread).unwrap_or(Value::Null));
+    Ok(thread)
+}
+
+fn linear_event_from(v: &Value) -> Option<TaskActivity> {
+    let id = v.get("id").and_then(|s| s.as_str())?.to_string();
+    let created = v.get("createdAt").and_then(|s| s.as_str()).unwrap_or("").to_string();
+    let author = v.get("actor").and_then(|a| a.get("name")).and_then(|s| s.as_str()).unwrap_or("").to_string();
+
+    let mut parts: Vec<String> = Vec::new();
+    if let (Some(from), Some(to)) = (
+        v.get("fromState").and_then(|s| s.get("name")).and_then(|s| s.as_str()),
+        v.get("toState").and_then(|s| s.get("name")).and_then(|s| s.as_str()),
+    ) {
+        parts.push(format!("state {from} → {to}"));
+    } else if let Some(to) = v.get("toState").and_then(|s| s.get("name")).and_then(|s| s.as_str()) {
+        parts.push(format!("state → {to}"));
+    }
+    if let Some(to) = v.get("toAssignee").and_then(|a| a.get("name")).and_then(|s| s.as_str()) {
+        parts.push(format!("assigned {to}"));
+    } else if v.get("fromAssignee").is_some() && v.get("toAssignee").map(Value::is_null).unwrap_or(false) {
+        parts.push("unassigned".into());
+    }
+    let added: Vec<String> = v.get("addedLabels").and_then(|a| a.as_array()).map(|arr| {
+        arr.iter().filter_map(|l| l.get("name").and_then(|s| s.as_str()).map(String::from)).collect()
+    }).unwrap_or_default();
+    if !added.is_empty() { parts.push(format!("added label {}", added.join(", "))); }
+    let removed: Vec<String> = v.get("removedLabels").and_then(|a| a.as_array()).map(|arr| {
+        arr.iter().filter_map(|l| l.get("name").and_then(|s| s.as_str()).map(String::from)).collect()
+    }).unwrap_or_default();
+    if !removed.is_empty() { parts.push(format!("removed label {}", removed.join(", "))); }
+    if let (Some(from), Some(to)) = (
+        v.get("fromPriority").and_then(|n| n.as_i64()),
+        v.get("toPriority").and_then(|n| n.as_i64()),
+    ) {
+        if from != to {
+            let label = |p: i64| match p { 1 => "Urgent", 2 => "High", 3 => "Med", 4 => "Low", _ => "None" };
+            parts.push(format!("priority {} → {}", label(from), label(to)));
+        }
+    }
+    if parts.is_empty() { return None; } // silent history rows aren't worth showing
+    Some(TaskActivity {
+        id,
+        author,
+        kind: "changed".into(),
+        detail: parts.join(", "),
+        created,
+    })
+}
+
 // ────────────────────────────────────────────────────────────────────────
 // Sanity check (cargo test)
 // ────────────────────────────────────────────────────────────────────────
@@ -733,6 +951,36 @@ mod tests {
         // 'closed' sets --state=closed.
         let f = preset_flags("closed", "issues");
         assert!(f.iter().any(|s| s == "--state=closed"));
+    }
+
+    #[test]
+    fn gh_event_folds_and_drops_commented() {
+        assert!(gh_event_from(serde_json::json!({ "event": "commented" })).is_none());
+        let e = gh_event_from(serde_json::json!({
+            "event": "labeled",
+            "actor": { "login": "octo" },
+            "label": { "name": "bug" },
+            "created_at": "2026-01-01T00:00:00Z"
+        })).unwrap();
+        assert_eq!(e.author, "octo");
+        assert!(e.detail.contains("bug"));
+    }
+
+    #[test]
+    fn linear_event_skips_silent_history() {
+        // A history row with no state/assignee/label/priority change should be dropped.
+        let none = linear_event_from(&serde_json::json!({
+            "id": "h1", "createdAt": "2026-01-01T00:00:00Z", "actor": { "name": "x" }
+        }));
+        assert!(none.is_none());
+        // A state change produces a rendered detail.
+        let some = linear_event_from(&serde_json::json!({
+            "id": "h2",
+            "createdAt": "2026-01-01T00:00:00Z",
+            "actor": { "name": "x" },
+            "toState": { "name": "In Progress" }
+        })).unwrap();
+        assert!(some.detail.contains("In Progress"));
     }
 
     #[test]
