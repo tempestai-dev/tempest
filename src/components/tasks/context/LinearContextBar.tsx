@@ -75,7 +75,6 @@ export function LinearContextBar({
             value={state.query}
             onChange={(e) => patch({ query: e.target.value })}
           />
-          <span className="kbd">⌘K</span>
         </div>
         <button
           className={`picker${state.lnGroup === "status" ? " picker-on" : ""}`}

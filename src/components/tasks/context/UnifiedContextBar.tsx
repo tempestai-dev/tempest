@@ -24,7 +24,6 @@ export function UnifiedContextBar({
             value={state.query}
             onChange={(e) => patch({ query: e.target.value })}
           />
-          <span className="kbd">⌘K</span>
         </div>
       </div>
     </>

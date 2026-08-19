@@ -83,3 +83,20 @@ export function itemKey(it: GhItem | LinearItem): string {
 export function isGh(it: GhItem | LinearItem): it is GhItem {
   return (it as GhItem).number !== undefined;
 }
+
+// Minimal shape LaunchAgentModal needs to render the project picker without
+// pulling the whole workspace Project type (which carries worktrees etc.).
+export type LaunchTargetProject = { id: string; name: string; path: string };
+
+// A git branch name derived from a task ID. Slug-safe: git forbids many
+// characters (spaces, colons, tildes, etc.) so we normalize aggressively.
+export function suggestBranch(it: GhItem | LinearItem): string {
+  const raw = isGh(it)
+    ? `${it.kind === "pr" ? "pr" : "fix"}-${it.number}`
+    : it.id.toLowerCase();
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9._/-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    || "task";
+}

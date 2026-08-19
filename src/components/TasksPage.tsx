@@ -13,8 +13,9 @@ import {
   useLinearBootstrap,
   useLinearList,
 } from "./tasks/useTasks";
-import type { Source, TasksState, UnifiedItem } from "./tasks/types";
+import type { LaunchTargetProject, Source, TasksState, UnifiedItem } from "./tasks/types";
 import { itemKey } from "./tasks/types";
+import type { AgentConfig } from "../lib/agentRegistry";
 
 const INITIAL: TasksState = {
   source: "github",
@@ -29,7 +30,18 @@ const INITIAL: TasksState = {
   expandedKey: null,
 };
 
-export function TasksPage() {
+export interface TasksPageProps {
+  projects: LaunchTargetProject[];
+  defaultProjectId: string | null;
+  onLaunch: (opts: {
+    projectId: string;
+    branchName: string;
+    agent: AgentConfig;
+    prompt: string;
+  }) => Promise<void>;
+}
+
+export function TasksPage({ projects, defaultProjectId, onLaunch }: TasksPageProps) {
   const [state, setState] = useState<TasksState>(INITIAL);
   const [bump, setBump] = useState(0); // increments to invalidate all fetches
   const [modalKeys, setModalKeys] = useState<string[] | null>(null);
@@ -219,6 +231,9 @@ export function TasksPage() {
       {modalKeys && modalItems.length > 0 && (
         <LaunchAgentModal
           items={modalItems}
+          projects={projects}
+          defaultProjectId={defaultProjectId}
+          onLaunch={onLaunch}
           onClose={() => setModalKeys(null)}
         />
       )}

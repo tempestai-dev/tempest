@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "./icons";
-import type { GhItem, LinearItem, UnifiedItem } from "./types";
-import { isGh } from "./types";
-
-const AGENTS = ["Claude Code", "Codex", "Aider", "OpenCode", "Copilot CLI"];
+import type { GhItem, LaunchTargetProject, LinearItem, UnifiedItem } from "./types";
+import { isGh, suggestBranch } from "./types";
+import { useAgents, type AgentConfig } from "../../lib/agentRegistry";
 
 function idOf(it: UnifiedItem) {
   return isGh(it) ? `${(it as GhItem).repo}#${(it as GhItem).number}` : (it as LinearItem).id;
@@ -18,23 +17,54 @@ function prefillPrompt(it: UnifiedItem) {
   return `${header}\n\n${it.body ?? ""}\n\nGoal: implement, add a test, open a PR referencing this ${kind}.`;
 }
 
-type Form = { it: UnifiedItem; agent: string; prompt: string };
+type Form = {
+  it: UnifiedItem;
+  agentHint: string;
+  prompt: string;
+  branchName: string;
+  projectId: string;
+};
 
 export function LaunchAgentModal({
   items,
+  projects,
+  defaultProjectId,
+  onLaunch,
   onClose,
 }: {
   items: UnifiedItem[];
+  projects: LaunchTargetProject[];
+  defaultProjectId: string | null;
+  onLaunch: (opts: {
+    projectId: string;
+    branchName: string;
+    agent: AgentConfig;
+    prompt: string;
+  }) => Promise<void>;
   onClose: () => void;
 }) {
+  const agents = useAgents();
+  // Honor the per-agent "hidden" toggle from Settings; spawn path itself
+  // surfaces install/auth issues so no further filtering here.
+  const launchable = useMemo(() => agents.filter((a) => !a.disabled), [agents]);
+  const defaultAgent = launchable[0]?.hint ?? "";
+
   const [forms, setForms] = useState<Form[]>(() =>
-    items.map((it) => ({ it, agent: AGENTS[0], prompt: prefillPrompt(it) })),
+    items.map((it) => ({
+      it,
+      agentHint: defaultAgent,
+      prompt: prefillPrompt(it),
+      branchName: suggestBranch(it),
+      projectId: defaultProjectId ?? projects[0]?.id ?? "",
+    })),
   );
   const [active, setActive] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { e.stopImmediatePropagation(); onClose(); }
+      if (e.key === "Escape") { e.stopImmediatePropagation(); if (!busy) onClose(); }
     };
     document.addEventListener("keydown", handler, true);
     document.body.classList.add("modal-open");
@@ -42,7 +72,7 @@ export function LaunchAgentModal({
       document.removeEventListener("keydown", handler, true);
       document.body.classList.remove("modal-open");
     };
-  }, [onClose]);
+  }, [onClose, busy]);
 
   if (forms.length === 0) return null;
   const multi = forms.length > 1;
@@ -52,15 +82,37 @@ export function LaunchAgentModal({
     setForms((prev) => prev.map((x, i) => (i === active ? { ...x, ...p } : x)));
   };
 
-  const launch = () => {
-    // Real spawn wiring lives in the plan's Phase 3. For now surface intent
-    // so the flow is testable.
-    console.log("[tasks] launch", forms.map((x) => ({ id: idOf(x.it), agent: x.agent, prompt: x.prompt })));
-    onClose();
+  const noProjects = projects.length === 0;
+  const noAgents = launchable.length === 0;
+
+  const launch = async () => {
+    setErr(null);
+    if (noProjects) { setErr("Open a project first — tasks launch into a fresh worktree of a project."); return; }
+    if (noAgents) { setErr("No launchable agents configured."); return; }
+    if (multi) return; // Phase 7 unlocks bulk launch.
+
+    const agentCfg = launchable.find((a) => a.hint === f.agentHint) ?? launchable[0];
+    const branchName = f.branchName.trim();
+    if (!branchName) { setErr("Branch name is required."); return; }
+    if (!f.projectId) { setErr("Pick a project."); return; }
+
+    setBusy(true);
+    try {
+      await onLaunch({
+        projectId: f.projectId,
+        branchName,
+        agent: agentCfg,
+        prompt: f.prompt,
+      });
+      onClose();
+    } catch (e) {
+      setErr(String(e instanceof Error ? e.message : e));
+      setBusy(false);
+    }
   };
 
   return createPortal(
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" onClick={() => !busy && onClose()}>
       <div
         className={`modal${multi ? " modal-wide" : ""}`}
         role="dialog"
@@ -74,7 +126,7 @@ export function LaunchAgentModal({
               <span className="mono">{idOf(f.it)}</span> · {f.it.title}
             </p>
           </div>
-          <button className="icon-btn" title="Close" onClick={onClose}>{Icon.close()}</button>
+          <button className="icon-btn" title="Close" onClick={onClose} disabled={busy}>{Icon.close()}</button>
         </header>
 
         {multi && (
@@ -96,17 +148,50 @@ export function LaunchAgentModal({
 
         <div className="modal-body">
           <div className="field">
+            <label htmlFor="modal-project">Project</label>
+            <select
+              id="modal-project"
+              className="select"
+              value={f.projectId}
+              onChange={(e) => patch({ projectId: e.target.value })}
+              disabled={noProjects || busy}
+            >
+              {noProjects
+                ? <option value="">(no projects open)</option>
+                : projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <p className="field-hint">A new worktree is cut here and the agent starts in it.</p>
+          </div>
+
+          <div className="field">
+            <label htmlFor="modal-branch">Branch</label>
+            <input
+              id="modal-branch"
+              className="text-input mono"
+              type="text"
+              value={f.branchName}
+              onChange={(e) => patch({ branchName: e.target.value })}
+              spellCheck={false}
+              disabled={busy}
+            />
+            <p className="field-hint">Cut from the project's default branch.</p>
+          </div>
+
+          <div className="field">
             <label htmlFor="modal-agent">Agent</label>
             <select
               id="modal-agent"
               className="select"
-              value={f.agent}
-              onChange={(e) => patch({ agent: e.target.value })}
+              value={f.agentHint}
+              onChange={(e) => patch({ agentHint: e.target.value })}
+              disabled={noAgents || busy}
             >
-              {AGENTS.map((a) => <option key={a}>{a}</option>)}
+              {noAgents
+                ? <option value="">(no agents available)</option>
+                : launchable.map((a) => <option key={a.id} value={a.hint}>{a.name}</option>)}
             </select>
-            <p className="field-hint">Executes this task in a fresh worktree.</p>
           </div>
+
           <div className="field">
             <label htmlFor="modal-prompt">Prompt</label>
             <textarea
@@ -115,25 +200,28 @@ export function LaunchAgentModal({
               rows={10}
               value={f.prompt}
               onChange={(e) => patch({ prompt: e.target.value })}
+              disabled={busy}
             />
             <p className="field-hint">
               Prefilled from the {isGh(f.it) ? "issue" : "ticket"}. Edit before launching.
-              {multi && " Launch button wires in the plan's Phase 7."}
+              {multi && " Bulk launch arrives in the plan's Phase 7."}
             </p>
           </div>
+
+          {err && <p className="field-hint" style={{ color: "var(--tempest-danger, #ef4444)" }}>{err}</p>}
         </div>
 
         <footer className="modal-foot">
           {multi && <span className="modal-foot-count"><b>{forms.length}</b> agents ready</span>}
           <div className="modal-foot-actions">
-            <button className="btn ghost" onClick={onClose}>Cancel</button>
+            <button className="btn ghost" onClick={onClose} disabled={busy}>Cancel</button>
             <button
               className="btn primary"
               onClick={launch}
-              disabled={multi /* Phase 7 unlocks bulk launch */}
+              disabled={multi || busy || noProjects || noAgents}
               title={multi ? "Bulk launch arrives in the plan's Phase 7" : undefined}
             >
-              {Icon.bolt()} {multi ? `Launch ${forms.length}` : "Launch"}
+              {Icon.bolt()} {busy ? "Launching…" : (multi ? `Launch ${forms.length}` : "Launch")}
             </button>
           </div>
         </footer>

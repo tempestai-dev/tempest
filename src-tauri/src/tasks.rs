@@ -289,49 +289,53 @@ pub fn tasks_github_list(
     Ok(items)
 }
 
-fn preset_qualifier(preset: &str, kind: &str) -> Vec<String> {
-    // gh search issues/prs takes GitHub search qualifiers.
-    let mut q: Vec<String> = Vec::new();
+/// Turn a preset into `gh search` FLAGS (not query qualifiers). GitHub's
+/// search API expands `@me` for the `assignee:` / `author:` / `mentions:` /
+/// `review-requested:` FLAGS gh forwards, but treats `@me` inside the raw
+/// positional query as a literal username — which fails with "listed users
+/// cannot be searched." So we pass through flags exclusively.
+fn preset_flags(preset: &str, kind: &str) -> Vec<String> {
+    let mut f: Vec<String> = Vec::new();
     match preset {
-        "assigned" => q.push("assignee:@me".into()),
-        "created" => q.push("author:@me".into()),
-        "mentioned" => q.push("mentions:@me".into()),
+        "assigned" => f.push("--assignee=@me".into()),
+        "created" => f.push("--author=@me".into()),
+        "mentioned" => f.push("--mentions=@me".into()),
         "review" => {
             // Only meaningful for PRs; for issues fall back to mentioned.
             if kind == "prs" {
-                q.push("review-requested:@me".into());
+                f.push("--review-requested=@me".into());
             } else {
-                q.push("mentions:@me".into());
+                f.push("--mentions=@me".into());
             }
         }
-        "open" => q.push("state:open".into()),
-        "closed" => q.push("state:closed".into()),
         _ => {}
     }
-    // For involvement presets default to open; user can override with 'closed' preset.
-    if matches!(preset, "assigned" | "created" | "mentioned" | "review") {
-        q.push("state:open".into());
-    }
-    q
+    // Involvement presets default to open; explicit open/closed set that state.
+    let state = match preset {
+        "closed" => "closed",
+        _ => "open",
+    };
+    f.push(format!("--state={state}"));
+    f
 }
 
 fn gh_search(kind: &str, preset: &str, repo: &str) -> Result<Vec<GhItem>, String> {
-    let mut q_parts = preset_qualifier(preset, kind);
-    if repo != "all" {
-        // repo id can be "owner/repo" (dropdown value) or just repo slug.
-        if repo.contains('/') {
-            q_parts.push(format!("repo:{repo}"));
-        }
+    let mut args: Vec<String> = vec!["search".into(), kind.into()];
+    args.extend(preset_flags(preset, kind));
+    if repo != "all" && repo.contains('/') {
+        args.push(format!("--repo={repo}"));
     }
-    let query = q_parts.join(" ");
     let fields = if kind == "prs" {
         "number,title,state,isDraft,url,repository,author,assignees,labels,commentsCount,updatedAt,body"
     } else {
         "number,title,state,url,repository,author,assignees,labels,commentsCount,updatedAt,body"
     };
-    let out = run_gh(&[
-        "search", kind, &query, "--json", fields, "--limit", "50",
-    ])?;
+    args.push("--json".into());
+    args.push(fields.into());
+    args.push("--limit".into());
+    args.push("50".into());
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let out = run_gh(&arg_refs)?;
     let parsed: Value = serde_json::from_str(&out).map_err(|e| e.to_string())?;
     let arr = parsed.as_array().cloned().unwrap_or_default();
     Ok(arr
@@ -716,18 +720,19 @@ mod tests {
 
     #[test]
     fn preset_shapes() {
-        // Presets add the expected search qualifier plus state:open by default.
-        let q = preset_qualifier("assigned", "issues");
-        assert!(q.iter().any(|s| s == "assignee:@me"));
-        assert!(q.iter().any(|s| s == "state:open"));
-        // 'review' on issues degrades to mentions (issues have no review flag).
-        let q = preset_qualifier("review", "issues");
-        assert!(q.iter().any(|s| s == "mentions:@me"));
-        let q = preset_qualifier("review", "prs");
-        assert!(q.iter().any(|s| s == "review-requested:@me"));
-        // 'closed' only sets state:closed (no default state override).
-        let q = preset_qualifier("closed", "issues");
-        assert_eq!(q, vec!["state:closed".to_string()]);
+        // Presets translate to gh flags — never raw query qualifiers, since
+        // gh expands @me for the flags but not inside the positional query.
+        let f = preset_flags("assigned", "issues");
+        assert!(f.iter().any(|s| s == "--assignee=@me"));
+        assert!(f.iter().any(|s| s == "--state=open"));
+        // 'review' on issues degrades to --mentions (issues have no review flag).
+        let f = preset_flags("review", "issues");
+        assert!(f.iter().any(|s| s == "--mentions=@me"));
+        let f = preset_flags("review", "prs");
+        assert!(f.iter().any(|s| s == "--review-requested=@me"));
+        // 'closed' sets --state=closed.
+        let f = preset_flags("closed", "issues");
+        assert!(f.iter().any(|s| s == "--state=closed"));
     }
 
     #[test]

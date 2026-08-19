@@ -1403,9 +1403,12 @@ export function WorkspaceView({ zen, name, path }: Props) {
 
   // Branch tab: create (or reuse) a worktree, then spawn the session in it. Only
   // reachable when the project is a git repo, so no NotAGitRepo handling here.
-  async function launchBranch({ agent, prompt, name, existingBranch }: BranchLaunch) {
-    const activePath = getActivePath();
-    const workingProjectId = pendingProjectId;
+  async function launchBranch(
+    { agent, prompt, name, existingBranch }: BranchLaunch,
+    override?: { projectPath: string; projectId: string; skipPrefix?: boolean },
+  ) {
+    const activePath = override?.projectPath ?? getActivePath();
+    const workingProjectId = override?.projectId ?? pendingProjectId;
 
     let branchName: string;
     let existingBranchArg: string | undefined;
@@ -1420,7 +1423,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
         existingBranchArg = existingBranch.name;
       }
     } else {
-      branchName = branchPrefix ? `${branchPrefix}${name}` : name;
+      branchName = (branchPrefix && !override?.skipPrefix) ? `${branchPrefix}${name}` : name;
     }
 
     // Sessions opened into an existing worktree get a numbered suffix so they stay
@@ -1472,6 +1475,25 @@ export function WorkspaceView({ zen, name, path }: Props) {
     } catch (e) {
       setPolicyError(String(e));
     }
+  }
+
+  // Tasks tab entry point: spawn an agent into a fresh worktree of the picked
+  // project, using the same code path Branch launches use. Called from
+  // LaunchAgentModal for a single-item launch (Phase 3); Phase 7 loops this.
+  async function launchTaskAgent(opts: {
+    projectId: string;
+    branchName: string;
+    agent: AgentConfig;
+    prompt: string;
+  }): Promise<void> {
+    const project = projectsRef.current.find((p) => p.id === opts.projectId);
+    if (!project) throw new Error("Selected project is not open.");
+    const hasGit = await invoke<boolean>("check_git_initialized", { path: project.path }).catch(() => false);
+    if (!hasGit) throw new Error(`${project.name} is not a git repository. Run \`git init\` inside it, then retry.`);
+    await launchBranch(
+      { agent: opts.agent, prompt: opts.prompt, name: opts.branchName },
+      { projectPath: project.path, projectId: opts.projectId, skipPrefix: true },
+    );
   }
 
   // Footer action: turn the project into a git repo in place so the Branch tab
@@ -2853,7 +2875,11 @@ export function WorkspaceView({ zen, name, path }: Props) {
               <KnowledgeBasePage />
             )}
             {!activeSessionId && activeSection === "tasks" && (
-              <TasksPage />
+              <TasksPage
+                projects={projects.map((p) => ({ id: p.id, name: p.name, path: p.path }))}
+                defaultProjectId={pendingProjectId ?? projects[0]?.id ?? null}
+                onLaunch={launchTaskAgent}
+              />
             )}
             {!activeSessionId && activeSection === "automations" && (
               <AutomationsPage />

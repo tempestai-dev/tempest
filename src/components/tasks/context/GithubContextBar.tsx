@@ -73,7 +73,6 @@ export function GithubContextBar({
             value={state.query}
             onChange={(e) => patch({ query: e.target.value })}
           />
-          <span className="kbd">⌘K</span>
         </div>
         <button className="picker" disabled title="Sort — coming soon">
           <span className="label-muted">Sort</span><span>Updated</span><span className="caret">{Icon.caret()}</span>
