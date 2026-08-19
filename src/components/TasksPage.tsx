@@ -30,6 +30,26 @@ const INITIAL: TasksState = {
   expandedKey: null,
 };
 
+// Persist the durable slice of TasksState across sessions. `selected` and
+// `expandedKey` are intentionally excluded — they're ephemeral to the view.
+const PERSIST_KEY = "tempest:tasks-page:v1";
+type PersistShape = Pick<TasksState,
+  "source" | "ghKind" | "ghRepo" | "ghPreset" | "lnScope" | "lnGroup" | "lnOrder" | "query">;
+
+function loadPersisted(): Partial<PersistShape> {
+  try {
+    const raw = localStorage.getItem(PERSIST_KEY);
+    return raw ? (JSON.parse(raw) as Partial<PersistShape>) : {};
+  } catch { return {}; }
+}
+function savePersisted(s: TasksState) {
+  const slim: PersistShape = {
+    source: s.source, ghKind: s.ghKind, ghRepo: s.ghRepo, ghPreset: s.ghPreset,
+    lnScope: s.lnScope, lnGroup: s.lnGroup, lnOrder: s.lnOrder, query: s.query,
+  };
+  try { localStorage.setItem(PERSIST_KEY, JSON.stringify(slim)); } catch { /* quota — skip */ }
+}
+
 export interface TasksPageProps {
   projects: LaunchTargetProject[];
   defaultProjectId: string | null;
@@ -38,13 +58,16 @@ export interface TasksPageProps {
     branchName: string;
     agent: AgentConfig;
     prompt: string;
+    focus?: boolean;
   }) => Promise<void>;
 }
 
 export function TasksPage({ projects, defaultProjectId, onLaunch }: TasksPageProps) {
-  const [state, setState] = useState<TasksState>(INITIAL);
+  const [state, setState] = useState<TasksState>(() => ({ ...INITIAL, ...loadPersisted() }));
   const [bump, setBump] = useState(0); // increments to invalidate all fetches
   const [modalKeys, setModalKeys] = useState<string[] | null>(null);
+
+  useEffect(() => { savePersisted(state); }, [state]);
 
   const patch = (p: Partial<TasksState>) => setState((prev) => ({ ...prev, ...p }));
 

@@ -40,6 +40,7 @@ export function LaunchAgentModal({
     branchName: string;
     agent: AgentConfig;
     prompt: string;
+    focus?: boolean;
   }) => Promise<void>;
   onClose: () => void;
 }) {
@@ -89,26 +90,41 @@ export function LaunchAgentModal({
     setErr(null);
     if (noProjects) { setErr("Open a project first — tasks launch into a fresh worktree of a project."); return; }
     if (noAgents) { setErr("No launchable agents configured."); return; }
-    if (multi) return; // Phase 7 unlocks bulk launch.
 
-    const agentCfg = launchable.find((a) => a.hint === f.agentHint) ?? launchable[0];
-    const branchName = f.branchName.trim();
-    if (!branchName) { setErr("Branch name is required."); return; }
-    if (!f.projectId) { setErr("Pick a project."); return; }
+    // Validate all forms in bulk mode before firing any launch.
+    const jobs = forms.map((form) => {
+      const branch = form.branchName.trim();
+      const agentCfg = launchable.find((a) => a.hint === form.agentHint) ?? launchable[0];
+      return { form, branch, agentCfg };
+    });
+    const bad = jobs.findIndex((j) => !j.branch || !j.form.projectId);
+    if (bad >= 0) { setActive(bad); setErr("Every task needs a project and a branch name."); return; }
 
     setBusy(true);
-    try {
-      await onLaunch({
-        projectId: f.projectId,
-        branchName,
-        agent: agentCfg,
-        prompt: f.prompt,
-      });
-      onClose();
-    } catch (e) {
-      setErr(String(e instanceof Error ? e.message : e));
-      setBusy(false);
+    const failures: { key: string; msg: string }[] = [];
+    // Sequential: focus only the first spawned session so the user lands there;
+    // the rest appear in the tab strip. Failures don't abort the loop — the
+    // tab strip already reflects successful spawns.
+    for (let i = 0; i < jobs.length; i++) {
+      const { form, branch, agentCfg } = jobs[i];
+      try {
+        await onLaunch({
+          projectId: form.projectId,
+          branchName: branch,
+          agent: agentCfg,
+          prompt: form.prompt,
+          focus: i === 0,
+        });
+      } catch (e) {
+        failures.push({ key: form.it.key, msg: String(e instanceof Error ? e.message : e) });
+      }
     }
+    if (failures.length === 0) {
+      onClose();
+      return;
+    }
+    setBusy(false);
+    setErr(`${failures.length} of ${jobs.length} launches failed: ${failures[0].msg}`);
   };
 
   return createPortal(
@@ -204,7 +220,7 @@ export function LaunchAgentModal({
             />
             <p className="field-hint">
               Prefilled from the {isGh(f.it) ? "issue" : "ticket"}. Edit before launching.
-              {multi && " Bulk launch arrives in the plan's Phase 7."}
+              {multi && " Each task spawns its own worktree; you land in the first."}
             </p>
           </div>
 
@@ -218,8 +234,7 @@ export function LaunchAgentModal({
             <button
               className="btn primary"
               onClick={launch}
-              disabled={multi || busy || noProjects || noAgents}
-              title={multi ? "Bulk launch arrives in the plan's Phase 7" : undefined}
+              disabled={busy || noProjects || noAgents}
             >
               {Icon.bolt()} {busy ? "Launching…" : (multi ? `Launch ${forms.length}` : "Launch")}
             </button>

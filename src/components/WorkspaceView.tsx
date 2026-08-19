@@ -1405,7 +1405,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
   // reachable when the project is a git repo, so no NotAGitRepo handling here.
   async function launchBranch(
     { agent, prompt, name, existingBranch }: BranchLaunch,
-    override?: { projectPath: string; projectId: string; skipPrefix?: boolean },
+    override?: { projectPath: string; projectId: string; skipPrefix?: boolean; skipFocus?: boolean },
   ) {
     const activePath = override?.projectPath ?? getActivePath();
     const workingProjectId = override?.projectId ?? pendingProjectId;
@@ -1453,7 +1453,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
           createdAt: new Date().toISOString(),
           metadata: { resumeCount: 0, hasBeenResumed: false },
         }]);
-        setActiveSessionId(pendingId);
+        if (!override?.skipFocus) setActiveSessionId(pendingId);
         try {
           const result = await createWorktree({ projectPath: activePath, name: branchName, existingBranch: existingBranchArg });
           worktreePath = result.path;
@@ -1485,6 +1485,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
     branchName: string;
     agent: AgentConfig;
     prompt: string;
+    focus?: boolean;
   }): Promise<void> {
     const project = projectsRef.current.find((p) => p.id === opts.projectId);
     if (!project) throw new Error("Selected project is not open.");
@@ -1492,7 +1493,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
     if (!hasGit) throw new Error(`${project.name} is not a git repository. Run \`git init\` inside it, then retry.`);
     await launchBranch(
       { agent: opts.agent, prompt: opts.prompt, name: opts.branchName },
-      { projectPath: project.path, projectId: opts.projectId, skipPrefix: true },
+      { projectPath: project.path, projectId: opts.projectId, skipPrefix: true, skipFocus: opts.focus === false },
     );
   }
 
