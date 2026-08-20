@@ -52,6 +52,18 @@
         "pages": ["agents/overview", "agents/supported"]
       },
       {
+        "group": "Chat",
+        "pages": ["chat/overview"]
+      },
+      {
+        "group": "Tasks",
+        "pages": ["tasks/overview"]
+      },
+      {
+        "group": "Automations",
+        "pages": ["automations/overview"]
+      },
+      {
         "group": "Git",
         "pages": ["git/overview", "git/worktrees", "git/staging-commits", "git/push-pr"]
       },
@@ -62,6 +74,14 @@
       {
         "group": "Token Intelligence",
         "pages": ["token-intelligence/overview", "token-intelligence/mcp"]
+      },
+      {
+        "group": "Knowledge Base",
+        "pages": ["knowledge-base/overview"]
+      },
+      {
+        "group": "Settings",
+        "pages": ["settings/api-keys"]
       },
       {
         "group": "Themes",

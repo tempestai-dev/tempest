@@ -1,0 +1,74 @@
+---
+title: "Chat Pane"
+description: "Headless chat with hosted LLMs or CLI agents from inside the workspace canvas. No terminal, no TUI."
+icon: "message-square"
+---
+
+# Chat Pane
+
+The chat pane is a canvas node that renders a headless conversation with an LLM or an agent CLI — no terminal, no TUI. It sits alongside terminal-based agent sessions on the workspace canvas and is meant for quick asks, planning, and one-shot generations without the ceremony of a full agent tab.
+
+Add one from the canvas node picker (**+ → Chat**), or convert a selection into a chat via the canvas context menu.
+
+## Three backends, one UI
+
+Every chat node picks one of three backends via the model dropdown. The choice is per-node:
+
+| Backend | What it uses | Auth |
+|---------|--------------|------|
+| **API** (BYOK) | Provider SDK called from the Rust backend | [OS credential manager](/settings/api-keys) |
+| **CLI Agent** | The vendor CLI, driven headlessly by a per-turn Node bridge | Whatever the CLI itself is logged into |
+| **Warp** (experimental) | The `warpllm` Rust gateway, single-round-trip | BYOK slot or provider env var |
+
+Streaming, message rendering, tool-call display, and copy-to-clipboard behave the same regardless of backend.
+
+## Model picker
+
+Clicking the model chip opens a portal picker with two sections:
+
+- **CLI Agents** — grouped by agent (Claude Code, Codex, Gemini CLI, Opencode). Each agent has a shortlist of its own models. When the experimental Warp toggle is on, Warp shows up here too with a `provider/model` list (OpenAI, DeepSeek, Kimi, OpenRouter).
+- **BYOK providers** — Anthropic, OpenAI, Google Gemini, Mistral, DeepSeek, xAI, Groq, OpenRouter, Ollama, LM Studio — each with a shortlist. The active provider is remembered across sessions.
+
+A search box across the picker filters both sections at once.
+
+## CLI agent bridges
+
+The four CLI-agent backends (Claude Code, Codex, Gemini CLI, Opencode) all run through per-turn Node sidecars shipped inside the app under `src-tauri/resources/{agent}-bridge/bridge.mjs`. The Rust backend spawns the sidecar on `claude_stream_start`, streams NDJSON back over a `claude://{streamId}` Tauri channel, and the frontend maps it to typed chat events.
+
+Under the hood each bridge shells the vendor CLI in a specific non-interactive mode:
+
+- **Claude Code** — Anthropic's Claude Code CLI in stream mode
+- **Codex** — `codex exec --json --sandbox workspace-write` (no per-tool approvals)
+- **Gemini** — `gemini --experimental-acp` speaking JSON-RPC ACP (per-tool permission prompts surface as chat UI)
+- **Opencode** — `opencode serve` on a free local port, consuming its SSE stream and permission POSTs
+
+**Auth for CLI bridges is whatever the CLI already has on your machine.** Tempest does not hand a BYOK key to the CLI bridges — if you can `claude` in your terminal, you can chat with Claude Code in the pane.
+
+## Warp (experimental)
+
+Warp is an opt-in, single-round-trip gateway that routes any `provider/model` string through a Rust `warp_chat` command. Enable it in **Settings → Experimental → warpllm**. The Agents section of the model picker then shows Warp with its own model list.
+
+Warp reads the API key for the selected provider from either:
+
+1. The matching [BYOK slot](/settings/api-keys), or
+2. An environment variable — `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `MOONSHOT_API_KEY` (for Kimi), or `OPENROUTER_API_KEY`
+
+Warp responses are not streamed; you'll see the whole reply arrive at once.
+
+## Chat pane vs terminal sessions
+
+| | Chat pane | Terminal session |
+|--|-----------|-----------------|
+| Interface | Headless message stream | Full PTY / TUI |
+| Backend | API / CLI bridge / Warp | Vendor CLI in a real shell |
+| Persistence | Canvas node state | Session store + PTY resume |
+| Tool calls | Rendered inline as event cards | Whatever the CLI's UI shows |
+| Best for | Planning, quick asks, embedding into a larger canvas | Long agent runs, file edits, tool-heavy tasks |
+| Isolation | Same process as the app | Hephaestus sandbox (see [Agents](/agents/overview)) |
+
+Both surfaces are first-class. A common workflow is to plan and iterate in a chat node, then hand the final prompt off to a terminal agent session in a fresh worktree.
+
+## Related settings
+
+- **Settings → API Keys** — BYOK slots consumed by both the API backend and Warp. See [API Keys](/settings/api-keys).
+- **Settings → Experimental → warpllm** — reveals the Warp backend in the picker.

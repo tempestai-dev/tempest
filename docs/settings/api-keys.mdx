@@ -1,0 +1,64 @@
+---
+title: "API Keys (BYOK)"
+description: "Bring your own keys for chat models, external agents, and integrations. Keys are stored in your OS credential manager."
+icon: "key"
+---
+
+# API Keys
+
+Tempest is bring-your-own-key. You enter each provider's API key once, and Tempest hands it to the local model calls, chat bridges, and integrations that need it — never to a Tempest server. **There is no Tempest cloud account, no login, no proxy.**
+
+## Where keys live
+
+Keys are stored in your operating system's credential manager under the service name `tempest-byok`, one entry per provider:
+
+| Platform | Store |
+|----------|-------|
+| Windows | Credential Manager |
+| macOS | Keychain |
+| Linux | Secret Service (GNOME Keyring, KWallet) via D-Bus |
+
+They are never written to `localStorage`, config files, or logs. Only the model selection and the currently-active provider live in `localStorage` — the secret itself sits in the keychain.
+
+Earlier releases stored keys in `localStorage`. On first read after upgrading, Tempest silently promotes any legacy key into the keychain and wipes the plaintext copy.
+
+## Adding a key
+
+Two entry points:
+
+1. **Onboarding** — the first-run flow includes a **Bring your own key** step where you can enter one or more provider keys before reaching the workspace.
+2. **Settings → API Keys** — one row per provider with an input, an eye toggle to reveal the masked value, an edit button, and a trash icon. The masked preview keeps the first four and last four characters (`abcd••••••••wxyz`).
+
+Save writes the key to the OS credential manager. Delete removes it from the store.
+
+## Supported providers
+
+The Settings panel exposes ten provider slots:
+
+- **Anthropic** — Claude (Fable, Opus, Sonnet, Haiku)
+- **OpenAI** — GPT models via the OpenAI API
+- **Google Gemini**
+- **Mistral**
+- **DeepSeek**
+- **xAI** — Grok
+- **Groq**
+- **OpenRouter** — access to many models with one key
+- **Ollama** — local, no key required
+- **Linear** — non-LLM; powers the [Tasks tab](/tasks/overview) Linear integration
+
+Onboarding also lets you point Tempest at a local **LM Studio** base URL.
+
+Keys are stored per provider, not per agent. If you use, for example, OpenCode with an Anthropic model and Claude Code side by side, both draw from the same Anthropic slot.
+
+## Which features use which keys
+
+| Feature | Key needed |
+|---------|-----------|
+| [Chat pane](/chat/overview) with a hosted model | The provider hosting that model |
+| Codex / Gemini / Opencode bridges | The provider they call (usually OpenAI or Anthropic; see agent docs) |
+| warpLLM opt-in agent | Provider chosen in its settings |
+| Local agents (Ollama, LM Studio) | None — a base URL is enough |
+| Tasks tab (Linear sync) | Linear |
+| Tasks tab (GitHub sync) | GitHub personal access token (managed separately in the Tasks tab) |
+
+Agents that ship their own auth (Claude Code CLI, Gemini CLI, and similar) continue to use whatever the CLI is already logged into on your machine. Tempest doesn't touch those.

@@ -1,0 +1,101 @@
+---
+title: "Tasks"
+description: "A unified inbox for GitHub issues and PRs and Linear issues. Launch agents into fresh worktrees straight from a ticket."
+icon: "list-checks"
+---
+
+# Tasks
+
+The **Tasks** tab is a unified inbox for the work waiting on you across GitHub and Linear. From any row you can inspect the ticket, read its comments and activity, and launch an agent into a fresh worktree preconfigured with the ticket's context.
+
+Open it from the sidebar's **Tasks** entry.
+
+## Layout
+
+Three source tabs sit across the top, each with a live count:
+
+- **Unified** — everything merged
+- **GitHub** — issues and pull requests
+- **Linear** — issues
+
+Below the tabs, a context bar holds source-specific filters and a title search (`/` focuses it). Selecting a row expands an in-place accordion with:
+
+- **Description** — the ticket body
+- **Comments** — pulled live from the source
+- **Activity** — timeline events (commits, state changes, label edits). GitHub "commented" events are filtered out here to avoid duplicating the Comments tab.
+- **Files** and **Checks** on PRs (stub tabs — not wired up yet)
+
+A right rail on the accordion shows Details and Labels. Row buttons: **Launch agent**, open in browser, copy link, close.
+
+Filter state (source, filter chips, search) persists to `localStorage` under `tempest:tasks-page:v1` and survives restarts. Selection and expansion are ephemeral.
+
+## GitHub
+
+**Auth.** Tempest shells out to your local [`gh` CLI](https://cli.github.com/) — there is no in-app OAuth. If `gh` is missing or unauthenticated, the list shows the exact message from `gh auth status` and points at `gh auth login`.
+
+**Context bar:**
+
+- Repo picker — **All repos** or one from `gh repo list`
+- Kind toggle — **Both / Issues / Pull requests**
+- Preset chips — **All, Assigned to me, Created by me, Mentioned, Review requested, Open, Closed**
+
+Sort is fixed to Updated for now.
+
+**Row fields:** `owner/repo#N`, title, state, draft flag, author, assignees, labels (colored), comment count, relative "updated".
+
+## Linear
+
+**Auth.** Personal API key, stored in your OS credential manager. Add it in **[Settings → API Keys](/settings/api-keys)** under the **Linear** slot.
+
+**Context bar:**
+
+- Workspace name (from Linear's viewer; picker disabled — one workspace per key)
+- Scope picker with **Views / Teams / Projects** optgroups. The active view (`v-active`) is the default.
+- Group-by-status toggle
+- **Order by** dropdown — **Priority / Updated / Status / Title**
+
+Sorting is client-side.
+
+**Row fields:** `TEAM-N` id, title, status (backlog/todo/in progress/review/done/cancelled), priority (urgent/high/med/low/none), assignee, labels, project, cycle, team.
+
+## Launching an agent from a task
+
+Click **Launch agent** on any row to open the **Launch Agent** modal:
+
+- **Project** — a fresh worktree will be cut from this project's default branch
+- **Branch** — prefilled: `pr-<n>` or `fix-<n>` for GitHub, the lowercased slugged id for Linear
+- **Agent** — any enabled agent from your manifest
+- **Prompt** — prefilled with the ticket header, body, and a "implement, add a test, open a PR" instruction
+
+Launch is fire-and-forget: the modal closes immediately and the worktree plus agent boot in the background. The row's button flips to **View agent**, which jumps to the live session.
+
+At least one project must be open. If none is, the modal blocks with *"Open a project first — tasks launch into a fresh worktree of a project."*
+
+## Bulk launch
+
+Row checkboxes reveal a floating **BulkBar** with the selected count, a **Launch N** button, and **Clear**. `Ctrl+Enter` / `Cmd+Enter` is a shortcut for **Launch N**.
+
+The modal opens in multi-mode with one tab per selected task. Each tab has its own project, branch, agent, and prompt — you can mix agents across a batch. The footer shows *"N agents ready"* and **Launch N**. Validation runs across every form before firing; the first tab missing a project or branch gets focused.
+
+Each spawn is independent — a failure on one task doesn't block the others.
+
+## Refresh & cache
+
+Task lists are cached in-process for 60 seconds to keep list navigation snappy. The **Refresh** button invalidates the cache and re-fetches.
+
+## Required setup
+
+- **GitHub:** install `gh` and run `gh auth login`. Nothing to configure inside Tempest.
+- **Linear:** paste a personal API key at [Settings → API Keys](/settings/api-keys).
+- **Agents:** at least one agent enabled (not hidden) in Settings.
+- **Projects:** at least one project open in the workspace.
+
+## Under the hood
+
+The Rust backend exposes these Tauri commands (in `src-tauri/src/tasks.rs`):
+
+- `tasks_github_auth`, `tasks_github_repos`, `tasks_github_list`, `tasks_github_thread`
+- `tasks_linear_bootstrap`, `tasks_linear_list`, `tasks_linear_thread`
+- `tasks_cache_invalidate`
+
+GitHub commands wrap `gh` subcommands (`gh search issues|prs`, `gh api …`). Linear commands hit Linear's GraphQL endpoint with the stored key. Agent launches route through the workspace's existing launch pipeline, not a Tasks-specific command.
