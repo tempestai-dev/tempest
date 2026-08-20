@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, ArrowRight, Eye, EyeOff, ChevronDown, Check } from 'lucide-react';
+import { useTheme } from '../../themes/ThemeContext';
 import { byokId, setSecret } from '../../lib/secrets';
 
 interface Props {
@@ -139,6 +140,8 @@ function ModelSelect({ options, value, onChange, extraOption }: {
 
 // ── Provider card ────────────────────────────────────────────────
 function ProviderCard({ p, selected, onClick }: { p: Provider; selected: boolean; onClick: () => void }) {
+  const { theme } = useTheme();
+  const isDark = theme.type === 'dark';
   return (
     <button
       onClick={onClick}
@@ -151,7 +154,7 @@ function ProviderCard({ p, selected, onClick }: { p: Provider; selected: boolean
               src={CDN + p.icon}
               alt={p.label}
               width={32} height={32}
-              style={{ objectFit: 'contain', filter: p.invert ? 'brightness(0) invert(1)' : 'none' }}
+              style={{ objectFit: 'contain', filter: p.invert && isDark ? 'brightness(0) invert(1)' : 'none' }}
               onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
             />
           : <div style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--tempest-bg-hover)', borderRadius: '7px', fontSize: '12px', fontWeight: 700, color: 'var(--tempest-fg-muted)' }}>

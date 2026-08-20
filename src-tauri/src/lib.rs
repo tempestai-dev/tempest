@@ -127,6 +127,7 @@ fn hooks_paths() -> HookPaths {
 /// Returns the @usetempest/atlas package directory inside the runtime folder.
 /// Dev builds: src-tauri/resources/atlas/node_modules/@usetempest/atlas/
 /// Release builds: <exe>/resources/atlas/node_modules/@usetempest/atlas/
+/// (macOS: Tempest.app/Contents/Resources/resources/atlas/...)
 fn atlas_resource_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     #[cfg(debug_assertions)]
     {
@@ -148,7 +149,15 @@ fn atlas_resource_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, Stri
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         let exe_dir = exe.parent()
             .ok_or_else(|| "Cannot determine executable directory".to_string())?;
-        Ok(exe_dir.join("resources").join("atlas").join("node_modules").join("@usetempest").join("atlas"))
+        // macOS .app bundles split executable (Contents/MacOS/) from resources
+        // (Contents/Resources/); other platforms keep them side-by-side.
+        #[cfg(target_os = "macos")]
+        let base = exe_dir.parent()
+            .ok_or_else(|| "Cannot determine Contents directory".to_string())?
+            .join("Resources");
+        #[cfg(not(target_os = "macos"))]
+        let base = exe_dir.to_path_buf();
+        Ok(base.join("resources").join("atlas").join("node_modules").join("@usetempest").join("atlas"))
     }
 }
 
