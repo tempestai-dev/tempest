@@ -133,7 +133,7 @@ export const TerminalPane = memo(forwardRef<TerminalPaneHandle, Props>(function 
     searchAddonRef.current = searchAddon;
     term.loadAddon(searchAddon);
 
-    term.loadAddon(new WebLinksAddon((_, url) => openUrl(url).catch(() => {})));
+    term.loadAddon(new WebLinksAddon((ev, url) => { if (ev.ctrlKey || ev.metaKey) openUrl(url).catch(() => {}); }));
 
     term.open(el);
 

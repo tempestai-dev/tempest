@@ -129,6 +129,7 @@ import { folderName, timeAgo } from "../lib/format";
 import { getHookCommands, runHook, type HookKind } from "../lib/worktreeHooks";
 import { portForWorkspace, hostSlug, proxyUrl } from "../lib/servicePort";
 import { buildAgentArgs } from "../lib/agentArgs";
+import { getAgent } from "../lib/agentRegistry";
 import { getAgentConfig } from "../lib/runtimeState";
 import {
   type SplitDir,
@@ -2773,12 +2774,6 @@ export function WorkspaceView({ zen, name, path }: Props) {
                       <X size={10} />
                     </button>
                   )}
-                  {!s.kind && s.agent && !hidden && queueOpenSessionId === s.id && (
-                    <QueuePanel
-                      sessionId={s.id}
-                      onClose={() => setQueueOpenSessionId(null)}
-                    />
-                  )}
                   {s.kind === "diff" ? (
                     <DiffPane
                       sessionId={s.id}
@@ -3022,6 +3017,23 @@ export function WorkspaceView({ zen, name, path }: Props) {
             );
           })()}
             </div>{/* canvas */}
+            {(() => {
+              const s = queueOpenSessionId
+                ? sessions.find((x) => x.id === queueOpenSessionId && !x.kind && x.agent)
+                : null;
+              return s ? (
+                <QueuePanel
+                  sessionId={s.id}
+                  onClose={() => setQueueOpenSessionId(null)}
+                  clearCommand={(s.agent ? getAgent(s.agent) : undefined)?.clearCommand}
+                  onSend={(text) => {
+                    const bytes = Array.from(new TextEncoder().encode(text + "\r"));
+                    invoke("write_to_pty", { sessionId: s.id, data: bytes }).catch(() => {});
+                    sessionManager.markUserInput(s.id);
+                  }}
+                />
+              ) : null;
+            })()}
             {/* Overview has no footer of its own, so one drops in to carry the
                 notice. Only here — inside a session the status bar cycle takes
                 over rather than shifting the canvas out from under the user. */}

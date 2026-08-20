@@ -10,6 +10,7 @@
       "icon": "agy",
       "mono": true,
       "downloadUrl": "https://antigravity.google",
+      "clearCommand": "/clear",
       "flags": {
         "resume": ["--continue"],
         "model": ["--model", "{MODEL}"],
@@ -23,6 +24,7 @@
       "adapter": "cli",
       "icon": "claude",
       "downloadUrl": "https://code.claude.com/docs",
+      "clearCommand": "/clear",
       "flags": {
         "session": ["--session-id", "{UUID}"],
         "resume": ["--resume", "{UUID}"],
@@ -48,6 +50,7 @@
       "icon": "codex",
       "mono": true,
       "downloadUrl": "https://github.com/openai/codex",
+      "clearCommand": "/new",
       "flags": {
         "resume": ["resume", "--last"],
         "model": ["--model", "{MODEL}"],
@@ -70,6 +73,7 @@
       "icon": "cursor",
       "mono": true,
       "downloadUrl": "https://cursor.com/cli",
+      "clearCommand": "/new",
       "flags": {
         "model": ["--model", "{MODEL}"]
       }
@@ -81,6 +85,7 @@
       "adapter": "cli",
       "icon": "gemini",
       "downloadUrl": "https://github.com/google-gemini/gemini-cli",
+      "clearCommand": "/clear",
       "flags": {
         "session": ["--session-id", "{UUID}"],
         "resume": ["--resume", "{UUID}"],
@@ -96,6 +101,7 @@
       "icon": "goose",
       "mono": true,
       "downloadUrl": "https://block.github.io/goose",
+      "clearCommand": ".clear",
       "flags": {
         "model": ["--model", "{MODEL}"]
       }
@@ -108,6 +114,7 @@
       "icon": "opencode",
       "mono": true,
       "downloadUrl": "https://opencode.ai",
+      "clearCommand": "/new",
       "flags": {
         "model": ["--model", "{MODEL}"],
         "autoApprove": ["--auto"],
@@ -127,6 +134,7 @@
       "icon": "hermes.svg",
       "mono": true,
       "downloadUrl": "https://hermes-agent.nousresearch.com",
+      "clearCommand": "/clear",
       "flags": {
         "resume": ["--continue"],
         "model": ["--model", "{MODEL}"],
@@ -141,6 +149,7 @@
       "icon": "pi.svg",
       "mono": true,
       "downloadUrl": "https://pi.dev",
+      "clearCommand": "/clear",
       "flags": {
         "session": ["--session-id", "{UUID}"],
         "resume": ["--session-id", "{UUID}"],
@@ -156,6 +165,7 @@
       "icon": "amp.svg",
       "mono": true,
       "downloadUrl": "https://ampcode.com",
+      "clearCommand": "/clear",
       "flags": {
         "print": ["-x", "{PROMPT}"]
       }
@@ -168,6 +178,7 @@
       "icon": "fx.svg",
       "mono": true,
       "downloadUrl": "https://fx.sh",
+      "clearCommand": "/clear",
       "flags": {
         "session": ["--id", "{UUID}"],
         "resume": ["--continue"],
@@ -182,6 +193,7 @@
       "icon": "grok.svg",
       "mono": true,
       "downloadUrl": "https://github.com/xai-org/grok-build",
+      "clearCommand": "/clear",
       "flags": {
         "session": ["--session-id", "{UUID}"],
         "resume": ["--resume", "{UUID}"],

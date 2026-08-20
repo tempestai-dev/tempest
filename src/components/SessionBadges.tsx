@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Loader, Bell } from "lucide-react";
+import { Loader, Bell, CheckCircle2 } from "lucide-react";
 import {
   useWorkState,
   useAttention,
@@ -14,9 +14,9 @@ import { useQueue } from "../store/messageQueue";
 export const WorkStateBadge = memo(function WorkStateBadge({ sessionId }: { sessionId: string }) {
   const state = useWorkState(sessionId);
   const attention = useAttention(sessionId);
-  if (attention) return <Bell size={11} className="work-attention-bell" aria-label="Agent waiting for input" />;
-  if (state === "working") return <Loader size={11} className="spin work-spinner" />;
-  if (state === "done") return <span className="work-done-dot" aria-label="Agent finished" />;
+  if (attention) return <Bell size={12} className="work-attention-bell" aria-label="Agent waiting for input" />;
+  if (state === "working") return <Loader size={12} className="spin work-spinner" />;
+  if (state === "done") return <CheckCircle2 size={12} className="work-done-check" aria-label="Agent finished" />;
   return null;
 });
 
@@ -43,9 +43,9 @@ export const QueueBadge = memo(function QueueBadge({
 export const SidebarWorkBadge = memo(function SidebarWorkBadge({ sessionId }: { sessionId: string }) {
   const state = useWorkState(sessionId);
   const attention = useAttention(sessionId);
-  if (attention) return <Bell size={11} className="work-attention-bell" aria-label="Agent waiting for input" />;
-  if (state === "working") return <Loader size={11} className="spin work-spinner" />;
-  if (state === "done") return <span className="work-done-dot" aria-label="Agent finished" />;
+  if (attention) return <Bell size={12} className="work-attention-bell" aria-label="Agent waiting for input" />;
+  if (state === "working") return <Loader size={12} className="spin work-spinner" />;
+  if (state === "done") return <CheckCircle2 size={12} className="work-done-check" aria-label="Agent finished" />;
   return null;
 });
 
@@ -88,6 +88,6 @@ export const ProjectWorkBadge = memo(function ProjectWorkBadge({ sessionIds }: {
   }
   if (anyAttention) return <Bell size={10} className="work-attention-bell" aria-label="Agent waiting for input" />;
   if (anyWorking) return <Loader size={10} className="spin work-spinner" />;
-  if (anyDone) return <span className="work-done-dot" aria-label="Agent finished" />;
+  if (anyDone) return <CheckCircle2 size={12} className="work-done-check" aria-label="Agent finished" />;
   return null;
 });
