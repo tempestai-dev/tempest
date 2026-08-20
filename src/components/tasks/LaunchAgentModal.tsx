@@ -61,7 +61,7 @@ export function LaunchAgentModal({
     })),
   );
   const [active, setActive] = useState(0);
-  const [busy, setBusy] = useState(false);
+  const busy = false;
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
