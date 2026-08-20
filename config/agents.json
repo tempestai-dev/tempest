@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updatedAt": "2026-08-01",
+  "updatedAt": "2026-08-20",
   "agents": [
     {
       "id": "agy",
@@ -146,6 +146,48 @@
         "resume": ["--session-id", "{UUID}"],
         "model": ["--model", "{MODEL}"],
         "autoApprove": ["--approve"]
+      }
+    },
+    {
+      "id": "amp",
+      "name": "Amp",
+      "command": "amp",
+      "adapter": "cli",
+      "icon": "amp.svg",
+      "mono": true,
+      "downloadUrl": "https://ampcode.com",
+      "flags": {
+        "print": ["-x", "{PROMPT}"]
+      }
+    },
+    {
+      "id": "fx",
+      "name": "fx",
+      "command": "fx",
+      "adapter": "cli",
+      "icon": "fx.svg",
+      "mono": true,
+      "downloadUrl": "https://fx.sh",
+      "flags": {
+        "session": ["--id", "{UUID}"],
+        "resume": ["--continue"],
+        "print": ["ask", "{PROMPT}"]
+      }
+    },
+    {
+      "id": "grok",
+      "name": "Grok",
+      "command": "grok",
+      "adapter": "cli",
+      "icon": "grok.svg",
+      "mono": true,
+      "downloadUrl": "https://github.com/xai-org/grok-build",
+      "flags": {
+        "session": ["--session-id", "{UUID}"],
+        "resume": ["--resume", "{UUID}"],
+        "model": ["--model", "{MODEL}"],
+        "autoApprove": ["--always-approve"],
+        "print": ["-p", "{PROMPT}"]
       }
     }
   ]
