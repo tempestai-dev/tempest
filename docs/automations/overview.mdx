@@ -1,0 +1,81 @@
+---
+title: "Automations"
+description: "Run AI agents on a schedule. Status reports, release checks, quality scans — dispatched headlessly, results piped into a live terminal."
+icon: "clock"
+---
+
+# Automations
+
+An **automation** is a scheduled, headless run of any Tempest-supported agent. You pick an agent, write a prompt, choose a schedule, and Tempest fires the CLI in the background whenever the schedule ticks. Output streams into a live terminal on the automation's detail page.
+
+Automations live under the **Automations** section in the sidebar.
+
+## What an automation is
+
+Each automation bundles:
+
+- **Agent** — any agent from your manifest that supports non-interactive output (`printArgs` set)
+- **Prompt** — the message sent to the agent on every run
+- **Schedule** — an RRULE-backed rule (Hourly / Daily / Weekly / Monthly + time)
+- **Model** *(optional)* — free-text, only shown when the agent manifest declares `modelArgs`. Accepts aliases (`haiku`, `sonnet`, `opus`, `fable`) or `provider/model` strings.
+- **Scope** — Global (runs from your home directory) or one open project (runs from that project's root). A project-scoped automation whose project isn't open at fire time is marked `dispatch_failed` with a message telling you to open it first.
+
+## Creating an automation
+
+Click **New Automation** in the Automations page. The dialog has two tabs:
+
+- **Compose** — start blank. Name, agent, model, schedule, prompt.
+- **Templates** — pick from 12 built-ins across four categories: **Status reports**, **Release prep**, **Quality & health**, **Growth**. Templates prefill agent, prompt, and a sensible schedule; you can edit any of it before saving.
+
+## The schedule picker
+
+`SchedulePicker` is a shadcn-styled form (not a cron string field). It has:
+
+- **Frequency** — Hourly, Daily, Weekly, Monthly
+- **Interval** — every N units
+- **Day of week / day of month** — shown only for Weekly and Monthly
+- **Time** — with a 12-hour / 24-hour toggle and your local timezone label
+- **Quick presets** — *Every hour*, *Daily 9am*, *Mon 9am*, *Fri 5pm*
+
+Times are stored as UTC hour/minute and rendered in your local zone. A human-readable summary line appears below the picker so you can double-check the rule before saving.
+
+## The detail page
+
+Open any automation to edit it. The page has:
+
+- **Header** — back link, name, **Run now** button
+- **Schedule** — the picker plus the summary line
+- **Prompt** — a textarea that auto-saves 800ms after you stop typing; every save creates a prompt version you can browse
+- **Output** — a live `TerminalPane` bound to the current or most recent run's PTY. Clicking a run in the sidebar swaps the terminal to that run.
+- **Sidebar** — Agent picker, Model input, **Next run** timestamp, and **Recent runs** (last 8, with status)
+
+Each row in the automations list has an enable/disable toggle. Disabled automations skip the scheduler but stay editable.
+
+## How runs are dispatched
+
+A background scheduler thread wakes every 60 seconds. For every automation whose `next_run_at` is due, it emits a `automation:dispatch` event that the frontend catches and hands to the same runner used by **Run now**.
+
+The runner:
+
+1. Resolves the working directory (project path or `$HOME` for Global scope)
+2. Builds the command from the agent manifest:
+   - `hint` — the CLI (`claude`, `gemini`, `opencode`, …)
+   - `printArgs` — the non-interactive form (e.g. Claude's `-p "{PROMPT}"`, opencode's `run … {PROMPT}`). `{PROMPT}` is substituted with the automation's prompt.
+   - `modelArgs` — appended with `{MODEL}` substituted, if a model override is set
+   - `autoApproveArgs` — appended when Settings → **Auto-approve agent tool calls** is on
+3. Spawns a PTY session in the resolved cwd and streams output to the terminal pane
+4. Marks the run `dispatching → dispatched → succeeded` (or `dispatch_failed`)
+
+Agents without a `printArgs` entry in the manifest are hidden from the agent picker — automations refuse to run without one.
+
+## Storage
+
+Automations, runs, and prompt versions live in the Tempest SQLite database, in three tables: `automations`, `automation_runs`, `automation_prompt_versions`. Deleting an automation cascades to its runs and versions.
+
+## Related Tauri commands
+
+The Rust backend exposes: `list_automations`, `get_automation`, `create_automation`, `update_automation`, `delete_automation`, `list_automation_runs`, `upsert_automation_run`, `list_prompt_versions`, `save_prompt_version`. The frontend store (`src/store/automations.ts`) wraps them.
+
+## Global settings that apply
+
+- **Auto-approve agent tool calls** (Settings → Security) — if on and the agent's manifest has `autoApproveArgs`, those flags are appended to headless runs, matching the behaviour of interactive sessions.

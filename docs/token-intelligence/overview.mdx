@@ -413,39 +413,34 @@ Both fields accept gitignore patterns: `vendor/`, `**/*.min.js`, `src/generated/
 
 ## Graph Operations
 
-Once indexed, agents can query the graph via MCP tools:
-
-**Search:**
-```
-atlas_search "authentication middleware"
-```
-Returns FTS-ranked results: matching symbols, sorted by relevance.
+Once indexed, agents query the graph through a small default MCP surface. The full set is intentionally trimmed — every other tool is a strict subset of `atlas_explore`, and listing them was steering wrong picks:
 
 **Explore:**
 ```
 atlas_explore "How does user login work?" --maxFiles 6
 ```
-Returns relevant subgraph: entry points + related code + relationships.
+The primary read-equivalent. Natural language in; verbatim source grouped by file plus the call paths among them plus a blast-radius summary out. This is usually the only tool you need.
 
-**Node details:**
+**Assets:**
 ```
-atlas_node "src/auth.ts::authenticate" --includeCode
+atlas_assets --contentType application/pdf
+atlas_asset_content <asset-id>
 ```
-Returns symbol metadata + code snippet + callers/callees.
+List and read human-attached knowledge (markdown notes, PDFs, YAML). Assets and their chunks are indexed alongside code — see [Knowledge Base](/knowledge-base/overview) for how to add them.
 
-**Graph traversal:**
+**Semantic search:**
 ```
-atlas_graph "find_callers authenticate"
-atlas_graph "find_usages UserService"
-atlas_graph "type_hierarchy BaseController"
+atlas_semantic_search "how does token bucket rate limiting work"
 ```
-Returns call graphs, usages, type hierarchies.
+Vector-similarity ranking across code symbols and asset chunks. Requires the semantic setting to be on (a one-time ~25 MB MiniLM model download).
 
-**Project structure:**
+**Re-enabling legacy tools:**
+
+`node`, `search`, `callers`, `callees`, `impact`, `files`, and `status` are still implemented and callable. Add them back to the MCP list per-agent with:
+
+```bash
+ATLAS_MCP_TOOLS=explore,node,search,callers,semantic_search
 ```
-atlas_status
-```
-Returns graph statistics, index freshness, database size.
 
 ## Performance Considerations
 
@@ -504,14 +499,10 @@ Returns graph statistics, index freshness, database size.
 - Check `.atlas/daemon.log` for errors
 - Ensure no stale daemon lock at `.atlas/daemon.lock`
 
-## What's Next: Nexus
+## The Knowledge Base tab
 
-Tempest includes a **Nexus page** (code graph visualization interface) that is currently a placeholder for future functionality. Planned features include:
+The visual companion to Atlas ships as the [**Knowledge Base**](/knowledge-base/overview) tab: an interactive force-directed graph of the same node/edge data agents query, a floating **Docs** panel for attaching your own markdown / text / PDF notes, and a minimap. Assets you drop into the Docs panel become real graph nodes with `describes` edges to the code symbols they cover, and (with semantic search on) they're ranked alongside code in `atlas_semantic_search` results.
 
-- Interactive visualization of the code graph
-- Node/edge filtering and search
-- Call graph exploration UI
-- Data flow visualization
-- Type hierarchy browser
+Rationale comments in your source — `// WHY:`, `// NOTE:`, `// HACK:`, `// TODO:` — automatically promote to `rationale` graph nodes with `explains` edges to the smallest enclosing symbol, so *"why does X do Y"* is a real graph hop rather than a full-text search.
 
-This will provide a visual complement to the agent-facing MCP tools, letting developers understand their codebase structure at a glance.
+See [Knowledge Base](/knowledge-base/overview) for the full tour.

@@ -479,26 +479,37 @@ If Codex CLI doesn't launch:
 | Cline | No | — | `~/.cline` | Yes (Anthropic) |
 | Cursor Agent | No | — | Cursor IDE config | Varies |
 | Goose | No | — | `~/.goose` | Varies |
+| Amp, Hermes, Pi, fx, Grok | Manifest-defined | Per manifest | Per CLI | Per CLI |
+
+## Manifest-Driven Agents
+
+The full agent list ships as [`config/agents.json`](https://github.com/tempestai-dev/tempest/blob/main/config/agents.json). The `AgentConfig` fields on each entry — `hint`, `sessionIdArgs`, `resumeArgs`, `capturePattern`, `captureResumeArgs`, `autoApproveArgs`, `printArgs`, `modelArgs`, `clearCommand` — are what every surface in Tempest reads: the New Session menu, the [Automations](/automations/overview) headless runner, the [Chat pane](/chat/overview) bridges, and the [Message Queue's agent-aware clear](/agents/overview#agent-aware-clear).
+
+Agents added since this table was first written and driven entirely through the manifest: Antigravity, Codex CLI, Cursor Agent, Gemini CLI, Amp, Hermes, Pi, fx, Grok.
+
+Tempest periodically fetches an updated manifest from the tempestai-dev/tempest repository at startup — a new agent added upstream shows up in your workspace without needing to rebuild.
 
 ## Adding a New Agent
 
 To add support for a new agent to Tempest:
 
-1. **Define the agent config** in `src/components/NewSessionMenu.tsx`:
-   ```typescript
+1. **Add an entry to `config/agents.json`**:
+   ```json
    {
-     name: "My Agent",
-     hint: "myagent",           // CLI command
-     iconSrc: myAgentIconSrc,   // Icon SVG
-     sessionIdArgs: ["--session-id", "{UUID}"],    // or null
-     resumeArgs: ["--resume", "{UUID}"],           // or null
-     capturePattern: /pattern/,  // optional
-     captureResumeArgs: ["-s", "{UUID}"],  // optional
-     autoApproveArgs: ["--my-skip-flag"],  // optional — appended when auto-approve is enabled
+     "name": "My Agent",
+     "hint": "myagent",
+     "sessionIdArgs": ["--session-id", "{UUID}"],
+     "resumeArgs": ["--resume", "{UUID}"],
+     "capturePattern": "([0-9a-f-]{36})",
+     "captureResumeArgs": ["-s", "{UUID}"],
+     "autoApproveArgs": ["--my-skip-flag"],
+     "printArgs": ["-p", "{PROMPT}"],
+     "modelArgs": ["--model", "{MODEL}"],
+     "clearCommand": "/clear"
    }
    ```
 
-2. **Provide an icon** as an SVG file in `src/assets/agent-icons/`
+2. **Provide an icon** as an SVG file in `src/assets/agent-icons/` (or reference an existing one).
 
 3. **Implement work-done detection** (if needed):
    - Add title-based classification to `sessionManager.ts` `classifyTitle()` method if your agent sets a title
@@ -509,4 +520,5 @@ To add support for a new agent to Tempest:
    - Verify the command is constructed correctly
    - Confirm work-done detection fires at the right time
    - Test resumption if your agent supports it
+   - Run it as a headless [automation](/automations/overview) if `printArgs` is set
 

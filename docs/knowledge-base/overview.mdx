@@ -1,0 +1,115 @@
+---
+title: "Knowledge Base"
+description: "The visual side of Token Intelligence — an interactive graph of your codebase plus a docs library you drop into it."
+icon: "network"
+---
+
+# Knowledge Base
+
+The Knowledge Base tab is the visual companion to [Token Intelligence (Atlas)](/token-intelligence/overview). Where Atlas gives your agents a machine-readable code graph, the Knowledge Base gives *you* a way to see the same graph, drop your own docs into it, and explore how symbols connect.
+
+Open it from the sidebar's **Knowledge Base** entry. Only projects with an existing `.atlas/` database show up in the project picker.
+
+## Layout
+
+The tab renders a full-bleed, Obsidian-style force-directed graph on an HTML canvas.
+
+**Top toolbar (`KbToolbar`):**
+
+- Project picker — every project with an Atlas index on disk
+- Zoom in / out / fit-to-view / reset
+- **Docs** toggle — reveals the floating documents panel
+
+**Main canvas (`.kb-canvas-wrap`):**
+
+- D3 force simulation of the Atlas node/edge graph fetched via the `get_atlas_graph` Tauri command
+- Pan by dragging the background, drag any node, mouse-wheel or pinch to zoom
+- A minimap in the corner for jump-to-region navigation
+- Clicking a node opens `NodeDetailPanel`; clicking blank space deselects
+- Selection highlights the node's neighborhood (nodes + edges) so multi-hop context stays visible
+
+## The Docs panel (floating)
+
+Toggling **Docs** in the toolbar floats the `AssetsPanel` over the graph — the canvas keeps its bounds, the panel is an overlay. It's the surface for anything that isn't source code: markdown notes, plain text, PDFs, YAML, JSON.
+
+**Header:** *Documents* title, **Add**, close (X).
+
+**Rows** show:
+
+- Filename
+- MIME subtype (`markdown`, `pdf`, `text`, …)
+- **N linked** badge when the asset has `describes` edges to code symbols
+- Trash icon to remove
+
+**Empty state:** *"Add markdown notes, text files, or PDFs to index them in the knowledge graph."*
+
+Click **Add** to open a file dialog and pick one or more files. Each becomes an `asset` node in the graph and can be linked to code symbols via `describes` edges — the same edge kind Atlas uses for imports and calls, so search and traversal treat docs as first-class citizens.
+
+### Supported asset types
+
+- **Markdown / text** — `.md`, `.mdx`, `.markdown`, `.txt`, `.text`, `.log`, `.json`, `.yaml`, `.yml`, `.rst`, `.adoc`, `.org` (extracted verbatim)
+- **PDF** — parsed with `pdf-parse` (an optional dependency; if not installed, the PDF is tracked but with no extracted text)
+- **Anything else** — stored as a tracked, null-text asset
+
+### Chunking behaviour
+
+The extracted text is capped and split for semantic search:
+
+- Extracted text capped at **200,000 characters** per asset
+- FTS docstring capped at **4,000 characters**
+- Documents longer than **1,500 characters** are split into ~1,500-char chunks with **100-char overlap**, stored in an `asset_chunks` table so semantic hits land on the relevant passage instead of the whole doc's mean embedding
+- Short documents ride the single-node embedding path
+
+## Semantic search
+
+Semantic search is **opt-in**. Enable it in **Settings → Token Intelligence → Semantic search**; the first toggle downloads a one-time ~25 MB MiniLM model with a progress bar, then flips the `atlasSemantic` flag.
+
+Once enabled, semantic ranking runs across both code symbols and asset chunks — a natural-language query like *"how does token bucket rate limiting work"* returns matching passages regardless of whether they live in code comments, a design doc PDF, or a class method.
+
+Agents invoke it through the MCP tool `atlas_semantic_search`. If a client asks for it while semantic is off, it responds with a graceful "semantic search is off" note instead of an error.
+
+## Rationale nodes (WHY / NOTE / HACK / TODO)
+
+Comments in your source code become first-class graph nodes when they carry a rationale tag. Just write the comment — no config, no tooling. Atlas picks them up on the next index or sync pass.
+
+Recognised patterns (language-agnostic, matches any of `//`, `/*`, `*`, `#`, `--`, `;`, `%` openers):
+
+```ts
+// WHY: this cache stays global — per-account locks turned out to blow up under fan-out
+// NOTE: assumes the caller has already resolved the tenant
+// HACK: bypass Google's OAuth loop when the refresh token is < 60 s from expiring
+// TODO: replace this with a proper priority queue once the throughput matters
+```
+
+Each match becomes a `kind: 'rationale'` node with an **explains** edge to the smallest enclosing symbol at that line — usually the method or function containing it, so a query like *"why does X do Y"* becomes a real graph hop rather than a full-text search.
+
+Multi-line continuation comments aren't folded yet — one rationale per opener line. A guard blocks false hits like `URL:` or `someWHY:`.
+
+## MCP tools exposed to agents
+
+The default MCP tool surface for agents is small on purpose — every tool is a strict subset of `atlas_explore`, and each extra listed name was steering wrong picks:
+
+| Tool | What it does |
+|------|-------------|
+| `atlas_explore` | Primary read-equivalent — natural-language question in, verbatim source + call paths + blast radius out |
+| `atlas_assets` | List human-attached knowledge, optional `contentType` / `linkedTo` filters |
+| `atlas_asset_content` | Return the extracted text for one asset id |
+| `atlas_semantic_search` | Vector-similarity ranking across code + assets |
+
+The legacy tools `node`, `search`, `callers`, `callees`, `impact`, `files`, `status` are still implemented and callable — just not listed to agents by default. Re-enable any via the `ATLAS_MCP_TOOLS` env var:
+
+```bash
+ATLAS_MCP_TOOLS=explore,node,search,semantic_search
+```
+
+The **Add** and trash actions in the Docs panel additionally call the mutating tools `atlas_asset_add` and `atlas_asset_remove` — these live on the handler surface but are not part of the read-only default MCP list.
+
+## Settings that apply
+
+| Setting | Location | Effect |
+|---------|----------|--------|
+| **Token Intelligence** | Settings → Token Intelligence | Master switch. Off → no `.atlas/` database, no graph, no tools. |
+| **Semantic search** | Settings → Token Intelligence → Semantic | Downloads the MiniLM model and enables `atlas_semantic_search`. Requires Token Intelligence on. |
+| `ATLAS_MCP_TOOLS` (env) | Per-agent | Re-includes hidden tools in the MCP list. |
+
+The Atlas indexing modal (`AtlasIndexModal`) surfaces on first index, polls for `.atlas/atlas.db` every 2 s, and auto-dismisses ~1.5 s after completion. It streams `atlas:log` events from the indexing process into the modal so you see progress in real time.

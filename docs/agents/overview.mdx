@@ -296,36 +296,51 @@ Broadcasting allows you to send the same message to multiple agent sessions simu
 
 ## Message Queue
 
-The message queue buffers messages for an agent when it is still working on a previous task. Instead of blocking, messages are queued and automatically sent when the agent returns to its prompt.
+The message queue buffers messages for an agent so you can line up follow-ups without waiting for it to idle. The queue is a per-session drawer that pins to the right edge of the workspace canvas — it stays open while you switch panes and closes with `Esc`.
 
 ### Queue Behavior
 
-1. **Agent is working**: When you type a message and press Enter while the agent is still thinking, the message is queued instead of sent immediately.
-2. **Agent finishes**: When the agent's work-done signal fires, the queue is checked. If a message is waiting, it is automatically sent.
-3. **Queue persistence**: Messages remain in the queue until the session closes or you manually clear them.
+1. **Compose ahead**: Type any message in the queue drawer and press `Enter` (or click **Queue**) to add it. `Shift+Enter` inserts a newline.
+2. **Auto-send on idle**: When the agent's work-done signal fires, the head of the queue is written to the PTY automatically. Each subsequent completion drains the next item.
+3. **Send now**: The **Send** button starts the queue immediately — it enqueues the current draft (if any), pops the head, and writes it to the agent without waiting for a done signal. Useful when the agent is already idle or when you want to kick off the sequence explicitly.
+4. **Queue persistence**: Items remain in the queue until they're sent, removed, or the session closes.
 
 ### Accessing the Queue
 
-Press `Ctrl+Shift+Q` (or your configured shortcut) to open the QueuePanel for the active agent session. Here you can:
+Open the drawer from the tab (queue icon on the agent tab), the terminal footer, or the keyboard shortcut (`Ctrl+Shift+Q` by default). Each tab shows a badge with the queue length while items are pending. Inside the drawer you can:
 
-- View all queued messages in order
-- Add new messages to the queue
-- Remove individual messages
-- Clear the entire queue
-- See a badge on the tab indicating queue length
+- View queued messages in order with their position index
+- Add or remove individual messages
+- Click **Clear all** in the header to empty the queue
+- Insert an agent-aware context reset (see below)
+- **Send** to start the queue immediately, or **Queue** to append without sending
+
+### Agent-Aware Clear
+
+The queue's **Add `/clear`** chip enqueues the running agent's context-reset command as its own item, so a long multi-step run can reset between tasks without you switching to the terminal.
+
+The exact command comes from each agent's manifest (`clearCommand`):
+
+| Agent | Reset command |
+|-------|--------------|
+| Claude Code | `/clear` |
+| Codex CLI | `/new` |
+| Goose | `.clear` |
+| Gemini CLI, Aider, Opencode, others | `/clear` (fallback) |
+
+The chip label updates to match the active agent (for example, "Add `/new`" for Codex sessions). Queued clear items render with a distinct style in the list so they're easy to spot among prompts.
 
 ### Example Workflow
 
 1. Agent is analyzing code (working)
-2. You type "Now check the tests" and press Enter
-3. Message is queued (not sent yet, since agent is busy)
-4. Agent finishes analyzing
-5. First queued message "Now check the tests" is automatically sent
-6. Agent responds with test results
-7. Agent finishes (work-done signal fires)
-8. Next queued message (if any) is sent
+2. You open the queue, type "Now check the tests" and press `Enter` → queued
+3. Click **Add `/clear`** → context reset queued right after
+4. Type "Summarise what you found" and press `Enter` → queued
+5. Agent finishes analyzing → first item sent
+6. Agent finishes tests → context reset sent → agent resets
+7. Agent returns to prompt → final summary prompt sent
 
-This allows you to compose multiple instructions while the agent is thinking, ensuring they are delivered in order when the agent is ready.
+This lets you compose multi-turn workflows in one place and have them delivered in order, with clean context breaks in between.
 
 ## Environment and Configuration
 
