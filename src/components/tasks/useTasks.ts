@@ -24,28 +24,54 @@ export type Async<T> = {
   reload: () => void;
 };
 
+// Module-level cache so switching presets/repos and coming back is instant.
+// Keyed by (bump, key) — bump increments on manual refresh and invalidates
+// every entry. Rust also caches for 60s, so a stale-hit that misses here
+// still returns fast; this layer just skips the round-trip and the flicker.
+// ponytail: unbounded Map; add LRU cap if it ever balloons in a long session.
+const CACHE = new Map<string, unknown>();
+
 function useAsync<T>(
   key: string,
   fn: () => Promise<T>,
   bump: number,
 ): Async<T> {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const cacheKey = `${bump}:${key}`;
+  const cached = CACHE.has(cacheKey) ? (CACHE.get(cacheKey) as T) : null;
+  const [data, setData] = useState<T | null>(cached);
+  const [loading, setLoading] = useState<boolean>(cached === null);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
+    // Serve cached value instantly on re-mount / key revisit.
+    if (CACHE.has(cacheKey) && tick === 0) {
+      setData(CACHE.get(cacheKey) as T);
+      setLoading(false);
+      setError(null);
+      return;
+    }
     let live = true;
     setLoading(true);
     setError(null);
     fn()
-      .then((v) => { if (live) { setData(v); setLoading(false); } })
+      .then((v) => {
+        if (!live) return;
+        CACHE.set(cacheKey, v);
+        setData(v);
+        setLoading(false);
+      })
       .catch((e) => { if (live) { setError(String(e)); setLoading(false); } });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, bump, tick]);
+  }, [cacheKey, tick]);
 
-  return { data, loading, error, reload: () => setTick((t) => t + 1) };
+  return {
+    data,
+    loading,
+    error,
+    reload: () => { CACHE.delete(cacheKey); setTick((t) => t + 1); },
+  };
 }
 
 export function useGhAuth(bump: number): Async<GhAuthState> {

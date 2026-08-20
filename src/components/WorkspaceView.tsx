@@ -1472,8 +1472,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
           .catch((e) => setPolicyError(String(e)));
       }
       await openSession(sessionName, worktreePath, workingProjectId ?? "", agent?.hint, prompt, undefined, undefined, undefined, undefined, undefined, pendingId);
+      return pendingId;
     } catch (e) {
       setPolicyError(String(e));
+      return undefined;
     }
   }
 
@@ -1485,16 +1487,18 @@ export function WorkspaceView({ zen, name, path }: Props) {
     branchName: string;
     agent: AgentConfig;
     prompt: string;
-    focus?: boolean;
-  }): Promise<void> {
+  }): Promise<string | null> {
     const project = projectsRef.current.find((p) => p.id === opts.projectId);
     if (!project) throw new Error("Selected project is not open.");
     const hasGit = await invoke<boolean>("check_git_initialized", { path: project.path }).catch(() => false);
     if (!hasGit) throw new Error(`${project.name} is not a git repository. Run \`git init\` inside it, then retry.`);
-    await launchBranch(
+    // Tasks always spawn in the background — the user stays on the Tasks page
+    // and jumps to the agent via the "View agent" affordance on the row.
+    const id = await launchBranch(
       { agent: opts.agent, prompt: opts.prompt, name: opts.branchName },
-      { projectPath: project.path, projectId: opts.projectId, skipPrefix: true, skipFocus: opts.focus === false },
+      { projectPath: project.path, projectId: opts.projectId, skipPrefix: true, skipFocus: true },
     );
+    return id ?? null;
   }
 
   // Footer action: turn the project into a git repo in place so the Branch tab
@@ -2880,6 +2884,8 @@ export function WorkspaceView({ zen, name, path }: Props) {
                 projects={projects.map((p) => ({ id: p.id, name: p.name, path: p.path }))}
                 defaultProjectId={pendingProjectId ?? projects[0]?.id ?? null}
                 onLaunch={launchTaskAgent}
+                activeSessionIds={sessions.map((s) => s.id)}
+                onViewSession={setActiveSessionId}
               />
             )}
             {!activeSessionId && activeSection === "automations" && (

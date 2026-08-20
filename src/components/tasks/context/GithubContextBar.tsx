@@ -2,6 +2,7 @@ import { Icon } from "../icons";
 import type { GhKind, GhPreset, GhRepo, TasksState } from "../types";
 
 const PRESETS: { id: GhPreset; label: string }[] = [
+  { id: "all", label: "All" },
   { id: "assigned", label: "Assigned to me" },
   { id: "created", label: "Created by me" },
   { id: "mentioned", label: "Mentioned" },

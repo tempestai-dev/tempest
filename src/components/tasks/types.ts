@@ -79,7 +79,7 @@ export type UnifiedItem = (GhItem | LinearItem) & { key: string };
 
 export type Source = "unified" | "github" | "linear";
 export type GhKind = "both" | "issues" | "prs";
-export type GhPreset = "assigned" | "created" | "mentioned" | "review" | "open" | "closed";
+export type GhPreset = "all" | "assigned" | "created" | "mentioned" | "review" | "open" | "closed";
 export type LinearScope = { kind: "view" | "team" | "project" | "all"; id: string };
 
 export type TasksState = {

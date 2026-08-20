@@ -58,35 +58,48 @@ export interface TasksPageProps {
     branchName: string;
     agent: AgentConfig;
     prompt: string;
-    focus?: boolean;
-  }) => Promise<void>;
+  }) => Promise<string | null>;
+  activeSessionIds: string[];
+  onViewSession: (id: string) => void;
 }
 
-export function TasksPage({ projects, defaultProjectId, onLaunch }: TasksPageProps) {
+export function TasksPage({
+  projects,
+  defaultProjectId,
+  onLaunch,
+  activeSessionIds,
+  onViewSession,
+}: TasksPageProps) {
   const [state, setState] = useState<TasksState>(() => ({ ...INITIAL, ...loadPersisted() }));
   const [bump, setBump] = useState(0); // increments to invalidate all fetches
   const [modalKeys, setModalKeys] = useState<string[] | null>(null);
+  // Item key → session id for agents this page launched. In-memory only:
+  // sessions themselves live in WorkspaceView; we just remember the mapping
+  // so the row can offer a "View agent" jump while the session is alive.
+  const [launchedByKey, setLaunchedByKey] = useState<Map<string, string>>(() => new Map());
+  const activeSet = useMemo(() => new Set(activeSessionIds), [activeSessionIds]);
 
   useEffect(() => { savePersisted(state); }, [state]);
 
   const patch = (p: Partial<TasksState>) => setState((prev) => ({ ...prev, ...p }));
 
-  const ghNeeded = state.source === "github" || state.source === "unified";
-  const lnNeeded = state.source === "linear" || state.source === "unified";
-
   const ghAuth = useGhAuth(bump);
   const ghAuthed = !!ghAuth.data?.authenticated;
 
-  const ghRepos = useGhRepos(ghNeeded && ghAuthed, bump);
+  // Fetch every source in the background regardless of which tab is active, so
+  // tab pills stay live and switching tabs is a pure view swap (no refetch,
+  // no reset). The Rust side caches for 60s, so this is one call per source
+  // per refresh cycle.
+  const ghRepos = useGhRepos(ghAuthed, bump);
   const ghList = useGhList(
-    ghNeeded && ghAuthed,
+    ghAuthed,
     state.ghPreset,
     state.ghRepo,
     state.ghKind,
     bump,
   );
-  const lnBoot = useLinearBootstrap(lnNeeded, bump);
-  const lnList = useLinearList(lnNeeded, state.lnScope, bump);
+  const lnBoot = useLinearBootstrap(true, bump);
+  const lnList = useLinearList(true, state.lnScope, bump);
 
   // Assemble the visible list based on the active source. Query is a
   // client-side title filter over already-loaded rows.
@@ -243,6 +256,9 @@ export function TasksPage({ projects, defaultProjectId, onLaunch }: TasksPagePro
           onToggleExpanded={toggleExpanded}
           onCollapse={() => setState((prev) => ({ ...prev, expandedKey: null }))}
           onLaunch={(key) => openLaunchModal(key)}
+          launchedByKey={launchedByKey}
+          activeSessionIds={activeSet}
+          onViewSession={onViewSession}
         />
         <BulkBar
           count={state.selected.size}
@@ -257,6 +273,13 @@ export function TasksPage({ projects, defaultProjectId, onLaunch }: TasksPagePro
           projects={projects}
           defaultProjectId={defaultProjectId}
           onLaunch={onLaunch}
+          onLaunched={(itemKey, sessionId) => {
+            setLaunchedByKey((prev) => {
+              const next = new Map(prev);
+              next.set(itemKey, sessionId);
+              return next;
+            });
+          }}
           onClose={() => setModalKeys(null)}
         />
       )}

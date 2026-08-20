@@ -55,19 +55,23 @@ export function TaskRow({
   projects,
   isSelected,
   isExpanded,
+  liveSessionId,
   onToggleSelect,
   onToggleExpanded,
+  onViewSession,
 }: {
   it: UnifiedItem;
   source: Source;
   projects: LinearProject[];
   isSelected: boolean;
   isExpanded: boolean;
+  liveSessionId: string | null;
   onToggleSelect: (key: string) => void;
   onToggleExpanded: (key: string) => void;
+  onViewSession: (id: string) => void;
 }) {
   const gh = isGh(it);
-  const cls = `row${isSelected ? " selected" : ""}${isExpanded ? " is-expanded" : ""}`;
+  const cls = `row${isSelected ? " selected" : ""}${isExpanded ? " is-expanded" : ""}${gh && (it as GhItem).state === "closed" ? " is-resolved" : ""}`;
   const updated = relativeTime(it.updated);
 
   const sourceGlyph = source === "unified"
@@ -108,9 +112,19 @@ export function TaskRow({
       </span>
     );
 
+  // At-a-glance resolved marker for GitHub rows: PRs → Merged (purple),
+  // issues → Closed (red). Draft PRs keep the existing "Draft" chip.
+  const ghDone = gh && (it as GhItem).state === "closed";
+  const ghResolvedPill = ghDone
+    ? (it as GhItem).kind === "pr"
+      ? <span className="state-pill merged" title="Merged / closed">Merged</span>
+      : <span className="state-pill closed" title="Issue closed">Closed</span>
+    : null;
+
   const titleCell = (
     <span className="col-title">
       {gh && (it as GhItem).draft && <span className="draft">Draft</span>}
+      {ghResolvedPill}
       <span className="text">{it.title}</span>
     </span>
   );
@@ -140,6 +154,7 @@ export function TaskRow({
     const target = e.target as HTMLElement;
     if (target.closest("[data-check]")) { onToggleSelect(it.key); return; }
     if (target.closest("[data-expand]")) { onToggleExpanded(it.key); return; }
+    if (target.closest("[data-view-agent]")) return; // handler on the button
     if (e.metaKey || e.ctrlKey) { onToggleSelect(it.key); return; }
     onToggleExpanded(it.key);
   };
@@ -153,6 +168,16 @@ export function TaskRow({
       {titleCell}
       {typeCell}
       {badgesCell}
+      {liveSessionId && (
+        <button
+          className="view-agent-pill"
+          data-view-agent="1"
+          title="Jump to the running agent"
+          onClick={(e) => { e.stopPropagation(); onViewSession(liveSessionId); }}
+        >
+          {Icon.bolt()} View agent
+        </button>
+      )}
       <button className="col-expand" data-expand={it.key} aria-expanded={isExpanded}>
         {isExpanded ? "Collapse" : "Expand"}
       </button>

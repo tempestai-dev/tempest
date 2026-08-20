@@ -21,6 +21,9 @@ export function TaskList({
   onToggleExpanded,
   onCollapse,
   onLaunch,
+  launchedByKey,
+  activeSessionIds,
+  onViewSession,
 }: {
   items: UnifiedItem[];
   source: Source;
@@ -37,31 +40,42 @@ export function TaskList({
   onToggleExpanded: (key: string) => void;
   onCollapse: () => void;
   onLaunch: (key: string) => void;
+  launchedByKey: Map<string, string>;
+  activeSessionIds: Set<string>;
+  onViewSession: (id: string) => void;
 }) {
   const total = items.length;
 
-  const renderRow = (it: UnifiedItem) => (
-    <Fragment key={it.key}>
-      <TaskRow
-        it={it}
-        source={source}
-        projects={projects}
-        isSelected={selected.has(it.key)}
-        isExpanded={expandedKey === it.key}
-        onToggleSelect={onToggleSelect}
-        onToggleExpanded={onToggleExpanded}
-      />
-      {expandedKey === it.key && (
-        <RowAccordion
+  const renderRow = (it: UnifiedItem) => {
+    const launchedId = launchedByKey.get(it.key);
+    const liveSessionId = launchedId && activeSessionIds.has(launchedId) ? launchedId : null;
+    return (
+      <Fragment key={it.key}>
+        <TaskRow
           it={it}
-          teams={teams}
+          source={source}
           projects={projects}
-          onCollapse={onCollapse}
-          onLaunch={onLaunch}
+          isSelected={selected.has(it.key)}
+          isExpanded={expandedKey === it.key}
+          liveSessionId={liveSessionId}
+          onToggleSelect={onToggleSelect}
+          onToggleExpanded={onToggleExpanded}
+          onViewSession={onViewSession}
         />
-      )}
-    </Fragment>
-  );
+        {expandedKey === it.key && (
+          <RowAccordion
+            it={it}
+            teams={teams}
+            projects={projects}
+            liveSessionId={liveSessionId}
+            onCollapse={onCollapse}
+            onLaunch={onLaunch}
+            onViewSession={onViewSession}
+          />
+        )}
+      </Fragment>
+    );
+  };
 
   return (
     <section className="list-pane">

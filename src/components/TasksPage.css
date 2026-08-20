@@ -308,6 +308,29 @@
   flex-shrink: 0;
 }
 
+/* Resolved-state pill for GitHub rows: color-coded so closed issues and
+   merged PRs stand out at a glance without needing to scan the type column. */
+.tasks-page .col-title .state-pill {
+  font-size: 10px; font-weight: 600;
+  padding: 1px 6px; border-radius: var(--radius-sm);
+  text-transform: uppercase; letter-spacing: 0.04em;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+}
+.tasks-page .col-title .state-pill.closed {
+  color: var(--danger);
+  border-color: color-mix(in oklab, var(--danger) 40%, transparent);
+  background: color-mix(in oklab, var(--danger) 12%, transparent);
+}
+.tasks-page .col-title .state-pill.merged {
+  color: var(--purple);
+  border-color: color-mix(in oklab, var(--purple) 40%, transparent);
+  background: color-mix(in oklab, var(--purple) 12%, transparent);
+}
+.tasks-page .row.is-resolved .col-title .text {
+  color: var(--fg-muted);
+}
+
 .tasks-page .col-type {
   display: inline-flex; align-items: center; gap: 6px;
   color: var(--fg-muted); font-size: 11.5px; white-space: nowrap;
@@ -342,6 +365,23 @@
 }
 .tasks-page .col-expand:hover { color: var(--fg); background: var(--bg-hover); border-color: var(--border-strong); }
 .tasks-page .row.is-expanded .col-expand { color: var(--fg); border-color: var(--border-strong); background: var(--bg-hover); }
+
+/* Live "View agent" jump. Absolute so it doesn't disturb the 6-track grid. */
+.tasks-page .view-agent-pill {
+  position: absolute;
+  right: 108px; top: 50%; transform: translateY(-50%);
+  height: 24px; padding: 0 10px;
+  border-radius: 10px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-strong);
+  color: var(--fg);
+  font-size: 11px; font-weight: 500;
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 4px;
+  transition: background .1s, border-color .1s;
+}
+.tasks-page .view-agent-pill:hover { background: var(--bg-selection); border-color: var(--fg-muted); }
+.tasks-page .view-agent-pill svg { width: 12px; height: 12px; }
 
 .tasks-page .row .check {
   width: 14px; height: 14px; border-radius: 3px;

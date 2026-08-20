@@ -30,6 +30,7 @@ export function LaunchAgentModal({
   projects,
   defaultProjectId,
   onLaunch,
+  onLaunched,
   onClose,
 }: {
   items: UnifiedItem[];
@@ -40,8 +41,8 @@ export function LaunchAgentModal({
     branchName: string;
     agent: AgentConfig;
     prompt: string;
-    focus?: boolean;
-  }) => Promise<void>;
+  }) => Promise<string | null>;
+  onLaunched?: (itemKey: string, sessionId: string) => void;
   onClose: () => void;
 }) {
   const agents = useAgents();
@@ -100,31 +101,23 @@ export function LaunchAgentModal({
     const bad = jobs.findIndex((j) => !j.branch || !j.form.projectId);
     if (bad >= 0) { setActive(bad); setErr("Every task needs a project and a branch name."); return; }
 
-    setBusy(true);
-    const failures: { key: string; msg: string }[] = [];
-    // Sequential: focus only the first spawned session so the user lands there;
-    // the rest appear in the tab strip. Failures don't abort the loop — the
-    // tab strip already reflects successful spawns.
-    for (let i = 0; i < jobs.length; i++) {
-      const { form, branch, agentCfg } = jobs[i];
-      try {
-        await onLaunch({
-          projectId: form.projectId,
-          branchName: branch,
-          agent: agentCfg,
-          prompt: form.prompt,
-          focus: i === 0,
-        });
-      } catch (e) {
-        failures.push({ key: form.it.key, msg: String(e instanceof Error ? e.message : e) });
-      }
+    // Fire-and-forget: worktree creation + agent boot each take a couple of
+    // seconds, but the tab already exists in the sidebar the instant we fire
+    // (WorkspaceView pre-mints the pending session). Close the modal now so
+    // the user is back on the Tasks page immediately; onLaunched keeps
+    // filling launchedByKey as each spawn resolves. Errors surface via
+    // WorkspaceView.setPolicyError.
+    for (const { form, branch, agentCfg } of jobs) {
+      onLaunch({
+        projectId: form.projectId,
+        branchName: branch,
+        agent: agentCfg,
+        prompt: form.prompt,
+      })
+        .then((id) => { if (id) onLaunched?.(form.it.key, id); })
+        .catch((e) => console.error("Task agent launch failed:", form.it.key, e));
     }
-    if (failures.length === 0) {
-      onClose();
-      return;
-    }
-    setBusy(false);
-    setErr(`${failures.length} of ${jobs.length} launches failed: ${failures[0].msg}`);
+    onClose();
   };
 
   return createPortal(
@@ -220,7 +213,7 @@ export function LaunchAgentModal({
             />
             <p className="field-hint">
               Prefilled from the {isGh(f.it) ? "issue" : "ticket"}. Edit before launching.
-              {multi && " Each task spawns its own worktree; you land in the first."}
+              {multi ? " Each task spawns its own worktree in the background." : " The agent runs in the background — use View agent on the row to jump in."}
             </p>
           </div>
 

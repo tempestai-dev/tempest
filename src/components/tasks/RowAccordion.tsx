@@ -59,14 +59,18 @@ export function RowAccordion({
   it,
   teams,
   projects,
+  liveSessionId,
   onCollapse,
   onLaunch,
+  onViewSession,
 }: {
   it: UnifiedItem;
   teams: LinearTeam[];
   projects: LinearProject[];
+  liveSessionId: string | null;
   onCollapse: () => void;
   onLaunch: (key: string) => void;
+  onViewSession: (id: string) => void;
 }) {
   const gh = isGh(it);
   const idStr = gh ? `${(it as GhItem).repo}#${(it as GhItem).number}` : (it as LinearItem).id;
@@ -132,9 +136,15 @@ export function RowAccordion({
             <span className="state-str">{stateStr}</span>
           </div>
           <div className="actions-inline">
-            <button className="btn primary" onClick={() => onLaunch(it.key)}>
-              {Icon.bolt()} Launch agent
-            </button>
+            {liveSessionId ? (
+              <button className="btn primary" onClick={() => onViewSession(liveSessionId)}>
+                {Icon.bolt()} View agent
+              </button>
+            ) : (
+              <button className="btn primary" onClick={() => onLaunch(it.key)}>
+                {Icon.bolt()} Launch agent
+              </button>
+            )}
             <button className="icon-btn" title="Open in browser" onClick={openBrowser}>{Icon.extLink()}</button>
             <button className="icon-btn" title="Copy link" onClick={copyLink}>{Icon.copy()}</button>
             <button className="icon-btn" title="Close" onClick={onCollapse}>{Icon.close()}</button>

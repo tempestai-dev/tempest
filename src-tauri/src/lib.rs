@@ -3402,12 +3402,25 @@ async fn create_pty_session(
             // an interactive shell with -NoExit / exec so the terminal stays alive after exit.
             // All session/resume flags and the prompt are pre-assembled by the frontend and
             // arrive in `args` — Rust only shell-quotes and joins them onto the binary name.
+            // Shell-quote each arg for the target interpreter. The escapes for a
+            // literal `'` inside a `'...'` string differ:
+            //   PowerShell → `''`  (doubled)
+            //   POSIX sh   → `'\''` (close, escaped literal, reopen)
+            // The previous `'''` worked for neither and blew up on prompts
+            // containing apostrophes (e.g. issue-body checklists like `I'm ...`).
+            #[cfg(windows)]
+            fn quote_arg(s: &str) -> String {
+                format!("'{}'", s.replace('\'', "''"))
+            }
+            #[cfg(not(windows))]
+            fn quote_arg(s: &str) -> String {
+                format!("'{}'", s.replace('\'', "'\\''"))
+            }
             let mut parts: Vec<String> = vec![agent_exe.clone()];
             if let Some(ref extra) = args {
                 for arg in extra {
-                    if arg.contains(' ') || arg.contains('\'') {
-                        // Single-quote-escape for PowerShell / POSIX sh
-                        parts.push(format!("'{}'", arg.replace('\'', "'''")));
+                    if arg.contains(' ') || arg.contains('\'') || arg.contains('\n') {
+                        parts.push(quote_arg(arg));
                     } else {
                         parts.push(arg.clone());
                     }

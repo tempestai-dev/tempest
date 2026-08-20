@@ -285,7 +285,7 @@ pub fn tasks_github_repos() -> Result<Vec<GhRepo>, String> {
     Ok(repos)
 }
 
-/// preset ∈ {assigned, created, mentioned, review, open, closed}
+/// preset ∈ {all, assigned, created, mentioned, review, open, closed}
 /// kind   ∈ {both, issues, prs}
 /// repo   = "all" or owner/repo slug (from tasks_github_repos)
 #[tauri::command(async)]
@@ -320,6 +320,8 @@ pub fn tasks_github_list(
 fn preset_flags(preset: &str, kind: &str) -> Vec<String> {
     let mut f: Vec<String> = Vec::new();
     match preset {
+        // Union of author + assignee + mentions + review-requested for @me.
+        "all" => f.push("--involves=@me".into()),
         "assigned" => f.push("--assignee=@me".into()),
         "created" => f.push("--author=@me".into()),
         "mentioned" => f.push("--mentions=@me".into()),
