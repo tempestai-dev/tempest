@@ -1718,16 +1718,16 @@
 /* Work-done detection indicators (agent sessions) */
 .work-spinner {
   flex-shrink: 0;
+  margin-left: auto;
+  margin-right: -4px;
   color: var(--tempest-accent-blue);
 }
 
-.work-done-dot {
+.work-done-check {
   flex-shrink: 0;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--tempest-terminal-green, var(--tempest-accent-blue));
-  box-shadow: 0 0 4px var(--tempest-terminal-green, var(--tempest-accent-blue));
+  margin-left: auto;
+  margin-right: -4px;
+  color: var(--tempest-terminal-green, var(--tempest-accent-blue));
 }
 
 .work-attention-dot {
@@ -1741,6 +1741,8 @@
 
 .work-attention-bell {
   flex-shrink: 0;
+  margin-left: auto;
+  margin-right: -4px;
   color: var(--tempest-accent-orange, #f5a130);
 }
 

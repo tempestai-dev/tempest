@@ -62,6 +62,12 @@ export interface AgentConfig {
   // Informational: id of the agent this one was cloned from. No behavior; just
   // shown in the settings header so the lineage is visible.
   extends?: string;
+  // Text sent to the agent's PTY to reset its conversation context (e.g.
+  // "/clear" for Claude Code, "/new" for agents that start a fresh chat). Used
+  // by the Message Queue's Add-clear button to be agent-aware. Omit to hide the
+  // button. Sourced from each agent's documented slash-command set — the REPL
+  // commands the binary's own `--help` describes, or the /help output.
+  clearCommand?: string;
 }
 
 /// A validated manifest entry. It PATCHES an agent of the same id (so an override
@@ -142,8 +148,21 @@ function sanitizeEntry(a: unknown): RemotePatch | null {
   if (dl) patch.downloadUrl = dl;
   const capture = captureSpec(e.capture);
   if (capture) patch.capture = capture;
+  const clear = clearCmd(e.clearCommand);
+  if (clear) patch.clearCommand = clear;
   return patch;
 }
+
+// A clear command reaches the agent's PTY verbatim followed by a carriage
+// return. Bounded and printable so a stray manifest value can't smuggle
+// control sequences.
+const clearCmd = (v: unknown): string | undefined => {
+  if (typeof v !== "string") return undefined;
+  const s = v.trim();
+  if (!s || s.length > 64) return undefined;
+  // Printable ASCII only — no controls, no newlines.
+  return /^[\x20-\x7E]+$/.test(s) ? s : undefined;
+};
 
 export function sanitizeManifestAgents(list: unknown): RemotePatch[] {
   if (!Array.isArray(list)) return [];
@@ -196,6 +215,8 @@ export function sanitizeCustomAgent(a: unknown): RemotePatch | null {
   if (capture) patch.capture = capture;
   if (e.disabled === true) patch.disabled = true;
   if (typeof e.extends === "string" && e.extends) patch.extends = e.extends;
+  const clear = clearCmd(e.clearCommand);
+  if (clear) patch.clearCommand = clear;
   return patch;
 }
 
