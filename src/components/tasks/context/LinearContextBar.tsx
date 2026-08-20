@@ -1,7 +1,14 @@
 import { Icon } from "../icons";
-import type { LinearBootstrap, LinearScope, TasksState } from "../types";
+import type { LinearBootstrap, LinearOrder, LinearScope, TasksState } from "../types";
 
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
+
+const ORDER_OPTIONS: { id: LinearOrder; label: string }[] = [
+  { id: "priority", label: "Priority" },
+  { id: "updated", label: "Updated" },
+  { id: "status", label: "Status" },
+  { id: "title", label: "Title" },
+];
 
 export function LinearContextBar({
   state,
@@ -83,6 +90,16 @@ export function LinearContextBar({
         >
           <span className="label-muted">Group</span><span>{cap(state.lnGroup)}</span><span className="caret">{Icon.caret()}</span>
         </button>
+        <select
+          className="picker picker-select"
+          value={state.lnOrder}
+          onChange={(e) => patch({ lnOrder: e.target.value as LinearOrder })}
+          title="Order by"
+        >
+          {ORDER_OPTIONS.map((o) => (
+            <option key={o.id} value={o.id}>{o.label}</option>
+          ))}
+        </select>
       </div>
     </>
   );

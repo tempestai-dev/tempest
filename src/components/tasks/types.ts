@@ -40,6 +40,28 @@ export type LinearItem = {
   body: string;
 };
 
+export type LinearOrder = "priority" | "updated" | "status" | "title";
+
+const LINEAR_PRIORITY_RANK: Record<LinearPriority, number> = { urgent: 0, high: 1, med: 2, low: 3, none: 4 };
+const LINEAR_STATUS_RANK: Record<LinearStatus, number> = { inprog: 0, todo: 1, review: 2, backlog: 3, done: 4, cancel: 5 };
+
+// Comparator for the Linear "order by" setting. Ties fall back to most
+// recently updated first, same as the default "updated" order.
+export function compareLinearItems(order: LinearOrder): (a: LinearItem, b: LinearItem) => number {
+  const byUpdated = (a: LinearItem, b: LinearItem) => (b.updated ?? "").localeCompare(a.updated ?? "");
+  switch (order) {
+    case "priority":
+      return (a, b) => LINEAR_PRIORITY_RANK[a.priority] - LINEAR_PRIORITY_RANK[b.priority] || byUpdated(a, b);
+    case "status":
+      return (a, b) => LINEAR_STATUS_RANK[a.status] - LINEAR_STATUS_RANK[b.status] || byUpdated(a, b);
+    case "title":
+      return (a, b) => a.title.localeCompare(b.title);
+    case "updated":
+    default:
+      return byUpdated;
+  }
+}
+
 export type LinearBootstrap = {
   viewer_name: string;
   teams: LinearTeam[];
@@ -89,7 +111,7 @@ export type TasksState = {
   ghPreset: GhPreset;
   lnScope: LinearScope;
   lnGroup: string;
-  lnOrder: string;
+  lnOrder: LinearOrder;
   query: string;
   selected: Set<string>;
   expandedKey: string | null;
