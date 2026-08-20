@@ -14,7 +14,7 @@ import {
   useLinearList,
 } from "./tasks/useTasks";
 import type { LaunchTargetProject, Source, TasksState, UnifiedItem } from "./tasks/types";
-import { itemKey } from "./tasks/types";
+import { compareLinearItems, itemKey } from "./tasks/types";
 import type { AgentConfig } from "../lib/agentRegistry";
 
 const INITIAL: TasksState = {
@@ -114,6 +114,7 @@ export function TasksPage({
     if (state.source === "linear") {
       return (lnList.data ?? [])
         .filter((i) => match(i.title))
+        .sort(compareLinearItems(state.lnOrder))
         .map((i) => ({ ...i, key: itemKey(i) }));
     }
     // unified
@@ -122,7 +123,7 @@ export function TasksPage({
     return [...gh, ...ln]
       .filter((i) => match(i.title))
       .sort((a, b) => (b.updated ?? "").localeCompare(a.updated ?? ""));
-  }, [state.source, state.query, ghList.data, lnList.data]);
+  }, [state.source, state.query, state.lnOrder, ghList.data, lnList.data]);
 
   const counts: Record<Source, number | null> = {
     github: ghList.data?.length ?? null,
