@@ -54,7 +54,7 @@ uuid = { version = "1", features = ["v4"] }
 # Blocking HTTP for the automations "Try it" tool preview — small, sync, no
 # runtime pulled in. Only reached from the try_http_request Tauri command.
 ureq = { version = "2", features = ["json"] }
-base64 = "0.22"
+base64 = "0.23"
 # Experimental: Jin Lee's Rust AI gateway, wired as an opt-in chat backend on
 # canvas chat nodes. Gated behind the "experimental features" setting; if the
 # feature is off, warp_bridge is never invoked and this dep sits idle.
