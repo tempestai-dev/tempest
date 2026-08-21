@@ -2095,7 +2095,12 @@ export function WorkspaceView({ zen, name, path }: Props) {
           ) : (
             /* ── Default mode sidebar ── */
             <>
-              <div className="sidebar-section-label">Projects</div>
+              <div className="sidebar-section-label sidebar-section-label--row">
+                <span>Projects</span>
+                <Tooltip content="Add project" placement="top">
+                  <FolderPlus size={13} className="sidebar-section-add" onClick={addWorkspace} />
+                </Tooltip>
+              </div>
               {projects.length === 0 ? (
                 <div className="projects-empty-box">No projects added</div>
               ) : (

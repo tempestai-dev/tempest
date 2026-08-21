@@ -9,6 +9,7 @@ import { getSettings } from "./store/appSettings";
 import { track, setPersonProperties, osName } from "./lib/telemetry";
 import { checkAgentAvailability } from "./store/agentAvailability";
 import { startRemoteAgentsFetch } from "./lib/remoteAgents";
+import { toggleFullscreen } from "./lib/windowFullscreen";
 import "./App.css";
 
 // Dev-only: set VITE_FORCE_ONBOARDING=true in .env.local to always land on onboarding. Prod builds ignore it (DEV-gated).
@@ -29,8 +30,15 @@ export default function App() {
       void track("crash_or_error", { surface: "renderer", error_kind: e.error?.name ?? "error" });
     const onRej = () =>
       void track("crash_or_error", { surface: "renderer", error_kind: "unhandled_rejection" });
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "F11" || (e.key.toLowerCase() === "f" && e.ctrlKey && e.metaKey)) {
+        e.preventDefault();
+        void toggleFullscreen();
+      }
+    };
     window.addEventListener("error", onErr);
     window.addEventListener("unhandledrejection", onRej);
+    window.addEventListener("keydown", onKey);
 
     checkAgentAvailability();
     void startRemoteAgentsFetch(); // verified remote agents manifest, else bundled
@@ -57,6 +65,7 @@ export default function App() {
     return () => {
       window.removeEventListener("error", onErr);
       window.removeEventListener("unhandledrejection", onRej);
+      window.removeEventListener("keydown", onKey);
     };
   }, []);
 

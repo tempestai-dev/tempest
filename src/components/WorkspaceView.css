@@ -933,6 +933,24 @@
   user-select: none;
 }
 
+.sidebar-section-label--row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sidebar-section-add {
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity 120ms, color 120ms;
+}
+.sidebar-section-add:hover {
+  opacity: 1;
+  color: var(--tempest-fg);
+}
+
 .agent-list {
   flex: 1;
   overflow-y: auto;
