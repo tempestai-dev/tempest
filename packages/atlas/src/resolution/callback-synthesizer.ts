@@ -920,7 +920,7 @@ function vueTemplateEdges(ctx: ResolutionContext): Edge[] {
     // Composable-destructure map: alias → { composable, key }. Lets us resolve a
     // template handler that isn't a local function but a destructured composable
     // return (`@click="closeSidebar"` ← `const { close: closeSidebar } = useSidebarControl()`).
-    const script = content.match(/<script[^>]*>([\s\S]*?)<\/script\s*>/i)?.[1] ?? '';
+    const script = content.match(/<script[^>]*>([\s\S]*?)<\/script[^>]*>/i)?.[1] ?? '';
     const destructured = new Map<string, { composable: string; key: string }>();
     VUE_DESTRUCTURE_RE.lastIndex = 0;
     let dm: RegExpExecArray | null;

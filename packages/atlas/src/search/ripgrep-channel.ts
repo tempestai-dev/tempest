@@ -91,7 +91,7 @@ export function shouldSkipGrep(query: string): boolean {
   // so `--asset-add` still counts as one length-≥3 token.
   const tokens = query
     .split(/\s+/)
-    .map((t) => t.replace(/^[^A-Za-z0-9_]+/, '').replace(/[^A-Za-z0-9_]+$/, ''))
+    .map((t) => t.replace(/^\W+|\W+$/g, ''))
     .filter((t) => t.length >= MIN_PATTERN_LEN);
   if (tokens.length < 2) return false;
   const identShape = (t: string): boolean =>

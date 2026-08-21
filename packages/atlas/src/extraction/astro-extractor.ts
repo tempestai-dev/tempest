@@ -156,7 +156,7 @@ export class AstroExtractor {
   private extractScriptBlocks(): Array<{ content: string; startLine: number }> {
     const blocks: Array<{ content: string; startLine: number }> = [];
 
-    const scriptRegex = /<script\b[^>]*>(?<content>[\s\S]*?)<\/script\s*>/gi;
+    const scriptRegex = /<script\b[^>]*>(?<content>[\s\S]*?)<\/script[^>]*>/gi;
     let match;
 
     while ((match = scriptRegex.exec(this.source)) !== null) {

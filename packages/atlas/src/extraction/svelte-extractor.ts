@@ -122,7 +122,7 @@ export class SvelteExtractor {
       isTypeScript: boolean;
     }> = [];
 
-    const scriptRegex = /<script(\b[^>]*)?>(?<content>[\s\S]*?)<\/script\s*>/gi;
+    const scriptRegex = /<script(\s[^>]*)?>(?<content>[\s\S]*?)<\/script[^>]*>/gi;
     let match;
 
     while ((match = scriptRegex.exec(this.source)) !== null) {

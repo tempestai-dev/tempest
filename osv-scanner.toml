@@ -1,0 +1,12 @@
+# osv-scanner.toml
+# Justified ignores for OpenSSF Scorecard's Vulnerabilities check.
+# Only add entries here for GHSAs that are false-positives or unreachable
+# in Tempest's usage. Each ignore MUST include a reason and an expiry.
+#
+# Format:
+#   [[IgnoredVulns]]
+#   id = "GHSA-xxxx-xxxx-xxxx"
+#   ignoreUntil = 2026-12-31
+#   reason = "Short justification: why this vuln does not apply to us."
+#
+# Populate after triage of `npm audit` + `cargo audit` output.
