@@ -58,7 +58,7 @@ base64 = "0.22"
 # Experimental: Jin Lee's Rust AI gateway, wired as an opt-in chat backend on
 # canvas chat nodes. Gated behind the "experimental features" setting; if the
 # feature is off, warp_bridge is never invoked and this dep sits idle.
-warpllm = "0.2"
+warpllm = "0.4"
 # OS credential manager for BYOK API keys (Windows Credential Manager, macOS
 # Keychain, Linux Secret Service). Replaces plaintext localStorage.
 keyring = "2"
