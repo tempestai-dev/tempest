@@ -10,6 +10,7 @@ Thanks for your interest in contributing. Tempest is an open, early-stage projec
 - [Getting started](#getting-started)
 - [Running individual pieces](#running-individual-pieces)
 - [Type checking](#type-checking)
+- [Testing](#testing)
 - [Making changes](#making-changes)
 - [Submitting a pull request](#submitting-a-pull-request)
 - [Reporting bugs](#reporting-bugs)
@@ -80,6 +81,17 @@ cargo check               # Rust backend
 ```
 
 Please run these locally rather than relying on CI to catch issues.
+
+## Testing
+
+Tempest follows a "tests grow with the code" policy:
+
+- **When adding major new functionality, add tests that exercise it.** Rust code lives under `src-tauri/src/` — use `#[cfg(test)]` modules for unit tests and `src-tauri/tests/` for integration tests (`cargo test`). TypeScript code under `src/` and `packages/atlas/` uses Vitest where tests exist; new suites should follow the same setup.
+- **When fixing a bug, add a regression test** that fails before the fix and passes after, whenever the surface is testable.
+- **Reviewers will ask for tests** on PRs that add non-trivial logic. Trivial changes (docs, small refactors, UI copy) do not need tests.
+- **Run the relevant suite before pushing:** `cargo test` for Rust changes, `npm test` (per-package) for TypeScript changes.
+
+We do not require 100% coverage, and some surfaces (Tauri window management, native OS integration) are exercised through manual QA rather than automation. Use judgment: if the code has branches, edge cases, or handles untrusted input, it should have tests.
 
 ## Making changes
 
