@@ -37,15 +37,21 @@ function assigneesHtml(list: string[] = []) {
 }
 
 function prStateClass(it: GhItem) {
-  if (it.kind === "pr") return it.draft ? "draft" : (it.state === "open" ? "open" : "merged");
+  if (it.kind === "pr") return it.draft ? "draft" : it.state;
   return it.state === "open" ? "open" : "closed";
 }
 function prStateGlyph(it: GhItem): ReactElement {
-  if (it.kind === "pr") return it.draft ? Icon.prDraft() : Icon.prOpen();
+  if (it.kind === "pr") {
+    if (it.draft) return Icon.prDraft();
+    return it.state === "open" ? Icon.prOpen() : it.state === "merged" ? Icon.prMerged() : Icon.prClosed();
+  }
   return it.state === "open" ? Icon.issueOpen() : Icon.issueClosed();
 }
 function ghTypeLabel(it: GhItem) {
-  if (it.kind === "pr") return it.draft ? "PR · draft" : (it.state === "open" ? "Pull request" : "PR · merged");
+  if (it.kind === "pr") {
+    if (it.draft) return "PR · draft";
+    return it.state === "open" ? "Pull request" : it.state === "merged" ? "PR · merged" : "PR · closed";
+  }
   return it.state === "open" ? "Issue" : "Issue · closed";
 }
 
@@ -71,7 +77,7 @@ export function TaskRow({
   onViewSession: (id: string) => void;
 }) {
   const gh = isGh(it);
-  const cls = `row${isSelected ? " selected" : ""}${isExpanded ? " is-expanded" : ""}${gh && (it as GhItem).state === "closed" ? " is-resolved" : ""}`;
+  const cls = `row${isSelected ? " selected" : ""}${isExpanded ? " is-expanded" : ""}${gh && (it as GhItem).state !== "open" ? " is-resolved" : ""}`;
   const updated = relativeTime(it.updated);
 
   const sourceGlyph = source === "unified"
@@ -112,13 +118,13 @@ export function TaskRow({
       </span>
     );
 
-  // At-a-glance resolved marker for GitHub rows: PRs → Merged (purple),
-  // issues → Closed (red). Draft PRs keep the existing "Draft" chip.
-  const ghDone = gh && (it as GhItem).state === "closed";
+  // At-a-glance resolved marker for GitHub rows: merged PRs → Merged (purple),
+  // closed-unmerged PRs / closed issues → Closed (red). Draft PRs keep the existing "Draft" chip.
+  const ghDone = gh && (it as GhItem).state !== "open";
   const ghResolvedPill = ghDone
-    ? (it as GhItem).kind === "pr"
-      ? <span className="state-pill merged" title="Merged / closed">Merged</span>
-      : <span className="state-pill closed" title="Issue closed">Closed</span>
+    ? (it as GhItem).kind === "pr" && (it as GhItem).state === "merged"
+      ? <span className="state-pill merged" title="Merged">Merged</span>
+      : <span className="state-pill closed" title="Closed">Closed</span>
     : null;
 
   const titleCell = (

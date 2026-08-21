@@ -10,7 +10,7 @@ export type GhItem = {
   kind: "issue" | "pr";
   number: number;
   repo: string;         // owner/repo
-  state: "open" | "closed";
+  state: "open" | "closed" | "merged"; // "merged" applies to PRs only
   draft: boolean;
   title: string;
   author: string;

@@ -41,6 +41,9 @@ export const Icon = {
   prMerged: (): ReactElement => (
     <svg viewBox="0 0 16 16" fill="currentColor"><circle cx="5" cy="4" r="1.5" /><circle cx="5" cy="12" r="1.5" /><circle cx="11" cy="10" r="1.5" /><path fill="none" stroke="currentColor" strokeWidth={1.25} d="M5 5.5v5M11 8V5.5A2.5 2.5 0 0 0 8.5 3H8" /></svg>
   ),
+  prClosed: (): ReactElement => (
+    <svg viewBox="0 0 16 16" fill="currentColor"><circle cx="5" cy="4" r="1.5" /><circle cx="5" cy="12" r="1.5" /><circle cx="11" cy="12" r="1.5" /><path fill="none" stroke="currentColor" strokeWidth={1.25} d="M5 5.5v5M11 6.5V11" /><path stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" d="M9.3 2.3l2.4 2.4m0-2.4-2.4 2.4" /></svg>
+  ),
   prDraft: (): ReactElement => (
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5}><circle cx="5" cy="4" r="1.5" /><circle cx="5" cy="12" r="1.5" /><circle cx="11" cy="12" r="1.5" /><path d="M5 5.5v5M11 6.5V11" /></svg>
   ),
