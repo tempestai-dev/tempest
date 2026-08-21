@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 bollard = "0.17"
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
 tokio = { version = "1", features = ["full"] }
 uuid = { version = "1", features = ["v4"] }
 url = "2"
