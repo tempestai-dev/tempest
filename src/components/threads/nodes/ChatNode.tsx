@@ -70,7 +70,14 @@ function buildLineageContext(sourceIds: string[]): string {
   for (const nid of sourceIds) {
     const node = getThreadNode(nid);
     if (!node) continue;
-    const data = getNodeData<{ title?: string; body?: string }>(nid);
+    const data = getNodeData<{
+      title?: string; body?: string;
+      // image / file / site / media payloads
+      alt?: string; width?: number; height?: number; mime?: string;
+      path?: string; sizeBytes?: number; truncated?: boolean;
+      url?: string; siteTitle?: string; contentLength?: number;
+      transcript?: string; durationSec?: number; language?: string;
+    }>(nid);
     const title = data.title ?? node.kind;
 
     let content = "";
@@ -78,6 +85,42 @@ function buildLineageContext(sourceIds: string[]): string {
       content = (data.body ?? "").trim();
     } else if (node.kind === "chat") {
       content = messagePreview(nid);
+    } else if (node.kind === "file") {
+      // Extracted text lives in `body` (extract_file_text populates it).
+      const header = data.path ? `[file: ${data.path}]\n` : "";
+      content = (header + (data.body ?? "")).trim();
+    } else if (node.kind === "site") {
+      const header = data.url ? `[site: ${data.url}${data.siteTitle ? ` — ${data.siteTitle}` : ""}]\n` : "";
+      content = (header + (data.body ?? "")).trim();
+    } else if (node.kind === "media") {
+      const media = data as {
+        url?: string; durationSec?: number; language?: string; transcript?: string;
+        uploader?: string; description?: string; captionSource?: string;
+      };
+      const meta = [
+        media.url ? `URL: ${media.url}` : "",
+        media.uploader ? `Uploader: ${media.uploader}` : "",
+        media.durationSec ? `Duration: ${Math.round(media.durationSec)}s` : "",
+        media.language ? `Language: ${media.language}` : "",
+      ].filter(Boolean).join(" · ");
+      if (media.transcript) {
+        const source = media.captionSource === "auto" ? "auto-captions" : "captions";
+        content = [`[transcript from ${source}]`, meta, "", media.transcript.trim()].filter(Boolean).join("\n").trim();
+      } else if (media.description) {
+        content = [`[video metadata — no captions published]`, meta, "", `Description:\n${media.description.trim()}`].filter(Boolean).join("\n").trim();
+      } else {
+        content = [`[video metadata — no captions or description]`, meta].filter(Boolean).join("\n").trim();
+      }
+    } else if (node.kind === "image") {
+      // Vision handoff attaches the actual image bytes as a message part (see
+      // ChatNode.send). Here in the *text* lineage we describe it — the caption
+      // + dimensions — so a model without vision still gets the reference.
+      const bits = [
+        data.alt ? `Caption: ${data.alt}` : "",
+        data.width && data.height ? `Dimensions: ${data.width}×${data.height}` : "",
+        data.mime ? `Type: ${data.mime}` : "",
+      ].filter(Boolean).join("\n");
+      content = `[image attached${data.alt ? "" : ", no caption"}]${bits ? `\n${bits}` : ""}`;
     }
 
     const branch = node.branchId ? ` branch="${node.branchId}"` : "";
@@ -105,7 +148,13 @@ function buildLineageContext(sourceIds: string[]): string {
 // into the `## Canvas map` block. Rebuilt each send so it reflects the live canvas.
 function buildCanvasGraph(threadId: string, selfId: string, canReadNodes = true): string {
   const metas: CanvasNodeMeta[] = getThreadNodes(threadId).map((n) => {
-    const data = getNodeData<{ title?: string; body?: string; gist?: string; msgCount?: number }>(n.id);
+    const data = getNodeData<{
+      title?: string; body?: string; gist?: string; msgCount?: number;
+      alt?: string; width?: number; height?: number;
+      path?: string; sizeBytes?: number;
+      url?: string; siteTitle?: string; contentLength?: number;
+      transcript?: string; durationSec?: number; language?: string;
+    }>(n.id);
     const title = data.title ?? n.kind;
 
     let gist = "";
@@ -116,6 +165,29 @@ function buildCanvasGraph(threadId: string, selfId: string, canReadNodes = true)
       if (data.msgCount) parts.push(`${data.msgCount} msg${data.msgCount === 1 ? "" : "s"}`);
       if (data.gist) parts.push(data.gist);
       gist = parts.join(" · ");
+    } else if (n.kind === "image") {
+      const parts: string[] = [];
+      if (data.width && data.height) parts.push(`${data.width}×${data.height}`);
+      if (data.alt) parts.push(data.alt);
+      gist = parts.join(" · ") || "no image";
+    } else if (n.kind === "file") {
+      const parts: string[] = [];
+      if (data.path) parts.push(data.path.split(/[\\/]/).filter(Boolean).pop() ?? "");
+      if (data.body) parts.push(`${data.body.length.toLocaleString()} chars`);
+      gist = parts.join(" · ") || "no file";
+    } else if (n.kind === "site") {
+      const parts: string[] = [];
+      if (data.siteTitle) parts.push(data.siteTitle);
+      else if (data.url) { try { parts.push(new URL(data.url).host.replace(/^www\./, "")); } catch { parts.push(data.url); } }
+      if (data.contentLength) parts.push(`${data.contentLength.toLocaleString()} chars`);
+      gist = parts.join(" · ") || "no URL";
+    } else if (n.kind === "media") {
+      const parts: string[] = [];
+      if (data.url) { try { parts.push(new URL(data.url).host.replace(/^www\./, "")); } catch { parts.push(data.url); } }
+      if (data.durationSec) { const m = Math.floor(data.durationSec / 60), s = Math.round(data.durationSec % 60); parts.push(`${m}:${String(s).padStart(2, "0")}`); }
+      if (data.transcript) parts.push(data.language ? `captions:${data.language}` : "captions");
+      else parts.push("no captions");
+      gist = parts.join(" · ") || "no URL";
     } else {
       const parts: string[] = [];
       const branch = n.branchId ? getBranch(n.branchId)?.name : undefined;
@@ -306,6 +378,17 @@ export function ChatNode({ id, data }: { id: string; data?: { collapsed?: boolea
 
     const lineage = buildLineageContext(sourceIdsRef.current);
     const canvasMap = buildCanvasGraph(threadId, id);
+    // Vision handoff: any wired-in image node ships its bytes as a real image
+    // part on the outgoing user message (see lib/chat.ts). Only BYOK backend —
+    // the CLI harness talks to Claude Code's own tools/attachments and Warp
+    // doesn't take images. Non-vision providers will error; we don't guess.
+    const imageParts: { image: string }[] = [];
+    for (const nid of sourceIdsRef.current) {
+      const src = getThreadNode(nid);
+      if (src?.kind !== "image") continue;
+      const d = getNodeData<{ dataUrl?: string }>(nid);
+      if (d.dataUrl) imageParts.push({ image: d.dataUrl });
+    }
     // Inherited lineage first (the thread this chat continues), then the ambient map (reference).
     const system = [BASE_SYSTEM, lineage, canvasMap].filter(Boolean).join("\n\n");
     // BYOK chat wires our own tools. The CLI harness brings Claude Code's native
@@ -431,7 +514,14 @@ export function ChatNode({ id, data }: { id: string; data?: { collapsed?: boolea
       cancelRef.current = streamChat({
         providerId: provider.id,
         modelId: model.id,
-        messages: [...history, { role: "user", content: rawText }],
+        messages: [
+          ...history,
+          {
+            role: "user",
+            content: rawText,
+            ...(imageParts.length > 0 ? { imageParts } : {}),
+          },
+        ],
         system,
         tools: tools as Parameters<typeof streamChat>[0]["tools"],
         onEvent,

@@ -287,3 +287,10 @@
 .tnode-grip--v { width: 8px; height: 36px; }
 .react-flow__node:hover .tnode-grip { opacity: 0.55; }
 .tnode-edge:hover .tnode-grip { opacity: 1; }
+
+/* Spinner — small inline rotate for reload / transcribe / scrape busy states. */
+.tnode-spin { animation: tnode-spin 1s linear infinite; }
+@keyframes tnode-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .tnode-spin { animation: none; opacity: 0.6; }
+}

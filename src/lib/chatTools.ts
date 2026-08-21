@@ -176,6 +176,54 @@ export async function createChatTools(opts: {
                 .join("\n\n");
               return { kind: node.kind, title: t, content: cap(transcript) };
             }
+            if (node.kind === "file") {
+              const d = getNodeData<{ body?: string; path?: string }>(node.id);
+              const header = d.path ? `[file: ${d.path}]\n\n` : "";
+              return { kind: node.kind, title: t, content: cap(header + (d.body ?? "")) };
+            }
+            if (node.kind === "site") {
+              const d = getNodeData<{ body?: string; url?: string; siteTitle?: string }>(node.id);
+              const header = d.url ? `[site: ${d.url}${d.siteTitle ? ` — ${d.siteTitle}` : ""}]\n\n` : "";
+              return { kind: node.kind, title: t, content: cap(header + (d.body ?? "")) };
+            }
+            if (node.kind === "media") {
+              const d = getNodeData<{
+                transcript?: string; url?: string; durationSec?: number; language?: string;
+                uploader?: string; description?: string; captionSource?: string;
+              }>(node.id);
+              const meta = [
+                d.url ? `URL: ${d.url}` : "",
+                d.uploader ? `Uploader: ${d.uploader}` : "",
+                d.durationSec ? `Duration: ${Math.round(d.durationSec)}s` : "",
+                d.language ? `Language: ${d.language}` : "",
+              ].filter(Boolean).join(" · ");
+              let body: string;
+              if (d.transcript) {
+                const source = d.captionSource === "auto" ? "auto-captions" : "captions";
+                body = [`[transcript from ${source}]`, meta, "", d.transcript.trim()].filter(Boolean).join("\n").trim();
+              } else if (d.description) {
+                body = [`[video metadata — no captions published]`, meta, "", `Description:\n${d.description.trim()}`].filter(Boolean).join("\n").trim();
+              } else {
+                body = [`[video metadata — no captions or description]`, meta].filter(Boolean).join("\n").trim();
+              }
+              return { kind: node.kind, title: t, content: cap(body) };
+            }
+            if (node.kind === "image") {
+              // Vision handoff only fires for images WIRED INTO the calling chat
+              // (attached as an image part on the outgoing user message). A stray
+              // read_canvas_node call can't ferry image bytes back through the
+              // tool-result channel, so return the caption + shape + a note.
+              const d = getNodeData<{ alt?: string; width?: number; height?: number; mime?: string }>(node.id);
+              const bits = [
+                d.alt ? `Caption: ${d.alt}` : "(no caption)",
+                d.width && d.height ? `Dimensions: ${d.width}×${d.height}` : "",
+                d.mime ? `Type: ${d.mime}` : "",
+              ].filter(Boolean).join("\n");
+              return {
+                kind: node.kind, title: t,
+                content: `${bits}\n\nWire this image into a chat to have the vision-capable model actually see it.`,
+              };
+            }
             // agent / terminal — no readable PTY scrollback from here; return status.
             const branch = node.branchId ? getBranch(node.branchId)?.name : undefined;
             const live = node.sessionId ? sessionManager.has(node.sessionId) : false;

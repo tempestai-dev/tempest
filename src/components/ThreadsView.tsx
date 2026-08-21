@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } fr
 import { createPortal } from "react-dom";
 import {
   MessagesSquare, StickyNote, Bot, SquareTerminal, LayoutGrid, Minimize2, Maximize2, Trash2, Trash,
+  Image as ImageIcon, FileText, Globe, Play,
   AlignStartVertical, AlignCenterVertical, AlignEndVertical,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
   AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter,
@@ -25,6 +26,10 @@ import { TextNode } from "./threads/nodes/TextNode";
 import { invoke } from "@tauri-apps/api/core";
 import { ChatNode, buildAgentSeedContext } from "./threads/nodes/ChatNode";
 import { AgentNode, TerminalNode } from "./threads/nodes/SessionNode";
+import { ImageNode } from "./threads/nodes/ImageNode";
+import { FileNode } from "./threads/nodes/FileNode";
+import { SiteNode } from "./threads/nodes/SiteNode";
+import { MediaNode } from "./threads/nodes/MediaNode";
 import { ThreadEdge } from "./threads/ThreadEdge";
 import { ThreadNodeContext } from "./threads/ThreadNodeContext";
 import { Tooltip } from "./Tooltip";
@@ -34,7 +39,10 @@ import type { DbThreadNode } from "../lib/db";
 // Custom node kinds → their component. Module-level so the object identity is
 // stable across renders (React Flow warns otherwise). Unlisted kinds fall back to
 // React Flow's default box.
-const nodeTypes: NodeTypes = { text: TextNode, chat: ChatNode, agent: AgentNode, terminal: TerminalNode };
+const nodeTypes: NodeTypes = {
+  text: TextNode, chat: ChatNode, agent: AgentNode, terminal: TerminalNode,
+  image: ImageNode, file: FileNode, site: SiteNode, media: MediaNode,
+};
 const CUSTOM_KINDS = new Set(Object.keys(nodeTypes));
 // Kinds whose height is driven by content — the node grows downward as messages
 // stack instead of scrolling. We apply width only and let React Flow measure height.
@@ -71,6 +79,10 @@ const KIND_SIZE: Record<string, { w: number; h: number }> = {
   chat: { w: 700, h: 500 },
   agent: { w: 480, h: 340 },
   terminal: { w: 480, h: 300 },
+  image: { w: 360, h: 320 },
+  file: { w: 420, h: 360 },
+  site: { w: 460, h: 400 },
+  media: { w: 460, h: 400 },
 };
 
 // Phase 2: renders exactly one canvas (named by `threadId`) as a bare React Flow
@@ -558,6 +570,11 @@ export function ThreadsView({
               { title: "Add text note", Icon: StickyNote, onClick: () => createNode("text") },
               { title: "Add agent node", Icon: Bot, onClick: () => createNode("agent") },
               { title: "Add terminal node", Icon: SquareTerminal, onClick: () => createNode("terminal") },
+              "sep",
+              { title: "Add image", Icon: ImageIcon, onClick: () => createNode("image") },
+              { title: "Add file", Icon: FileText, onClick: () => createNode("file") },
+              { title: "Add site (scrape)", Icon: Globe, onClick: () => createNode("site") },
+              { title: "Add media (transcribe)", Icon: Play, onClick: () => createNode("media") },
             ] as const).map((b, i, arr) =>
               b === "sep" ? (
                 <div key={i} style={{ width: 1, alignSelf: "stretch", margin: "2px 3px", background: "var(--tempest-border-subtle, #2a2a2a)" }} />
@@ -672,6 +689,10 @@ export function ThreadsView({
             { kind: "text", label: "Text note", Icon: StickyNote },
             { kind: "agent", label: "Agent node", Icon: Bot },
             { kind: "terminal", label: "Terminal node", Icon: SquareTerminal },
+            { kind: "image", label: "Image", Icon: ImageIcon },
+            { kind: "file", label: "File", Icon: FileText },
+            { kind: "site", label: "Site (scrape)", Icon: Globe },
+            { kind: "media", label: "Media (transcribe)", Icon: Play },
           ].map((item) => (
             <button
               key={item.kind}

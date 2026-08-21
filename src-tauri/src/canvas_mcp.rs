@@ -124,6 +124,15 @@ fn first_line(s: &str, max: usize) -> String {
     if line.chars().count() > max { format!("{}…", line.chars().take(max).collect::<String>()) } else { line.to_string() }
 }
 
+/// Best-effort URL host (strip scheme + leading `www.`). No `url` crate here —
+/// this is a display gist, not URL validation. Full crate is already pulled in
+/// via reqwest but this file is stdlib-only by design.
+fn url_host(u: &str) -> String {
+    let no_scheme = u.split_once("://").map(|(_, r)| r).unwrap_or(u);
+    let host = no_scheme.split(['/', '?', '#']).next().unwrap_or(no_scheme);
+    host.strip_prefix("www.").unwrap_or(host).to_string()
+}
+
 fn tool_canvas_map(conn: &Connection, project: &str) -> String {
     let threads: Vec<(String, String)> = conn
         .prepare("SELECT id, name FROM threads WHERE project_id=?1 ORDER BY sort_order")
@@ -156,6 +165,51 @@ fn tool_canvas_map(conn: &Connection, project: &str) -> String {
                             if let Some(n) = data.get("msgCount").and_then(Value::as_u64) { parts.push(format!("{n} msg{}", if n == 1 { "" } else { "s" })); }
                             if let Some(g) = data.get("gist").and_then(Value::as_str).filter(|s| !s.is_empty()) { parts.push(g.to_string()); }
                             parts.join(" · ")
+                        }
+                        "image" => {
+                            let mut parts = vec![];
+                            let w = data.get("width").and_then(Value::as_u64);
+                            let h = data.get("height").and_then(Value::as_u64);
+                            if let (Some(w), Some(h)) = (w, h) { parts.push(format!("{w}×{h}")); }
+                            if let Some(a) = data.get("alt").and_then(Value::as_str).filter(|s| !s.is_empty()) { parts.push(a.to_string()); }
+                            if parts.is_empty() { "no image".to_string() } else { parts.join(" · ") }
+                        }
+                        "file" => {
+                            let mut parts = vec![];
+                            if let Some(p) = data.get("path").and_then(Value::as_str) {
+                                let base = std::path::Path::new(p).file_name().and_then(|s| s.to_str()).unwrap_or(p).to_string();
+                                parts.push(base);
+                            }
+                            if let Some(b) = data.get("body").and_then(Value::as_str) {
+                                parts.push(format!("{} chars", b.chars().count()));
+                            }
+                            if parts.is_empty() { "no file".to_string() } else { parts.join(" · ") }
+                        }
+                        "site" => {
+                            let mut parts = vec![];
+                            if let Some(st) = data.get("siteTitle").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+                                parts.push(st.to_string());
+                            } else if let Some(u) = data.get("url").and_then(Value::as_str) {
+                                parts.push(url_host(u));
+                            }
+                            if let Some(n) = data.get("contentLength").and_then(Value::as_u64) { parts.push(format!("{n} chars")); }
+                            if parts.is_empty() { "no URL".to_string() } else { parts.join(" · ") }
+                        }
+                        "media" => {
+                            let mut parts = vec![];
+                            if let Some(u) = data.get("url").and_then(Value::as_str) { parts.push(url_host(u)); }
+                            if let Some(d) = data.get("durationSec").and_then(Value::as_f64) {
+                                let m = (d / 60.0).floor() as i64; let s = (d % 60.0).round() as i64;
+                                parts.push(format!("{m}:{:02}", s));
+                            }
+                            let has_tx = data.get("transcript").and_then(Value::as_str).map(|s| !s.is_empty()).unwrap_or(false);
+                            if has_tx {
+                                let lang = data.get("language").and_then(Value::as_str).filter(|s| !s.is_empty());
+                                parts.push(match lang { Some(l) => format!("captions:{l}"), None => "captions".to_string() });
+                            } else {
+                                parts.push("no captions".to_string());
+                            }
+                            if parts.is_empty() { "no URL".to_string() } else { parts.join(" · ") }
                         }
                         _ => String::new(), // agent/terminal: live status isn't in the DB
                     };
@@ -201,6 +255,56 @@ fn tool_read_node(conn: &Connection, project: &str, title: &str) -> String {
     let body = match kind.as_str() {
         "text" => data.get("body").and_then(Value::as_str).unwrap_or("").trim().to_string(),
         "chat" => transcript(conn, nid),
+        "file" => {
+            let header = data.get("path").and_then(Value::as_str)
+                .map(|p| format!("[file: {p}]\n\n")).unwrap_or_default();
+            format!("{header}{}", data.get("body").and_then(Value::as_str).unwrap_or("").trim())
+        }
+        "site" => {
+            let mut header = String::new();
+            if let Some(u) = data.get("url").and_then(Value::as_str) {
+                header.push_str(&format!("[site: {u}"));
+                if let Some(st) = data.get("siteTitle").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+                    header.push_str(&format!(" — {st}"));
+                }
+                header.push_str("]\n\n");
+            }
+            format!("{header}{}", data.get("body").and_then(Value::as_str).unwrap_or("").trim())
+        }
+        "media" => {
+            let mut meta = vec![];
+            if let Some(u) = data.get("url").and_then(Value::as_str) { meta.push(format!("URL: {u}")); }
+            if let Some(u) = data.get("uploader").and_then(Value::as_str).filter(|s| !s.is_empty()) { meta.push(format!("Uploader: {u}")); }
+            if let Some(d) = data.get("durationSec").and_then(Value::as_f64) { meta.push(format!("Duration: {}s", d.round() as i64)); }
+            if let Some(l) = data.get("language").and_then(Value::as_str).filter(|s| !s.is_empty()) { meta.push(format!("Language: {l}")); }
+            let meta_line = meta.join(" · ");
+            let transcript = data.get("transcript").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
+            let description = data.get("description").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
+            if let Some(t) = transcript {
+                let source = data.get("captionSource").and_then(Value::as_str).unwrap_or("captions");
+                let source_label = if source == "auto" { "auto-captions" } else { "captions" };
+                format!("[transcript from {source_label}]\n{meta_line}\n\n{t}")
+            } else if let Some(d) = description {
+                format!("[video metadata — no captions published]\n{meta_line}\n\nDescription:\n{d}")
+            } else {
+                format!("[video metadata — no captions or description]\n{meta_line}")
+            }
+        }
+        "image" => {
+            let mut parts = vec![];
+            if let Some(a) = data.get("alt").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+                parts.push(format!("Caption: {a}"));
+            } else {
+                parts.push("(no caption)".to_string());
+            }
+            let w = data.get("width").and_then(Value::as_u64);
+            let h = data.get("height").and_then(Value::as_u64);
+            if let (Some(w), Some(h)) = (w, h) { parts.push(format!("Dimensions: {w}×{h}")); }
+            if let Some(m) = data.get("mime").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+                parts.push(format!("Type: {m}"));
+            }
+            format!("{}\n\n[image node — the raw pixels aren't reachable from here; a vision-capable model launched inside Tempest can see it, but a CLI agent can only work from this caption + shape]", parts.join("\n"))
+        }
         _ => format!("[{kind} node — a running session; no readable content]"),
     };
     let body = if body.is_empty() { "(empty)".to_string() } else { body };

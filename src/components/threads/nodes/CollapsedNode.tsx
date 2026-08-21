@@ -1,5 +1,5 @@
 import { useContext } from "react";
-import { Maximize2, MessagesSquare, StickyNote, Bot, SquareTerminal } from "lucide-react";
+import { Maximize2, MessagesSquare, StickyNote, Bot, SquareTerminal, Image as ImageIcon, FileText, Globe, Play } from "lucide-react";
 import { NodeConnector } from "./NodeConnector";
 import { getThreadNode, getNodeData } from "../../../store/threads";
 import { getSession, getBranch } from "../../../store/sessions";
@@ -12,15 +12,71 @@ import { ThreadNodeContext } from "../ThreadNodeContext";
 // live so wiring survives collapse; double-click or the maximize button expands.
 const ICON: Record<string, typeof StickyNote> = {
   chat: MessagesSquare, text: StickyNote, agent: Bot, terminal: SquareTerminal,
+  image: ImageIcon, file: FileText, site: Globe, media: Play,
 };
 
-function gistFor(id: string, kind: string, data: { body?: string; gist?: string; msgCount?: number }): string {
+interface CollapsedData {
+  body?: string;
+  gist?: string;
+  msgCount?: number;
+  // image
+  width?: number; height?: number; alt?: string;
+  // file
+  path?: string; sizeBytes?: number; truncated?: boolean;
+  // site
+  url?: string; siteTitle?: string; contentLength?: number;
+  // media
+  transcript?: string; durationSec?: number; language?: string;
+}
+
+function hostOf(u?: string): string {
+  if (!u) return "";
+  try { return new URL(u).host.replace(/^www\./, ""); } catch { return u; }
+}
+function fmtDur(s?: number): string {
+  if (!s) return "";
+  const m = Math.floor(s / 60), sec = Math.round(s % 60);
+  return `${m}:${String(sec).padStart(2, "0")}`;
+}
+
+function gistFor(id: string, kind: string, data: CollapsedData): string {
   if (kind === "text") return firstLine(data.body ?? "");
   if (kind === "chat") {
     const parts: string[] = [];
     if (data.msgCount) parts.push(`${data.msgCount} msg${data.msgCount === 1 ? "" : "s"}`);
     if (data.gist) parts.push(data.gist);
     return parts.join(" · ");
+  }
+  if (kind === "image") {
+    const parts: string[] = [];
+    if (data.width && data.height) parts.push(`${data.width}×${data.height}`);
+    if (data.alt) parts.push(data.alt);
+    return parts.join(" · ") || "no image";
+  }
+  if (kind === "file") {
+    const parts: string[] = [];
+    if (data.path) parts.push(data.path.split(/[\\/]/).filter(Boolean).pop() ?? "");
+    if (data.sizeBytes) {
+      const s = data.sizeBytes;
+      parts.push(s < 1024 ? `${s} B` : s < 1024 * 1024 ? `${(s / 1024).toFixed(0)} KB` : `${(s / 1024 / 1024).toFixed(1)} MB`);
+    }
+    if (data.truncated) parts.push("truncated");
+    return parts.join(" · ") || "no file";
+  }
+  if (kind === "site") {
+    const parts: string[] = [];
+    if (data.siteTitle) parts.push(data.siteTitle);
+    else if (data.url) parts.push(hostOf(data.url));
+    if (data.contentLength) parts.push(`${data.contentLength.toLocaleString()} chars`);
+    return parts.join(" · ") || "no URL";
+  }
+  if (kind === "media") {
+    const parts: string[] = [];
+    if (data.url) parts.push(hostOf(data.url));
+    if (data.durationSec) parts.push(fmtDur(data.durationSec));
+    if (data.transcript) parts.push(data.language ? `captions:${data.language}` : "captions");
+    else parts.push("no captions");
+    return parts.join(" · ") || "no URL";
   }
   // agent / terminal — branch binding, no PTY scrollback.
   const node = getThreadNode(id);
@@ -33,7 +89,7 @@ export function CollapsedNode({ id }: { id: string }) {
   const ctx = useContext(ThreadNodeContext);
   const node = getThreadNode(id);
   const kind = node?.kind ?? "text";
-  const data = getNodeData<{ title?: string; body?: string; gist?: string; msgCount?: number }>(id);
+  const data = getNodeData<CollapsedData & { title?: string }>(id);
   const title = data.title ?? kind;
   const Icon = ICON[kind] ?? StickyNote;
   const gist = gistFor(id, kind, data);

@@ -37,10 +37,23 @@ export type ChatStreamEvent =
   | { type: "session";      sessionId: string }
   | { type: "error";        message: string };
 
+// A user message may carry an optional list of image parts alongside its text —
+// vision handoff for wired-in Image nodes. Assistant messages stay text-only.
+export type ChatUserPart =
+  | { type: "text"; text: string }
+  | { type: "image"; image: string /* data URL or plain URL */ };
+
+export interface ChatInputMessage {
+  role: "user" | "assistant";
+  content: string;
+  /** user-only — appended after the text part when non-empty. */
+  imageParts?: { image: string }[];
+}
+
 export interface StreamChatOptions {
   providerId: string;
   modelId: string;
-  messages: { role: "user" | "assistant"; content: string }[];
+  messages: ChatInputMessage[];
   system?: string;
   tools?: ToolSet;
   onEvent: (event: ChatStreamEvent) => void;
@@ -59,10 +72,14 @@ export function streamChat(options: StreamChatOptions): { cancel: () => void } {
         throw new Error(`No API key for ${providerId}. Add it in Settings → API Keys.`);
 
       const model = buildModel(providerId, modelId, apiKey);
-      const historyMsgs: ModelMessage[] = messages.map(m => ({
-        role: m.role as "user" | "assistant",
-        content: m.content,
-      }));
+      const historyMsgs: ModelMessage[] = messages.map((m) => {
+        if (m.role === "user" && m.imageParts && m.imageParts.length > 0) {
+          const parts: ChatUserPart[] = [{ type: "text", text: m.content }];
+          for (const ip of m.imageParts) parts.push({ type: "image", image: ip.image });
+          return { role: "user", content: parts } as unknown as ModelMessage;
+        }
+        return { role: m.role as "user" | "assistant", content: m.content };
+      });
 
       const result = streamText({
         model,

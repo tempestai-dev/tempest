@@ -10,6 +10,7 @@ mod agent_hooks;
 mod automations;
 mod canvas_mcp;
 mod claude_bridge;
+mod node_ingest;
 mod notes;
 mod quota;
 mod secrets;
@@ -4244,6 +4245,9 @@ pub fn run() {
             claude_bridge::claude_stream_cancel,
             warp_bridge::warp_chat,
             quota::quota_read_all,
+            node_ingest::extract_file_text,
+            node_ingest::scrape_url,
+            node_ingest::fetch_media_info,
             open_devtools,
         ])
         .build(tauri::generate_context!())

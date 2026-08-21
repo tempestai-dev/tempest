@@ -72,7 +72,7 @@ export function getNodeData<T extends object = Record<string, unknown>>(id: stri
   try { return JSON.parse(raw) as T; } catch { return {} as T; }
 }
 
-export function patchNodeData(id: string, patch: Record<string, unknown>): void {
+export function patchNodeData(id: string, patch: object): void {
   const n = _nodes.get(id);
   if (!n) return;
   saveThreadNode({ ...n, data: JSON.stringify({ ...getNodeData(id), ...patch }) });
@@ -81,7 +81,7 @@ export function patchNodeData(id: string, patch: Record<string, unknown>): void 
 // Mirror-only patch — updates the in-memory node data without flushing to SQLite.
 // For high-frequency live edits (e.g. a text node's body while typing) so a
 // connected chat node reads the current text; the owner still persists on blur.
-export function patchNodeDataLocal(id: string, patch: Record<string, unknown>): void {
+export function patchNodeDataLocal(id: string, patch: object): void {
   const n = _nodes.get(id);
   if (!n) return;
   _nodes.set(id, { ...n, data: JSON.stringify({ ...getNodeData(id), ...patch }) });
