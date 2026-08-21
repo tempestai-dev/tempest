@@ -62,7 +62,7 @@
     "github-markdown-css": "^5.9.0",
     "gsap": "^3.15.0",
     "lucide-react": "^1.21.0",
-    "motion": "^12.42.2",
+    "motion": "^13.1.0",
     "posthog-js": "^1.409.5",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
