@@ -5315,7 +5315,7 @@ dependencies = [
  "base64 0.22.1",
  "dashmap",
  "dbiso",
- "getrandom 0.2.17",
+ "getrandom 0.4.3",
  "hephaestus",
  "junction",
  "keyring",

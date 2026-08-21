@@ -48,7 +48,7 @@ minisign-verify = "0.2"
 # correct HTTP impl beats hand-rolling request parsing over raw TCP.
 tiny_http = "0.12"
 # OS entropy for the per-run hook-server auth token.
-getrandom = "0.2"
+getrandom = "0.4"
 # UUID generation for automation IDs
 uuid = { version = "1", features = ["v4"] }
 # Blocking HTTP for the automations "Try it" tool preview — small, sync, no
