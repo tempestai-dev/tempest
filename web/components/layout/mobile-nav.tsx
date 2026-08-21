@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 
 const NAV_LINKS = [
-  { label: "Docs", href: "/docs" },
+  { label: "Docs", href: "https://docs.tempestai.dev" },
   { label: "Blog", href: "/blog" },
   { label: "Release Notes", href: "/release-notes" },
 ];
