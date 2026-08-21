@@ -61,7 +61,7 @@ base64 = "0.22"
 warpllm = "0.2"
 # OS credential manager for BYOK API keys (Windows Credential Manager, macOS
 # Keychain, Linux Secret Service). Replaces plaintext localStorage.
-keyring = "2"
+keyring = "4"
 # warpllm ships no runtime — chat_completions is async, so we need a full
 # tokio to drive it from the Tauri command.
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
