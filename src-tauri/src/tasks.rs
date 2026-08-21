@@ -39,7 +39,7 @@ pub struct GhItem {
     pub kind: String, // "issue" | "pr"
     pub number: i64,
     pub repo: String,        // owner/repo
-    pub state: String,       // "open" | "closed"
+    pub state: String,       // "open" | "closed" | "merged" (PRs only)
     pub draft: bool,
     pub title: String,
     pub author: String,
@@ -373,7 +373,12 @@ fn gh_item_from(v: Value, kind_str: &str) -> Option<GhItem> {
     let number = v.get("number")?.as_i64()?;
     let title = v.get("title")?.as_str()?.to_string();
     let state_raw = v.get("state").and_then(|s| s.as_str()).unwrap_or("open").to_lowercase();
-    let state = if state_raw == "closed" || state_raw == "merged" { "closed" } else { "open" }.to_string();
+    let state = match state_raw.as_str() {
+        "closed" => "closed",
+        "merged" => "merged",
+        _ => "open",
+    }
+    .to_string();
     let draft = v.get("isDraft").and_then(|b| b.as_bool()).unwrap_or(false);
     let url = v.get("url").and_then(|s| s.as_str()).unwrap_or("").to_string();
     let repo = v
@@ -937,6 +942,30 @@ fn linear_event_from(v: &Value) -> Option<TaskActivity> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gh_item_from_distinguishes_merged_from_closed() {
+        let merged = gh_item_from(
+            serde_json::json!({ "number": 1, "title": "t", "state": "MERGED" }),
+            "prs",
+        )
+        .unwrap();
+        assert_eq!(merged.state, "merged");
+
+        let closed = gh_item_from(
+            serde_json::json!({ "number": 2, "title": "t", "state": "CLOSED" }),
+            "prs",
+        )
+        .unwrap();
+        assert_eq!(closed.state, "closed");
+
+        let open = gh_item_from(
+            serde_json::json!({ "number": 3, "title": "t", "state": "OPEN" }),
+            "prs",
+        )
+        .unwrap();
+        assert_eq!(open.state, "open");
+    }
 
     #[test]
     fn preset_shapes() {
