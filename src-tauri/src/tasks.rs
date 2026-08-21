@@ -300,10 +300,21 @@ pub fn tasks_github_list(
     }
 
     let mut items: Vec<GhItem> = Vec::new();
-    if kind == "both" || kind == "issues" {
+    if kind == "both" {
+        // Independent `gh` calls — run issues on a background thread while
+        // prs runs here, instead of paying for both round-trips serially.
+        let preset_c = preset.clone();
+        let repo_c = repo.clone();
+        let issues_handle = std::thread::spawn(move || gh_search("issues", &preset_c, &repo_c));
+        let prs = gh_search("prs", &preset, &repo)?;
+        let issues = issues_handle
+            .join()
+            .map_err(|_| "gh: issues search thread panicked".to_string())??;
+        items.extend(issues);
+        items.extend(prs);
+    } else if kind == "issues" {
         items.extend(gh_search("issues", &preset, &repo)?);
-    }
-    if kind == "both" || kind == "prs" {
+    } else if kind == "prs" {
         items.extend(gh_search("prs", &preset, &repo)?);
     }
     // Newest first.
@@ -452,6 +463,12 @@ pub fn tasks_github_thread(repo: String, number: i64) -> Result<TaskThread, Stri
         return serde_json::from_value(v).map_err(|e| e.to_string());
     }
 
+    // Comments and timeline are independent `gh api` calls — run timeline on
+    // a background thread while comments runs here, instead of paying for
+    // both round-trips serially.
+    let timeline_path = format!("/repos/{repo}/issues/{number}/timeline?per_page=100");
+    let timeline_handle = std::thread::spawn(move || run_gh(&["api", &timeline_path]));
+
     let comments_path = format!("/repos/{repo}/issues/{number}/comments?per_page=100");
     let raw = run_gh(&["api", &comments_path])?;
     let comments: Vec<TaskComment> = serde_json::from_str::<Vec<Value>>(&raw)
@@ -465,8 +482,9 @@ pub fn tasks_github_thread(repo: String, number: i64) -> Result<TaskThread, Stri
         })
         .collect();
 
-    let timeline_path = format!("/repos/{repo}/issues/{number}/timeline?per_page=100");
-    let raw = run_gh(&["api", &timeline_path])?;
+    let raw = timeline_handle
+        .join()
+        .map_err(|_| "gh: timeline thread panicked".to_string())??;
     let activity: Vec<TaskActivity> = serde_json::from_str::<Vec<Value>>(&raw)
         .unwrap_or_default()
         .into_iter()
