@@ -27,6 +27,9 @@
   <a href="https://github.com/tempestai-dev/tempest/actions/workflows/ci.yml">
     <img src="https://img.shields.io/github/actions/workflow/status/tempestai-dev/tempest/ci.yml?branch=main&label=build" alt="CI" />
   </a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/tempestai-dev/tempest">
+    <img src="https://img.shields.io/ossf-scorecard/github.com/tempestai-dev/tempest?label=openssf%20scorecard" alt="OpenSSF Scorecard" />
+  </a>
   <a href="https://discord.gg/bRQhAKKVa8">
     <img src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white" alt="Discord" />
   </a>
