@@ -1954,14 +1954,18 @@ fn db_delete_thread_edge(state: tauri::State<'_, DbState>, id: String) -> Result
 /// Build a `Command` that never opens a console window on Windows.
 /// On every other platform this is identical to `std::process::Command::new`.
 fn new_command(program: &str) -> std::process::Command {
-    let mut cmd = std::process::Command::new(program);
     #[cfg(windows)]
     {
+        let mut cmd = std::process::Command::new(program);
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         cmd.creation_flags(CREATE_NO_WINDOW);
+        cmd
     }
-    cmd
+    #[cfg(not(windows))]
+    {
+        std::process::Command::new(program)
+    }
 }
 
 fn run_git(dir: &std::path::Path, args: &[&str]) -> Result<std::process::Output, String> {

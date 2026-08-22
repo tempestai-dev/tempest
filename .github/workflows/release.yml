@@ -153,6 +153,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           VITE_POSTHOG_KEY: phc_meJDnwWJ6c5uFsecABnA8ydF4HBL7sykn4GUTWvMV6qL
+          # linuxdeploy is an AppImage. GitHub-hosted ARM runners cannot mount
+          # FUSE filesystems, so force AppImages to extract themselves and run
+          # from a temp directory. This is required on ubuntu-24.04-arm even
+          # when libfuse2/libfuse2t64 is installed.
+          APPIMAGE_EXTRACT_AND_RUN: 1
           # macOS code signing + notarization (Tauri reads these directly)
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
