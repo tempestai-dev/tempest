@@ -101,6 +101,17 @@ jobs:
           # 22.04 = libfuse2, 24.04 = libfuse2t64.
           sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2
 
+          echo "=== [DEBUG] system info ==="
+          uname -a
+          . /etc/os-release && echo "$PRETTY_NAME"
+          echo "=== [DEBUG] fuse status ==="
+          ls -l /dev/fuse || echo "[DEBUG] /dev/fuse MISSING"
+          fusermount --version 2>&1 || true
+          fusermount3 --version 2>&1 || true
+          dpkg -l | grep -i fuse || echo "[DEBUG] no fuse packages found"
+          echo "=== [DEBUG] key libs ==="
+          dpkg -l | grep -Ei 'webkit2gtk|appindicator|rsvg|patchelf|xdo' | awk '{print $2, $3}'
+
       - name: Enable long paths (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
@@ -147,8 +158,43 @@ jobs:
               fi
             done
 
+      # Tauri swallows linuxdeploy's output on failure ("failed to run
+      # linuxdeploy" with no detail). Probe the exact binary Tauri will use,
+      # directly, so its real stdout/stderr lands in this job's log.
+      - name: Debug probe linuxdeploy AppImage
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          ARCH=$(uname -m)
+          case "$ARCH" in
+            x86_64) LD_ARCH=x86_64 ;;
+            aarch64) LD_ARCH=aarch64 ;;
+            *) LD_ARCH="$ARCH" ;;
+          esac
+          echo "=== [DEBUG] downloading linuxdeploy-${LD_ARCH}.AppImage (same URL tauri uses) ==="
+          curl -fsSL -o /tmp/linuxdeploy.AppImage \
+            "https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy/linuxdeploy-${LD_ARCH}.AppImage"
+          chmod +x /tmp/linuxdeploy.AppImage
+          echo "=== [DEBUG] probe 1: plain run (FUSE path) ==="
+          unset APPIMAGE_EXTRACT_AND_RUN || true
+          /tmp/linuxdeploy.AppImage --version || echo "[DEBUG] probe 1 FAILED exit=$?"
+          echo "=== [DEBUG] probe 2: APPIMAGE_EXTRACT_AND_RUN=1 ==="
+          APPIMAGE_EXTRACT_AND_RUN=1 /tmp/linuxdeploy.AppImage --version || echo "[DEBUG] probe 2 FAILED exit=$?"
+          echo "=== [DEBUG] probes done ==="
+
       - name: Build
-        run: npx tauri build --bundles ${{ matrix.bundles }} ${{ matrix.args }}
+        shell: bash
+        run: |
+          set -o pipefail
+          case "${{ matrix.os }}" in
+            ubuntu*)
+              echo "=== [DEBUG] starting tauri build on ${{ matrix.os }} ($(uname -m)) ==="
+              echo "=== [DEBUG] APPIMAGE_EXTRACT_AND_RUN=$APPIMAGE_EXTRACT_AND_RUN ==="
+              npx tauri build --verbose --bundles ${{ matrix.bundles }} ${{ matrix.args }} 2>&1 | tee build-output.log
+              ;;
+            *)
+              npx tauri build --bundles ${{ matrix.bundles }} ${{ matrix.args }}
+              ;;
+          esac
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -166,6 +212,16 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+
+      # Runs only when the build fails: dumps the tail of the captured log
+      # plus whatever partial state exists in the bundle directories.
+      - name: Dump build diagnostics (Linux)
+        if: failure() && startsWith(matrix.os, 'ubuntu')
+        run: |
+          echo "=== [DEBUG] tail of build-output.log ==="
+          tail -n 120 build-output.log || true
+          echo "=== [DEBUG] bundle dir ==="
+          find src-tauri/target/release/bundle -maxdepth 3 -print || true
 
       # Strip bundled libwayland-* libs from the AppImage so it loads host copies
       # at runtime. Ubuntu 22.04 ships libwayland 1.20; recent Mesa (Fedora 43,
