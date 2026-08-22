@@ -1,6 +1,9 @@
 export type Label = { n: string; c: string };
 
 export type GhRepo = { id: string; full: string; favorite: boolean };
+export type GhRepoPage = { items: GhRepo[]; has_more: boolean };
+export type GhListPage = { items: GhItem[]; has_more: boolean };
+export type LinearListPage = { items: LinearItem[]; has_more: boolean; end_cursor: string | null };
 
 export type LinearTeam = { id: string; name: string; color: string };
 export type LinearProject = { id: string; name: string; team: string };

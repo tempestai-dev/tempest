@@ -17,6 +17,9 @@ export function TaskList({
   selected,
   expandedKey,
   linearGroupByStatus,
+  hasMore,
+  loadingMore,
+  onLoadMore,
   onToggleSelect,
   onToggleExpanded,
   onCollapse,
@@ -36,6 +39,9 @@ export function TaskList({
   selected: Set<string>;
   expandedKey: string | null;
   linearGroupByStatus: boolean;
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore: () => void;
   onToggleSelect: (key: string) => void;
   onToggleExpanded: (key: string) => void;
   onCollapse: () => void;
@@ -111,6 +117,13 @@ export function TaskList({
                 {items.map(renderRow)}
               </>
             )}
+        {!error && total > 0 && hasMore && (
+          <div className="load-more">
+            <button onClick={onLoadMore} disabled={loadingMore}>
+              {loadingMore ? "Loading…" : "Load more"}
+            </button>
+          </div>
+        )}
       </div>
     </section>
   );

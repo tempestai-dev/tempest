@@ -34,6 +34,22 @@ pub struct GhRepo {
     pub favorite: bool,
 }
 
+/// A capped `gh` fetch: `has_more` is set when the result hit `limit`, meaning
+/// there may be additional rows the caller can fetch with a larger limit.
+/// `gh search` / `gh repo list` expose only `--limit`, not a cursor, so
+/// "load more" means re-running the same query with a bigger limit.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct GhRepoPage {
+    pub items: Vec<GhRepo>,
+    pub has_more: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct GhListPage {
+    pub items: Vec<GhItem>,
+    pub has_more: bool,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GhItem {
     pub kind: String, // "issue" | "pr"
@@ -94,6 +110,15 @@ pub struct LinearBootstrap {
     pub teams: Vec<LinearTeam>,
     pub projects: Vec<LinearProject>,
     pub views: Vec<LinearView>,
+}
+
+/// A real cursor-paged Linear issue fetch. `end_cursor` feeds back in as
+/// `after` for the next page; `has_more` mirrors GraphQL's `pageInfo.hasNextPage`.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct LinearListPage {
+    pub items: Vec<LinearItem>,
+    pub has_more: bool,
+    pub end_cursor: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -261,13 +286,18 @@ fn parse_gh_user(text: &str) -> Option<String> {
 }
 
 /// `gh repo list --json nameWithOwner,isFork` → GhRepo[]. Cached 60s.
+/// `limit` is caller-controlled so the repo picker can "load more" instead of
+/// silently truncating at a fixed cap — `gh repo list` has no cursor, only
+/// `--limit`, so a bigger page means re-running the whole listing.
 #[tauri::command(async)]
-pub fn tasks_github_repos() -> Result<Vec<GhRepo>, String> {
-    let key = "gh:repos".to_string();
+pub fn tasks_github_repos(limit: i64) -> Result<GhRepoPage, String> {
+    let limit = limit.clamp(1, 1000);
+    let key = format!("gh:repos:{limit}");
     if let Some(v) = cache_get(&key) {
         return serde_json::from_value(v).map_err(|e| e.to_string());
     }
-    let raw = run_gh(&["repo", "list", "--json", "nameWithOwner,isFork", "--limit", "100"])?;
+    let limit_s = limit.to_string();
+    let raw = run_gh(&["repo", "list", "--json", "nameWithOwner,isFork", "--limit", &limit_s])?;
     let parsed: Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
     let repos: Vec<GhRepo> = parsed
         .as_array()
@@ -281,46 +311,59 @@ pub fn tasks_github_repos() -> Result<Vec<GhRepo>, String> {
                 .collect()
         })
         .unwrap_or_default();
-    cache_put(key, serde_json::to_value(&repos).unwrap_or(Value::Null));
-    Ok(repos)
+    let has_more = repos.len() as i64 == limit;
+    let page = GhRepoPage { items: repos, has_more };
+    cache_put(key, serde_json::to_value(&page).unwrap_or(Value::Null));
+    Ok(page)
 }
 
 /// preset ∈ {all, assigned, created, mentioned, review, open, closed}
 /// kind   ∈ {both, issues, prs}
 /// repo   = "all" or owner/repo slug (from tasks_github_repos)
+/// limit  = per-search cap; caller bumps this to "load more" since `gh search`
+///          has no cursor, only `--limit`.
 #[tauri::command(async)]
 pub fn tasks_github_list(
     preset: String,
     repo: String,
     kind: String,
-) -> Result<Vec<GhItem>, String> {
-    let key = format!("gh:list:{preset}:{repo}:{kind}");
+    limit: i64,
+) -> Result<GhListPage, String> {
+    let limit = limit.clamp(1, 1000);
+    let key = format!("gh:list:{preset}:{repo}:{kind}:{limit}");
     if let Some(v) = cache_get(&key) {
         return serde_json::from_value(v).map_err(|e| e.to_string());
     }
 
     let mut items: Vec<GhItem> = Vec::new();
+    let mut has_more = false;
     if kind == "both" {
         // Independent `gh` calls — run issues on a background thread while
         // prs runs here, instead of paying for both round-trips serially.
         let preset_c = preset.clone();
         let repo_c = repo.clone();
-        let issues_handle = std::thread::spawn(move || gh_search("issues", &preset_c, &repo_c));
-        let prs = gh_search("prs", &preset, &repo)?;
+        let issues_handle = std::thread::spawn(move || gh_search("issues", &preset_c, &repo_c, limit));
+        let prs = gh_search("prs", &preset, &repo, limit)?;
         let issues = issues_handle
             .join()
             .map_err(|_| "gh: issues search thread panicked".to_string())??;
+        has_more = issues.len() as i64 == limit || prs.len() as i64 == limit;
         items.extend(issues);
         items.extend(prs);
     } else if kind == "issues" {
-        items.extend(gh_search("issues", &preset, &repo)?);
+        let issues = gh_search("issues", &preset, &repo, limit)?;
+        has_more = issues.len() as i64 == limit;
+        items.extend(issues);
     } else if kind == "prs" {
-        items.extend(gh_search("prs", &preset, &repo)?);
+        let prs = gh_search("prs", &preset, &repo, limit)?;
+        has_more = prs.len() as i64 == limit;
+        items.extend(prs);
     }
     // Newest first.
     items.sort_by(|a, b| b.updated.cmp(&a.updated));
-    cache_put(key, serde_json::to_value(&items).unwrap_or(Value::Null));
-    Ok(items)
+    let page = GhListPage { items, has_more };
+    cache_put(key, serde_json::to_value(&page).unwrap_or(Value::Null));
+    Ok(page)
 }
 
 /// Turn a preset into `gh search` FLAGS (not query qualifiers). GitHub's
@@ -355,7 +398,7 @@ fn preset_flags(preset: &str, kind: &str) -> Vec<String> {
     f
 }
 
-fn gh_search(kind: &str, preset: &str, repo: &str) -> Result<Vec<GhItem>, String> {
+fn gh_search(kind: &str, preset: &str, repo: &str, limit: i64) -> Result<Vec<GhItem>, String> {
     let mut args: Vec<String> = vec!["search".into(), kind.into()];
     args.extend(preset_flags(preset, kind));
     if repo != "all" && repo.contains('/') {
@@ -369,7 +412,7 @@ fn gh_search(kind: &str, preset: &str, repo: &str) -> Result<Vec<GhItem>, String
     args.push("--json".into());
     args.push(fields.into());
     args.push("--limit".into());
-    args.push("50".into());
+    args.push(limit.to_string());
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let out = run_gh(&arg_refs)?;
     let parsed: Value = serde_json::from_str(&out).map_err(|e| e.to_string())?;
@@ -454,8 +497,20 @@ fn gh_item_from(v: Value, kind_str: &str) -> Option<GhItem> {
     })
 }
 
+/// Runs a `gh api` GET against a REST array endpoint, following every page
+/// via `--paginate` instead of stopping at the first 100 rows. `--slurp`
+/// wraps each page's array in an outer array, so the result is a `Vec` of
+/// per-page `Vec<Value>`s that we flatten into one list.
+fn run_gh_paginated_array(path: &str) -> Result<Vec<Value>, String> {
+    let raw = run_gh(&["api", path, "--paginate", "--slurp"])?;
+    let pages: Vec<Vec<Value>> = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+    Ok(pages.into_iter().flatten().collect())
+}
+
 /// Comments + timeline for one issue/PR. Timeline events with `event == "commented"`
 /// duplicate comments so we drop them; everything else is folded into Activity.
+/// Both endpoints are fetched to completion (no 100-row cap) since a drawer is
+/// expected to show the full discussion, not a truncated slice of it.
 #[tauri::command(async)]
 pub fn tasks_github_thread(repo: String, number: i64) -> Result<TaskThread, String> {
     let key = format!("gh:thread:{repo}:{number}");
@@ -467,12 +522,11 @@ pub fn tasks_github_thread(repo: String, number: i64) -> Result<TaskThread, Stri
     // a background thread while comments runs here, instead of paying for
     // both round-trips serially.
     let timeline_path = format!("/repos/{repo}/issues/{number}/timeline?per_page=100");
-    let timeline_handle = std::thread::spawn(move || run_gh(&["api", &timeline_path]));
+    let timeline_handle = std::thread::spawn(move || run_gh_paginated_array(&timeline_path));
 
     let comments_path = format!("/repos/{repo}/issues/{number}/comments?per_page=100");
-    let raw = run_gh(&["api", &comments_path])?;
-    let comments: Vec<TaskComment> = serde_json::from_str::<Vec<Value>>(&raw)
-        .unwrap_or_default()
+    let comments_raw = run_gh_paginated_array(&comments_path)?;
+    let comments: Vec<TaskComment> = comments_raw
         .into_iter()
         .map(|v| TaskComment {
             id: v.get("id").and_then(|n| n.as_i64()).map(|n| n.to_string()).unwrap_or_default(),
@@ -482,11 +536,10 @@ pub fn tasks_github_thread(repo: String, number: i64) -> Result<TaskThread, Stri
         })
         .collect();
 
-    let raw = timeline_handle
+    let timeline_raw = timeline_handle
         .join()
         .map_err(|_| "gh: timeline thread panicked".to_string())??;
-    let activity: Vec<TaskActivity> = serde_json::from_str::<Vec<Value>>(&raw)
-        .unwrap_or_default()
+    let activity: Vec<TaskActivity> = timeline_raw
         .into_iter()
         .filter_map(gh_event_from)
         .collect();
@@ -582,11 +635,61 @@ fn linear_post(query: &str, variables: Value) -> Result<Value, String> {
 const BOOTSTRAP_QUERY: &str = r#"
 query Bootstrap {
   viewer { id name }
-  teams(first: 50) { nodes { id name key color } }
-  projects(first: 100) { nodes { id name teams { nodes { key } } } }
-  customViews(first: 50) { nodes { id name } }
+  teams(first: 100) { nodes { id name key color } pageInfo { hasNextPage endCursor } }
+  projects(first: 100) { nodes { id name teams { nodes { key } } } pageInfo { hasNextPage endCursor } }
+  customViews(first: 100) { nodes { id name } pageInfo { hasNextPage endCursor } }
 }
 "#;
+
+const TEAMS_MORE_QUERY: &str = r#"
+query TeamsMore($after: String) {
+  teams(first: 100, after: $after) { nodes { id name key color } pageInfo { hasNextPage endCursor } }
+}
+"#;
+const PROJECTS_MORE_QUERY: &str = r#"
+query ProjectsMore($after: String) {
+  projects(first: 100, after: $after) { nodes { id name teams { nodes { key } } } pageInfo { hasNextPage endCursor } }
+}
+"#;
+const VIEWS_MORE_QUERY: &str = r#"
+query ViewsMore($after: String) {
+  customViews(first: 100, after: $after) { nodes { id name } pageInfo { hasNextPage endCursor } }
+}
+"#;
+
+/// Follows `pageInfo.hasNextPage`/`endCursor` on a single top-level connection
+/// starting from an already-fetched first page's cursor, accumulating every
+/// remaining node. Used for the rare account that has >100 teams/projects/views
+/// so the picker never silently drops entries past the first page.
+fn linear_collect_more<T>(
+    query: &str,
+    field: &str,
+    mut after: Option<String>,
+    parse_node: &dyn Fn(&Value) -> Option<T>,
+) -> Result<Vec<T>, String> {
+    let mut out = Vec::new();
+    while let Some(cursor) = after {
+        let variables = serde_json::json!({ "after": cursor });
+        let data = linear_post(query, variables)?;
+        let conn = data.get(field).cloned().unwrap_or(Value::Null);
+        if let Some(arr) = conn.get("nodes").and_then(|a| a.as_array()) {
+            out.extend(arr.iter().filter_map(|v| parse_node(v)));
+        }
+        let has_more = conn.get("pageInfo").and_then(|p| p.get("hasNextPage")).and_then(|b| b.as_bool()).unwrap_or(false);
+        after = if has_more {
+            conn.get("pageInfo").and_then(|p| p.get("endCursor")).and_then(|s| s.as_str()).map(String::from)
+        } else {
+            None
+        };
+    }
+    Ok(out)
+}
+
+fn linear_page_info(conn: &Value) -> (bool, Option<String>) {
+    let has_more = conn.get("pageInfo").and_then(|p| p.get("hasNextPage")).and_then(|b| b.as_bool()).unwrap_or(false);
+    let cursor = conn.get("pageInfo").and_then(|p| p.get("endCursor")).and_then(|s| s.as_str()).map(String::from);
+    (has_more, cursor)
+}
 
 #[tauri::command(async)]
 pub fn tasks_linear_bootstrap() -> Result<LinearBootstrap, String> {
@@ -601,77 +704,87 @@ pub fn tasks_linear_bootstrap() -> Result<LinearBootstrap, String> {
         .and_then(|s| s.as_str())
         .unwrap_or("")
         .to_string();
-    let teams: Vec<LinearTeam> = data
-        .get("teams")
-        .and_then(|t| t.get("nodes"))
-        .and_then(|a| a.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|t| {
-                    Some(LinearTeam {
-                        id: t.get("key")?.as_str()?.to_string(),
-                        name: t.get("name")?.as_str()?.to_string(),
-                        color: t.get("color").and_then(|s| s.as_str()).unwrap_or("#62a6ff").to_string(),
-                    })
-                })
-                .collect()
+
+    let parse_team = |t: &Value| -> Option<LinearTeam> {
+        Some(LinearTeam {
+            id: t.get("key")?.as_str()?.to_string(),
+            name: t.get("name")?.as_str()?.to_string(),
+            color: t.get("color").and_then(|s| s.as_str()).unwrap_or("#62a6ff").to_string(),
         })
-        .unwrap_or_default();
-    let projects: Vec<LinearProject> = data
-        .get("projects")
-        .and_then(|p| p.get("nodes"))
-        .and_then(|a| a.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|p| {
-                    let id = p.get("id")?.as_str()?.to_string();
-                    let name = p.get("name")?.as_str()?.to_string();
-                    let team = p
-                        .get("teams")
-                        .and_then(|t| t.get("nodes"))
-                        .and_then(|a| a.as_array())
-                        .and_then(|arr| arr.first())
-                        .and_then(|t0| t0.get("key"))
-                        .and_then(|s| s.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    Some(LinearProject { id, name, team })
-                })
-                .collect()
+    };
+    let parse_project = |p: &Value| -> Option<LinearProject> {
+        let id = p.get("id")?.as_str()?.to_string();
+        let name = p.get("name")?.as_str()?.to_string();
+        let team = p
+            .get("teams")
+            .and_then(|t| t.get("nodes"))
+            .and_then(|a| a.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|t0| t0.get("key"))
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_string();
+        Some(LinearProject { id, name, team })
+    };
+    let parse_view = |v: &Value| -> Option<LinearView> {
+        Some(LinearView {
+            id: v.get("id")?.as_str()?.to_string(),
+            name: v.get("name")?.as_str()?.to_string(),
+            builtin: false,
         })
+    };
+
+    // First page of each connection came back in one round trip via
+    // BOOTSTRAP_QUERY. Only fall back to extra requests — one per remaining
+    // page — when an account actually has more than 100 teams/projects/views;
+    // that keeps the common case at a single call like before.
+    let teams_conn = data.get("teams").cloned().unwrap_or(Value::Null);
+    let mut teams: Vec<LinearTeam> = teams_conn
+        .get("nodes")
+        .and_then(|a| a.as_array())
+        .map(|arr| arr.iter().filter_map(parse_team).collect())
         .unwrap_or_default();
-    let builtin = vec![
+    let (teams_more, teams_cursor) = linear_page_info(&teams_conn);
+    if teams_more {
+        teams.extend(linear_collect_more(TEAMS_MORE_QUERY, "teams", teams_cursor, &parse_team)?);
+    }
+
+    let projects_conn = data.get("projects").cloned().unwrap_or(Value::Null);
+    let mut projects: Vec<LinearProject> = projects_conn
+        .get("nodes")
+        .and_then(|a| a.as_array())
+        .map(|arr| arr.iter().filter_map(parse_project).collect())
+        .unwrap_or_default();
+    let (projects_more, projects_cursor) = linear_page_info(&projects_conn);
+    if projects_more {
+        projects.extend(linear_collect_more(PROJECTS_MORE_QUERY, "projects", projects_cursor, &parse_project)?);
+    }
+
+    let mut views = vec![
         LinearView { id: "v-my".into(), name: "My issues".into(), builtin: true },
         LinearView { id: "v-active".into(), name: "Active".into(), builtin: true },
         LinearView { id: "v-back".into(), name: "Backlog".into(), builtin: true },
     ];
-    let mut views = builtin;
-    if let Some(arr) = data
-        .get("customViews")
-        .and_then(|c| c.get("nodes"))
+    let views_conn = data.get("customViews").cloned().unwrap_or(Value::Null);
+    let mut custom_views: Vec<LinearView> = views_conn
+        .get("nodes")
         .and_then(|a| a.as_array())
-    {
-        for v in arr {
-            if let (Some(id), Some(name)) = (
-                v.get("id").and_then(|s| s.as_str()),
-                v.get("name").and_then(|s| s.as_str()),
-            ) {
-                views.push(LinearView {
-                    id: id.to_string(),
-                    name: name.to_string(),
-                    builtin: false,
-                });
-            }
-        }
+        .map(|arr| arr.iter().filter_map(parse_view).collect())
+        .unwrap_or_default();
+    let (views_more, views_cursor) = linear_page_info(&views_conn);
+    if views_more {
+        custom_views.extend(linear_collect_more(VIEWS_MORE_QUERY, "customViews", views_cursor, &parse_view)?);
     }
+    views.extend(custom_views);
+
     let bootstrap = LinearBootstrap { viewer_name, teams, projects, views };
     cache_put(key, serde_json::to_value(&bootstrap).unwrap_or(Value::Null));
     Ok(bootstrap)
 }
 
 const ISSUES_QUERY: &str = r#"
-query Issues($filter: IssueFilter, $first: Int) {
-  issues(filter: $filter, first: $first, orderBy: updatedAt) {
+query Issues($filter: IssueFilter, $first: Int, $after: String) {
+  issues(filter: $filter, first: $first, after: $after, orderBy: updatedAt) {
     nodes {
       identifier
       title
@@ -686,16 +799,22 @@ query Issues($filter: IssueFilter, $first: Int) {
       cycle { name }
       labels { nodes { name color } }
     }
+    pageInfo { hasNextPage endCursor }
   }
 }
 "#;
 
+/// `after` is the previous page's `end_cursor` (None for the first page).
+/// `first` is the page size the caller wants (frontend defaults to 50).
 #[tauri::command(async)]
 pub fn tasks_linear_list(
     scope_kind: String,
     scope_id: String,
-) -> Result<Vec<LinearItem>, String> {
-    let key = format!("linear:list:{scope_kind}:{scope_id}");
+    after: Option<String>,
+    first: i64,
+) -> Result<LinearListPage, String> {
+    let first = first.clamp(1, 250);
+    let key = format!("linear:list:{scope_kind}:{scope_id}:{}:{first}", after.as_deref().unwrap_or(""));
     if let Some(v) = cache_get(&key) {
         return serde_json::from_value(v).map_err(|e| e.to_string());
     }
@@ -728,18 +847,21 @@ pub fn tasks_linear_list(
 
     let variables = serde_json::json!({
         "filter": Value::Object(filter),
-        "first": 50,
+        "first": first,
+        "after": after,
     });
 
     let data = linear_post(ISSUES_QUERY, variables)?;
-    let items: Vec<LinearItem> = data
-        .get("issues")
-        .and_then(|i| i.get("nodes"))
+    let issues_conn = data.get("issues").cloned().unwrap_or(Value::Null);
+    let items: Vec<LinearItem> = issues_conn
+        .get("nodes")
         .and_then(|a| a.as_array())
         .map(|arr| arr.iter().filter_map(linear_item_from).collect())
         .unwrap_or_default();
-    cache_put(key, serde_json::to_value(&items).unwrap_or(Value::Null));
-    Ok(items)
+    let (has_more, end_cursor) = linear_page_info(&issues_conn);
+    let page = LinearListPage { items, has_more, end_cursor };
+    cache_put(key, serde_json::to_value(&page).unwrap_or(Value::Null));
+    Ok(page)
 }
 
 fn linear_item_from(v: &Value) -> Option<LinearItem> {
@@ -983,6 +1105,15 @@ mod tests {
         )
         .unwrap();
         assert_eq!(open.state, "open");
+    }
+
+    #[test]
+    fn linear_page_info_reads_cursor_and_has_next() {
+        let conn = serde_json::json!({ "pageInfo": { "hasNextPage": true, "endCursor": "abc" } });
+        assert_eq!(linear_page_info(&conn), (true, Some("abc".to_string())));
+
+        let conn = serde_json::json!({ "pageInfo": { "hasNextPage": false, "endCursor": Value::Null } });
+        assert_eq!(linear_page_info(&conn), (false, None));
     }
 
     #[test]
