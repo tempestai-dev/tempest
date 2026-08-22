@@ -197,7 +197,17 @@ fn gh_cmd() -> Command {
     // Windows/macOS/Linux all resolve `gh` from PATH. If the user installed via
     // brew/scoop/apt, it's on PATH by the time Tempest launches from a shell —
     // or from Finder/Start via login shell PATH inheritance.
-    Command::new("gh")
+    let mut cmd = Command::new("gh");
+    #[cfg(windows)]
+    {
+        // Without this, a GUI-subsystem process spawning `gh` (or a .cmd/.ps1
+        // shim for it, as scoop/winget install) flashes a console/PowerShell
+        // window on every call.
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
 }
 
 fn run_gh(args: &[&str]) -> Result<String, String> {
