@@ -17,14 +17,20 @@ const KINDS: { id: GhKind; label: string }[] = [
   { id: "prs", label: "Pull requests" },
 ];
 
+const LOAD_MORE_REPOS = "__load_more_repos__";
+
 export function GithubContextBar({
   state,
   patch,
   repos,
+  reposHasMore,
+  onLoadMoreRepos,
 }: {
   state: TasksState;
   patch: (p: Partial<TasksState>) => void;
   repos: GhRepo[];
+  reposHasMore: boolean;
+  onLoadMoreRepos: () => void;
 }) {
   const repoLabel = state.ghRepo === "all"
     ? "All"
@@ -36,13 +42,17 @@ export function GithubContextBar({
         <select
           className="picker picker-select"
           value={state.ghRepo}
-          onChange={(e) => patch({ ghRepo: e.target.value })}
+          onChange={(e) => {
+            if (e.target.value === LOAD_MORE_REPOS) { onLoadMoreRepos(); return; }
+            patch({ ghRepo: e.target.value });
+          }}
           title="Repo"
         >
           <option value="all">All repos</option>
           {repos.map((r) => (
             <option key={r.full} value={r.full}>{r.full}</option>
           ))}
+          {reposHasMore && <option value={LOAD_MORE_REPOS}>Load more repos…</option>}
         </select>
         <div className="segmented">
           {KINDS.map((k) => (

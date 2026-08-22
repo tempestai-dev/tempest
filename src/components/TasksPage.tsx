@@ -131,6 +131,23 @@ export function TasksPage({
     unified: ghList.data && lnList.data ? ghList.data.length + lnList.data.length : null,
   };
 
+  const hasMore = (() => {
+    if (state.source === "github") return ghList.hasMore;
+    if (state.source === "linear") return lnList.hasMore;
+    return ghList.hasMore || lnList.hasMore;
+  })(); // immediately invoked
+  const loadingMore = (() => {
+    if (state.source === "github") return ghList.loadingMore;
+    if (state.source === "linear") return lnList.loadingMore;
+    return ghList.loadingMore || lnList.loadingMore;
+  })(); // immediately invoked
+  const loadMore = () => {
+    if (state.source === "github") { ghList.loadMore(); return; }
+    if (state.source === "linear") { lnList.loadMore(); return; }
+    if (ghList.hasMore) ghList.loadMore();
+    if (lnList.hasMore) lnList.loadMore();
+  };
+
   const scopeLabel = (() => {
     if (state.source === "github") {
       return state.ghRepo === "all" ? "All repos" : state.ghRepo;
@@ -238,6 +255,8 @@ export function TasksPage({
         state={state}
         patch={patch}
         repos={ghRepos.data ?? []}
+        reposHasMore={ghRepos.hasMore}
+        onLoadMoreRepos={ghRepos.loadMore}
         linearBootstrap={lnBoot.data ?? null}
       />
       <main className="pane">
@@ -253,6 +272,9 @@ export function TasksPage({
           selected={state.selected}
           expandedKey={state.expandedKey}
           linearGroupByStatus={state.lnGroup === "status"}
+          hasMore={hasMore}
+          loadingMore={loadingMore}
+          onLoadMore={loadMore}
           onToggleSelect={toggleSelect}
           onToggleExpanded={toggleExpanded}
           onCollapse={() => setState((prev) => ({ ...prev, expandedKey: null }))}

@@ -232,6 +232,24 @@
   font-size: 12px;
 }
 
+.tasks-page .load-more {
+  display: flex;
+  justify-content: center;
+  padding: 14px;
+}
+.tasks-page .load-more button {
+  height: 28px; padding: 0 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 12px; font-weight: 500;
+}
+.tasks-page .load-more button:hover:not(:disabled) {
+  color: var(--fg); border-color: var(--border-strong); background: var(--bg-hover);
+}
+.tasks-page .load-more button:disabled { color: var(--fg-subtle); cursor: default; }
+
 .tasks-page .group {
   display: flex; align-items: center; gap: 8px;
   padding: 14px 14px 6px;

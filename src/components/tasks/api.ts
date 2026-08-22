@@ -1,12 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   GhAuthState,
-  GhItem,
   GhKind,
+  GhListPage,
   GhPreset,
-  GhRepo,
+  GhRepoPage,
   LinearBootstrap,
-  LinearItem,
+  LinearListPage,
   LinearScope,
   TaskThread,
 } from "./types";
@@ -15,26 +15,33 @@ export async function fetchGhAuth(): Promise<GhAuthState> {
   return invoke<GhAuthState>("tasks_github_auth");
 }
 
-export async function fetchGhRepos(): Promise<GhRepo[]> {
-  return invoke<GhRepo[]>("tasks_github_repos");
+export async function fetchGhRepos(limit: number): Promise<GhRepoPage> {
+  return invoke<GhRepoPage>("tasks_github_repos", { limit });
 }
 
 export async function fetchGhList(
   preset: GhPreset,
   repo: string,
   kind: GhKind,
-): Promise<GhItem[]> {
-  return invoke<GhItem[]>("tasks_github_list", { preset, repo, kind });
+  limit: number,
+): Promise<GhListPage> {
+  return invoke<GhListPage>("tasks_github_list", { preset, repo, kind, limit });
 }
 
 export async function fetchLinearBootstrap(): Promise<LinearBootstrap> {
   return invoke<LinearBootstrap>("tasks_linear_bootstrap");
 }
 
-export async function fetchLinearList(scope: LinearScope): Promise<LinearItem[]> {
-  return invoke<LinearItem[]>("tasks_linear_list", {
+export async function fetchLinearList(
+  scope: LinearScope,
+  after: string | null,
+  first: number,
+): Promise<LinearListPage> {
+  return invoke<LinearListPage>("tasks_linear_list", {
     scopeKind: scope.kind,
     scopeId: scope.id,
+    after,
+    first,
   });
 }
 
