@@ -191,6 +191,23 @@ jobs:
         shell: bash
         run: find src-tauri/resources -type d -name '*-linux-*-musl' -prune -exec rm -rf {} +
 
+      # Bun-compiled binaries (e.g. Claude CLI in @anthropic-ai/claude-agent-sdk)
+      # make real ldd exit 1, which crashes linuxdeploy with
+      # `std::runtime_error: Failed to run ldd`. They're self-contained, so
+      # shim ldd in /usr/local/bin (precedes /usr/bin on runner PATH) to
+      # swallow failures and report no deps — linuxdeploy then moves on.
+      - name: Shim ldd to tolerate self-contained ELFs
+        if: startsWith(matrix.os, 'ubuntu')
+        shell: bash
+        run: |
+          sudo tee /usr/local/bin/ldd >/dev/null <<'SH'
+          #!/usr/bin/env bash
+          /usr/bin/ldd "$@" 2>&1 || true
+          exit 0
+          SH
+          sudo chmod +x /usr/local/bin/ldd
+          which ldd
+
       - name: Build
         shell: bash
         run: |
