@@ -97,6 +97,9 @@ jobs:
             patchelf \
             libxdo-dev \
             xdg-utils
+          # linuxdeploy is an AppImage; needs FUSE to execute.
+          # 22.04 = libfuse2, 24.04 = libfuse2t64.
+          sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2
 
       - name: Enable long paths (Windows)
         if: matrix.os == 'windows-latest'
