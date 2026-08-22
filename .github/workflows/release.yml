@@ -181,51 +181,15 @@ jobs:
           APPIMAGE_EXTRACT_AND_RUN=1 /tmp/linuxdeploy.AppImage --version || echo "[DEBUG] probe 2 FAILED exit=$?"
           echo "=== [DEBUG] probes done ==="
 
-      # The bundled bridge/atlas resources contain native Linux binaries that
-      # are dynamically linked against musl libc (Bun-built sidecars etc.).
-      # Ubuntu runners have no musl, so linuxdeploy aborts with
-      # "Could not find dependency: libc.musl-x86_64.so.1". Find every
-      # offending file, then install a thin wrapper where Tauri caches
-      # linuxdeploy that appends --exclude-file patterns, so those files are
-      # skipped during dependency resolution. They remain in the image,
-      # exactly like in the .deb bundle (which never resolves deps).
-      - name: Exclude musl-linked binaries from linuxdeploy
+      # AppImage runtime is glibc, so the musl variants of platform-specific npm
+      # packages (e.g. @anthropic-ai/claude-agent-sdk-linux-*-musl) are dead
+      # weight AND break linuxdeploy, which scans every ELF under AppDir and
+      # aborts on "Could not find dependency: libc.musl-*.so.1". Drop them
+      # before the Build step.
+      - name: Drop musl platform packages (Linux glibc AppImage)
         if: startsWith(matrix.os, 'ubuntu')
         shell: bash
-        run: |
-          set -euo pipefail
-          echo "=== [DEBUG] scanning resources for musl-linked ELFs ==="
-          HITS=$(grep -rlaE 'ld-musl|libc\.musl-[a-z0-9_]+' src-tauri/resources || true)
-          if [ -z "$HITS" ]; then
-            echo "[DEBUG] no musl-linked files found; nothing to exclude"
-            exit 0
-          fi
-          PATTERNS=""
-          while IFS= read -r f; do
-            echo "[DEBUG] musl-linked file: $f"
-            base=$(basename "$f")
-            PATTERNS="$PATTERNS --exclude-file *$base --exclude-file $base"
-          done <<< "$HITS"
-          ARCH=$(uname -m)
-          case "$ARCH" in
-            x86_64) LD_ARCH=x86_64 ;;
-            aarch64) LD_ARCH=aarch64 ;;
-            *) LD_ARCH="$ARCH" ;;
-          esac
-          CACHE="$HOME/.cache/tauri"
-          mkdir -p "$CACHE"
-          WRAPPER="$CACHE/linuxdeploy-${LD_ARCH}.AppImage"
-          rm -f "$WRAPPER"
-          curl -fsSL -o "/tmp/linuxdeploy-real-${LD_ARCH}.AppImage" \
-            "https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy/linuxdeploy-${LD_ARCH}.AppImage"
-          chmod +x "/tmp/linuxdeploy-real-${LD_ARCH}.AppImage"
-          {
-            echo '#!/usr/bin/env bash'
-            echo "exec /tmp/linuxdeploy-real-${LD_ARCH}.AppImage \"\$@\"$PATTERNS"
-          } > "$WRAPPER"
-          chmod +x "$WRAPPER"
-          echo "=== [DEBUG] linuxdeploy wrapper installed at $WRAPPER ==="
-          cat "$WRAPPER"
+        run: find src-tauri/resources -type d -name '*-linux-*-musl' -prune -exec rm -rf {} +
 
       - name: Build
         shell: bash
