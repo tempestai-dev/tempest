@@ -161,7 +161,7 @@ pub struct PrCheck {
     pub completed_at: Option<String>,
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GhAuthState {
     pub available: bool,      // `gh` binary on PATH
     pub authenticated: bool,  // `gh auth status` succeeds
@@ -198,11 +198,16 @@ fn cache_put(key: String, v: Value) {
     }
 }
 
-/// Frontend-facing: drop everything so a Refresh button forces a re-fetch.
+/// Frontend-facing: drop cached entries so a Refresh button forces a
+/// re-fetch. An optional `prefix` scopes it (e.g. `"gh:"` or `"linear:"`) so
+/// refreshing one source doesn't clobber cached data for the other.
 #[tauri::command(async)]
-pub fn tasks_cache_invalidate() {
+pub fn tasks_cache_invalidate(prefix: Option<String>) {
     if let Ok(mut c) = cache().lock() {
-        c.clear();
+        match prefix {
+            Some(p) if !p.is_empty() => c.retain(|k, _| !k.starts_with(&p)),
+            _ => c.clear(),
+        }
     }
 }
 
@@ -244,23 +249,19 @@ fn run_gh(args: &[&str]) -> Result<String, String> {
 }
 
 /// Detect `gh` presence + auth. UI surfaces this as an inline hint in place
-/// of the list body when there is no live source.
+/// of the list body when there is no live source. One spawn: parse the ENOENT
+/// on `gh auth status` to detect "not installed", instead of a separate
+/// `gh --version` probe first (Windows subprocess creation is expensive).
 #[tauri::command(async)]
 pub fn tasks_github_auth() -> GhAuthState {
-    let probe = gh_cmd().arg("--version").output();
-    let available = matches!(&probe, Ok(o) if o.status.success());
-    if !available {
-        return GhAuthState {
-            available: false,
-            authenticated: false,
-            host: None,
-            user: None,
-            message: Some("gh CLI not found. Install from https://cli.github.com/ and run `gh auth login`.".into()),
-        };
+    let key = "gh:auth".to_string();
+    if let Some(v) = cache_get(&key) {
+        if let Ok(s) = serde_json::from_value::<GhAuthState>(v) {
+            return s;
+        }
     }
     // `gh auth status` writes to stderr for both success and failure; parse both.
-    let out = gh_cmd().args(["auth", "status"]).output();
-    match out {
+    let state = match gh_cmd().args(["auth", "status"]).output() {
         Ok(o) if o.status.success() => {
             let text = format!(
                 "{}{}",
@@ -286,14 +287,23 @@ pub fn tasks_github_auth() -> GhAuthState {
             user: None,
             message: Some(String::from_utf8_lossy(&o.stderr).trim().to_string()),
         },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => GhAuthState {
+            available: false,
+            authenticated: false,
+            host: None,
+            user: None,
+            message: Some("gh CLI not found. Install from https://cli.github.com/ and run `gh auth login`.".into()),
+        },
         Err(e) => GhAuthState {
-            available: true,
+            available: false,
             authenticated: false,
             host: None,
             user: None,
             message: Some(e.to_string()),
         },
-    }
+    };
+    cache_put(key, serde_json::to_value(&state).unwrap_or(Value::Null));
+    state
 }
 
 fn parse_gh_user(text: &str) -> Option<String> {
@@ -401,8 +411,6 @@ pub fn tasks_github_list(
 fn preset_flags(preset: &str, kind: &str) -> Vec<String> {
     let mut f: Vec<String> = Vec::new();
     match preset {
-        // Union of author + assignee + mentions + review-requested for @me.
-        "all" => f.push("--involves=@me".into()),
         "assigned" => f.push("--assignee=@me".into()),
         "created" => f.push("--author=@me".into()),
         "mentioned" => f.push("--mentions=@me".into()),
@@ -414,7 +422,10 @@ fn preset_flags(preset: &str, kind: &str) -> Vec<String> {
                 f.push("--mentions=@me".into());
             }
         }
-        _ => {}
+        // "all", "open", "closed", or anything unrecognized: scope to @me by
+        // union of involvements. Without this, `gh search` returns every
+        // matching issue/PR on GitHub globally instead of the user's.
+        _ => f.push("--involves=@me".into()),
     }
     // Involvement presets default to open; explicit open/closed set that state.
     let state = match preset {
@@ -640,42 +651,52 @@ pub fn tasks_github_pr_files(repo: String, number: i64) -> Result<Vec<PrFile>, S
     Ok(files)
 }
 
-/// Check-runs for a PR's head commit. Two REST calls: `/pulls/{n}` for the
-/// head SHA, then `/commits/{sha}/check-runs` paginated. GitHub wraps
-/// check-runs in `{ check_runs: [...] }` per page, so we unwrap before
-/// flattening.
+/// Check-runs for a PR's head commit. One `gh api graphql` call folds the
+/// former two sequential REST calls (`/pulls/{n}` for head SHA →
+/// `/commits/{sha}/check-runs`) into a single round trip. GraphQL enum values
+/// come back UPPERCASE (`COMPLETED`, `SUCCESS`); lowercase them so downstream
+/// class names and comparisons match the shape the old REST path returned.
 #[tauri::command(async)]
 pub fn tasks_github_pr_checks(repo: String, number: i64) -> Result<Vec<PrCheck>, String> {
     let key = format!("gh:pr-checks:{repo}:{number}");
     if let Some(v) = cache_get(&key) {
         return serde_json::from_value(v).map_err(|e| e.to_string());
     }
-    let pr_raw = run_gh(&["api", &format!("/repos/{repo}/pulls/{number}")])?;
-    let pr: Value = serde_json::from_str(&pr_raw).map_err(|e| e.to_string())?;
-    let sha = pr
-        .get("head")
-        .and_then(|h| h.get("sha"))
-        .and_then(|s| s.as_str())
-        .ok_or_else(|| "gh: PR head.sha missing".to_string())?
-        .to_string();
-
-    let path = format!("/repos/{repo}/commits/{sha}/check-runs?per_page=100");
-    let pages_raw = run_gh(&["api", &path, "--paginate", "--slurp"])?;
-    let pages: Vec<Value> = serde_json::from_str(&pages_raw).map_err(|e| e.to_string())?;
-    let runs: Vec<PrCheck> = pages
+    let (owner, name) = repo
+        .split_once('/')
+        .ok_or_else(|| format!("gh: bad repo slug {repo}"))?;
+    let query = format!(
+        r#"query {{ repository(owner: "{owner}", name: "{name}") {{ pullRequest(number: {number}) {{ commits(last: 1) {{ nodes {{ commit {{ checkSuites(first: 20) {{ nodes {{ checkRuns(first: 100) {{ nodes {{ name status conclusion startedAt completedAt }} }} }} }} }} }} }} }} }} }}"#
+    );
+    let query_arg = format!("query={query}");
+    let raw = run_gh(&["api", "graphql", "-f", &query_arg])?;
+    let v: Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+    let suites = v
+        .pointer("/data/repository/pullRequest/commits/nodes/0/commit/checkSuites/nodes")
+        .and_then(|a| a.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let runs: Vec<PrCheck> = suites
         .into_iter()
-        .flat_map(|p| {
-            p.get("check_runs")
+        .flat_map(|s| {
+            s.pointer("/checkRuns/nodes")
                 .and_then(|a| a.as_array())
                 .cloned()
                 .unwrap_or_default()
         })
-        .map(|v| PrCheck {
-            name: v.get("name").and_then(|s| s.as_str()).unwrap_or("").to_string(),
-            status: v.get("status").and_then(|s| s.as_str()).unwrap_or("").to_string(),
-            conclusion: v.get("conclusion").and_then(|s| s.as_str()).map(String::from),
-            started_at: v.get("started_at").and_then(|s| s.as_str()).map(String::from),
-            completed_at: v.get("completed_at").and_then(|s| s.as_str()).map(String::from),
+        .map(|r| PrCheck {
+            name: r.get("name").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+            status: r
+                .get("status")
+                .and_then(|s| s.as_str())
+                .map(|s| s.to_lowercase())
+                .unwrap_or_default(),
+            conclusion: r
+                .get("conclusion")
+                .and_then(|s| s.as_str())
+                .map(|s| s.to_lowercase()),
+            started_at: r.get("startedAt").and_then(|s| s.as_str()).map(String::from),
+            completed_at: r.get("completedAt").and_then(|s| s.as_str()).map(String::from),
         })
         .collect();
     cache_put(key, serde_json::to_value(&runs).unwrap_or(Value::Null));
@@ -1223,6 +1244,16 @@ mod tests {
         // 'closed' sets --state=closed.
         let f = preset_flags("closed", "issues");
         assert!(f.iter().any(|s| s == "--state=closed"));
+        // Regression: 'open', 'closed', and 'all' must scope to @me — without
+        // an involvement flag `gh search` returns every matching issue/PR on
+        // GitHub, not the user's own. (This was the "global PRs/issues" bug.)
+        for p in ["open", "closed", "all", ""] {
+            let f = preset_flags(p, "prs");
+            assert!(
+                f.iter().any(|s| s == "--involves=@me"),
+                "preset {p:?} missing --involves=@me → would fetch global issues"
+            );
+        }
     }
 
     #[test]
@@ -1261,7 +1292,17 @@ mod tests {
         cache_put(k.clone(), Value::String("hi".into()));
         assert_eq!(cache_get(&k), Some(Value::String("hi".into())));
         // Simulate stale by clearing manually — we can't fast-forward Instant.
-        tasks_cache_invalidate();
+        tasks_cache_invalidate(None);
         assert_eq!(cache_get(&k), None);
+    }
+
+    #[test]
+    fn cache_invalidate_prefix_leaves_other_scopes() {
+        cache_put("gh:x".into(), Value::String("g".into()));
+        cache_put("linear:x".into(), Value::String("l".into()));
+        tasks_cache_invalidate(Some("gh:".into()));
+        assert_eq!(cache_get("gh:x"), None);
+        assert_eq!(cache_get("linear:x"), Some(Value::String("l".into())));
+        tasks_cache_invalidate(None);
     }
 }
