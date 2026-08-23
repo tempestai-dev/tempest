@@ -1,8 +1,8 @@
 import { useEffect, useState, type MouseEvent } from "react";
-import { fetchGhThread, fetchLinearThread, relativeTime } from "./api";
+import { fetchGhPrChecks, fetchGhPrFiles, fetchGhThread, fetchLinearThread, relativeTime } from "./api";
 import { Icon, priGlyph, statusGlyph } from "./icons";
 import { Markdown } from "../Markdown";
-import type { GhItem, LinearItem, LinearProject, LinearTeam, TaskThread, UnifiedItem } from "./types";
+import type { GhItem, LinearItem, LinearProject, LinearTeam, PrCheck, PrFile, TaskThread, UnifiedItem } from "./types";
 import { isGh } from "./types";
 
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
@@ -55,6 +55,64 @@ function ThreadActivity({ thread, err, loading }: ThreadPaneProps) {
   );
 }
 
+type LazyState<T> = { data: T | null; err: string | null; loading: boolean };
+
+function PrFiles({ state }: { state: LazyState<PrFile[]> }) {
+  if (state.loading) return <p style={{ color: "var(--fg-subtle)" }}>Loading files…</p>;
+  if (state.err) return <p style={{ color: "var(--tempest-semantic-error, tomato)" }}>{state.err}</p>;
+  const items = state.data ?? [];
+  if (!items.length) return <p style={{ color: "var(--fg-subtle)", fontStyle: "italic" }}>No files changed.</p>;
+  return (
+    <ul className="thread-list pr-files">
+      {items.map((f) => (
+        <li key={f.filename} className="pr-file">
+          <span className={`pr-file-status ${f.status}`}>{f.status}</span>
+          <span className="pr-file-name mono">{f.filename}</span>
+          <span className="pr-file-diff">
+            <span className="add">+{f.additions}</span>{" "}
+            <span className="del">−{f.deletions}</span>
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// Duration between started_at and completed_at, in the same compact shape
+// (`3s`, `1m`, `2h`) relativeTime uses so both tables read as one system.
+function checkDuration(c: PrCheck): string {
+  if (!c.started_at || !c.completed_at) return "";
+  const a = Date.parse(c.started_at);
+  const b = Date.parse(c.completed_at);
+  if (Number.isNaN(a) || Number.isNaN(b) || b < a) return "";
+  const s = Math.floor((b - a) / 1000);
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  return `${Math.floor(s / 3600)}h`;
+}
+
+function PrChecks({ state }: { state: LazyState<PrCheck[]> }) {
+  if (state.loading) return <p style={{ color: "var(--fg-subtle)" }}>Loading checks…</p>;
+  if (state.err) return <p style={{ color: "var(--tempest-semantic-error, tomato)" }}>{state.err}</p>;
+  const items = state.data ?? [];
+  if (!items.length) return <p style={{ color: "var(--fg-subtle)", fontStyle: "italic" }}>No checks reported.</p>;
+  return (
+    <ul className="thread-list pr-checks">
+      {items.map((c, i) => {
+        const outcome = c.conclusion ?? c.status;
+        const dur = checkDuration(c);
+        return (
+          <li key={`${c.name}-${i}`} className="pr-check">
+            <span className={`pr-check-outcome ${outcome}`}>{outcome}</span>
+            <span className="pr-check-name">{c.name}</span>
+            {dur && <span className="pr-check-dur">{dur}</span>}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 export function RowAccordion({
   it,
   teams,
@@ -101,9 +159,43 @@ export function RowAccordion({
     return () => { cancelled = true; };
   }, [it.key, gh]);
 
-  const activityLabel = tabs[tab] === "Activity";
-  const commentsLabel = tabs[tab] === "Comments";
-  const stubLabel = tabs[tab] === "Files" || tabs[tab] === "Checks";
+  // PR-only Files/Checks tabs. Fetched lazily when their tab is first opened,
+  // then kept in state so switching back is instant. Backend already caches
+  // for 60s, so a stale row re-fetches on Refresh (cache_invalidate).
+  const isPr = gh && (it as GhItem).kind === "pr";
+  const [files, setFiles] = useState<LazyState<PrFile[]>>({ data: null, err: null, loading: false });
+  const [checks, setChecks] = useState<LazyState<PrCheck[]>>({ data: null, err: null, loading: false });
+
+  useEffect(() => {
+    setFiles({ data: null, err: null, loading: false });
+    setChecks({ data: null, err: null, loading: false });
+  }, [it.key]);
+
+  const activeTab = tabs[tab];
+  useEffect(() => {
+    if (!isPr) return;
+    const repo = (it as GhItem).repo;
+    const number = (it as GhItem).number;
+    let cancelled = false;
+    if (activeTab === "Files" && !files.data && !files.loading && !files.err) {
+      setFiles({ data: null, err: null, loading: true });
+      fetchGhPrFiles(repo, number)
+        .then((d) => { if (!cancelled) setFiles({ data: d, err: null, loading: false }); })
+        .catch((e) => { if (!cancelled) setFiles({ data: null, err: String(e?.message ?? e), loading: false }); });
+    }
+    if (activeTab === "Checks" && !checks.data && !checks.loading && !checks.err) {
+      setChecks({ data: null, err: null, loading: true });
+      fetchGhPrChecks(repo, number)
+        .then((d) => { if (!cancelled) setChecks({ data: d, err: null, loading: false }); })
+        .catch((e) => { if (!cancelled) setChecks({ data: null, err: String(e?.message ?? e), loading: false }); });
+    }
+    return () => { cancelled = true; };
+  }, [activeTab, isPr, it, files.data, files.loading, files.err, checks.data, checks.loading, checks.err]);
+
+  const activityLabel = activeTab === "Activity";
+  const commentsLabel = activeTab === "Comments";
+  const filesLabel = activeTab === "Files";
+  const checksLabel = activeTab === "Checks";
 
   const openBrowser = async () => {
     if (!it.url) return;
@@ -188,7 +280,8 @@ export function RowAccordion({
           {tab === 0 && <div className="prose"><BodyText text={it.body} /></div>}
           {commentsLabel && <ThreadComments thread={thread} err={threadErr} loading={threadLoading} />}
           {activityLabel && <ThreadActivity thread={thread} err={threadErr} loading={threadLoading} />}
-          {stubLabel && <p style={{ color: "var(--fg-subtle)" }}>Loads from the provider on demand — not wired yet.</p>}
+          {filesLabel && <PrFiles state={files} />}
+          {checksLabel && <PrChecks state={checks} />}
         </div>
 
         <aside className="side">

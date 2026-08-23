@@ -100,6 +100,21 @@ export type TaskThread = {
   activity: TaskActivity[];
 };
 
+export type PrFile = {
+  filename: string;
+  status: string;   // "added" | "modified" | "removed" | "renamed" | ...
+  additions: number;
+  deletions: number;
+};
+
+export type PrCheck = {
+  name: string;
+  status: string;      // "queued" | "in_progress" | "completed"
+  conclusion: string | null; // "success" | "failure" | "neutral" | "cancelled" | "skipped" | "timed_out" | "action_required" | null
+  started_at: string | null;
+  completed_at: string | null;
+};
+
 export type UnifiedItem = (GhItem | LinearItem) & { key: string };
 
 export type Source = "unified" | "github" | "linear";

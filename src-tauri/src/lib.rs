@@ -4192,6 +4192,8 @@ pub fn run() {
             tasks::tasks_github_repos,
             tasks::tasks_github_list,
             tasks::tasks_github_thread,
+            tasks::tasks_github_pr_files,
+            tasks::tasks_github_pr_checks,
             tasks::tasks_linear_bootstrap,
             tasks::tasks_linear_list,
             tasks::tasks_linear_thread,

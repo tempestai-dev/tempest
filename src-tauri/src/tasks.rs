@@ -144,6 +144,23 @@ pub struct TaskThread {
     pub activity: Vec<TaskActivity>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PrFile {
+    pub filename: String,
+    pub status: String,
+    pub additions: i64,
+    pub deletions: i64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PrCheck {
+    pub name: String,
+    pub status: String,
+    pub conclusion: Option<String>,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+}
+
 #[derive(Serialize, Clone, Debug)]
 pub struct GhAuthState {
     pub available: bool,      // `gh` binary on PATH
@@ -598,6 +615,71 @@ fn gh_event_from(v: Value) -> Option<TaskActivity> {
         _ => event.replace('_', " "),
     };
     Some(TaskActivity { id, author, kind: event, detail, created })
+}
+
+/// Files changed by a PR. Paginated to completion so the drawer shows the full
+/// list, not the first 100 rows.
+#[tauri::command(async)]
+pub fn tasks_github_pr_files(repo: String, number: i64) -> Result<Vec<PrFile>, String> {
+    let key = format!("gh:pr-files:{repo}:{number}");
+    if let Some(v) = cache_get(&key) {
+        return serde_json::from_value(v).map_err(|e| e.to_string());
+    }
+    let path = format!("/repos/{repo}/pulls/{number}/files?per_page=100");
+    let raw = run_gh_paginated_array(&path)?;
+    let files: Vec<PrFile> = raw
+        .into_iter()
+        .map(|v| PrFile {
+            filename: v.get("filename").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+            status: v.get("status").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+            additions: v.get("additions").and_then(|n| n.as_i64()).unwrap_or(0),
+            deletions: v.get("deletions").and_then(|n| n.as_i64()).unwrap_or(0),
+        })
+        .collect();
+    cache_put(key, serde_json::to_value(&files).unwrap_or(Value::Null));
+    Ok(files)
+}
+
+/// Check-runs for a PR's head commit. Two REST calls: `/pulls/{n}` for the
+/// head SHA, then `/commits/{sha}/check-runs` paginated. GitHub wraps
+/// check-runs in `{ check_runs: [...] }` per page, so we unwrap before
+/// flattening.
+#[tauri::command(async)]
+pub fn tasks_github_pr_checks(repo: String, number: i64) -> Result<Vec<PrCheck>, String> {
+    let key = format!("gh:pr-checks:{repo}:{number}");
+    if let Some(v) = cache_get(&key) {
+        return serde_json::from_value(v).map_err(|e| e.to_string());
+    }
+    let pr_raw = run_gh(&["api", &format!("/repos/{repo}/pulls/{number}")])?;
+    let pr: Value = serde_json::from_str(&pr_raw).map_err(|e| e.to_string())?;
+    let sha = pr
+        .get("head")
+        .and_then(|h| h.get("sha"))
+        .and_then(|s| s.as_str())
+        .ok_or_else(|| "gh: PR head.sha missing".to_string())?
+        .to_string();
+
+    let path = format!("/repos/{repo}/commits/{sha}/check-runs?per_page=100");
+    let pages_raw = run_gh(&["api", &path, "--paginate", "--slurp"])?;
+    let pages: Vec<Value> = serde_json::from_str(&pages_raw).map_err(|e| e.to_string())?;
+    let runs: Vec<PrCheck> = pages
+        .into_iter()
+        .flat_map(|p| {
+            p.get("check_runs")
+                .and_then(|a| a.as_array())
+                .cloned()
+                .unwrap_or_default()
+        })
+        .map(|v| PrCheck {
+            name: v.get("name").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+            status: v.get("status").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+            conclusion: v.get("conclusion").and_then(|s| s.as_str()).map(String::from),
+            started_at: v.get("started_at").and_then(|s| s.as_str()).map(String::from),
+            completed_at: v.get("completed_at").and_then(|s| s.as_str()).map(String::from),
+        })
+        .collect();
+    cache_put(key, serde_json::to_value(&runs).unwrap_or(Value::Null));
+    Ok(runs)
 }
 
 // ────────────────────────────────────────────────────────────────────────
