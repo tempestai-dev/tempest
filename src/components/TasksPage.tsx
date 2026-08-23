@@ -71,7 +71,11 @@ export function TasksPage({
   onViewSession,
 }: TasksPageProps) {
   const [state, setState] = useState<TasksState>(() => ({ ...INITIAL, ...loadPersisted() }));
-  const [bump, setBump] = useState(0); // increments to invalidate all fetches
+  // Per-source refresh counters so hitting Refresh on GitHub doesn't invalidate
+  // Linear's cache (and vice versa). Backend cache is invalidated with the
+  // matching prefix on the same refresh so both layers stay consistent.
+  const [ghBump, setGhBump] = useState(0);
+  const [lnBump, setLnBump] = useState(0);
   const [modalKeys, setModalKeys] = useState<string[] | null>(null);
   // Item key → session id for agents this page launched. In-memory only:
   // sessions themselves live in WorkspaceView; we just remember the mapping
@@ -83,23 +87,23 @@ export function TasksPage({
 
   const patch = (p: Partial<TasksState>) => setState((prev) => ({ ...prev, ...p }));
 
-  const ghAuth = useGhAuth(bump);
+  const ghAuth = useGhAuth(ghBump);
   const ghAuthed = !!ghAuth.data?.authenticated;
 
   // Fetch every source in the background regardless of which tab is active, so
   // tab pills stay live and switching tabs is a pure view swap (no refetch,
   // no reset). The Rust side caches for 60s, so this is one call per source
   // per refresh cycle.
-  const ghRepos = useGhRepos(ghAuthed, bump);
+  const ghRepos = useGhRepos(ghAuthed, ghBump);
   const ghList = useGhList(
     ghAuthed,
     state.ghPreset,
     state.ghRepo,
     state.ghKind,
-    bump,
+    ghBump,
   );
-  const lnBoot = useLinearBootstrap(true, bump);
-  const lnList = useLinearList(true, state.lnScope, bump);
+  const lnBoot = useLinearBootstrap(true, lnBump);
+  const lnList = useLinearList(true, state.lnScope, lnBump);
 
   // Assemble the visible list based on the active source. Query is a
   // client-side title filter over already-loaded rows.
@@ -198,8 +202,19 @@ export function TasksPage({
   })();
 
   const refresh = async () => {
-    await invalidateTasksCache();
-    setBump((b) => b + 1);
+    // Only invalidate the source the user is looking at; the other source
+    // keeps its cached data so switching back is instant.
+    if (state.source === "github") {
+      await invalidateTasksCache("gh:");
+      setGhBump((b) => b + 1);
+    } else if (state.source === "linear") {
+      await invalidateTasksCache("linear:");
+      setLnBump((b) => b + 1);
+    } else {
+      await invalidateTasksCache();
+      setGhBump((b) => b + 1);
+      setLnBump((b) => b + 1);
+    }
   };
 
   const toggleSelect = (key: string) => {

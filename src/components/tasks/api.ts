@@ -63,8 +63,8 @@ export async function fetchGhPrChecks(repo: string, number: number): Promise<PrC
   return invoke<PrCheck[]>("tasks_github_pr_checks", { repo, number });
 }
 
-export async function invalidateTasksCache(): Promise<void> {
-  await invoke("tasks_cache_invalidate");
+export async function invalidateTasksCache(prefix?: string): Promise<void> {
+  await invoke("tasks_cache_invalidate", { prefix: prefix ?? null });
 }
 
 // Format a UTC ISO datetime as a compact relative string ("3h", "2d") for the
