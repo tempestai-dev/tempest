@@ -75,6 +75,7 @@ export function NotesPopover({ pos, projectPath, projectName }: Props) {
   const editorHostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const bodyRef = useRef<string>("");
+  const saveTimerRef = useRef<number | null>(null);
   const [copied, setCopied] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameDraft, setRenameDraft] = useState("");
@@ -125,7 +126,21 @@ export function NotesPopover({ pos, projectPath, projectName }: Props) {
           livePreviewTheme,
           placeholder("Start Typing..."),
           EditorView.updateListener.of((u) => {
-            if (u.docChanged) bodyRef.current = u.state.doc.toString();
+            if (!u.docChanged) return;
+            bodyRef.current = u.state.doc.toString();
+            if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+            const noteId = active.id;
+            saveTimerRef.current = window.setTimeout(() => {
+              const body = bodyRef.current;
+              const now = Date.now();
+              setNotes((prev) => {
+                const target = prev.find((n) => n.id === noteId);
+                if (!target || target.body === body) return prev;
+                const updated = { ...target, body, updatedAt: now };
+                void upsertNote(updated);
+                return prev.map((n) => (n.id === noteId ? updated : n));
+              });
+            }, 300);
           }),
           EditorView.domEventHandlers({
             paste: (event, v) => {
@@ -155,18 +170,16 @@ export function NotesPopover({ pos, projectPath, projectName }: Props) {
     viewRef.current = view;
     view.focus();
     const noteId = active.id;
+    const initialBody = active.body;
     return () => {
+      if (saveTimerRef.current) {
+        window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
       const finalBody = bodyRef.current;
-      const now = Date.now();
-      setNotes((prev) => {
-        const target = prev.find((n) => n.id === noteId);
-        if (target && target.body !== finalBody) {
-          const updated = { ...target, body: finalBody, updatedAt: now };
-          void upsertNote(updated);
-          return prev.map((n) => (n.id === noteId ? updated : n));
-        }
-        return prev;
-      });
+      if (finalBody !== initialBody) {
+        void upsertNote({ id: noteId, body: finalBody, title: active.title, scope: active.scope, updatedAt: Date.now() });
+      }
       view.destroy();
       viewRef.current = null;
     };
