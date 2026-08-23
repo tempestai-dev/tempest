@@ -192,7 +192,7 @@ fn start_atlas_index(app: tauri::AppHandle, project_path: String, semantic: bool
     // the stable model cache dir) to Atlas as CLI args — never an env block.
     let model_dir = if semantic { Some(atlas_model_dir(&app)?) } else { None };
 
-    let mut cmd = new_command("node");
+    let mut cmd = new_command(&resolve_node());
     cmd.arg("--liftoff-only") // prevents V8 turboshaft Zone OOM on tree-sitter WASM grammars (Node >=22)
         .arg(&entry)
         .arg("--init")
@@ -257,7 +257,7 @@ fn download_atlas_model(app: tauri::AppHandle) -> Result<(), String> {
     }
     let model_dir = atlas_model_dir(&app)?;
 
-    let mut child = new_command("node")
+    let mut child = new_command(&resolve_node())
         .arg("--liftoff-only")
         .arg(&entry)
         .arg("--download-model")
@@ -922,7 +922,7 @@ fn start_atlas_daemon(
         return Err(format!("Atlas not bundled — entry not found at: {}", entry.display()));
     }
 
-    let child = new_command("node")
+    let child = new_command(&resolve_node())
         .arg("--liftoff-only")
         .arg(&entry)
         .arg("--path")
@@ -1011,7 +1011,7 @@ fn spawn_atlas_mcp_bridge(app: &tauri::AppHandle, project_path: &str) -> Result<
         return Err(format!("Atlas not bundled at: {}", entry.display()));
     }
 
-    let mut child = new_command("node")
+    let mut child = new_command(&resolve_node())
         .arg("--liftoff-only")
         .arg(&entry)
         .arg("--path")
@@ -1951,6 +1951,50 @@ fn db_delete_thread_edge(state: tauri::State<'_, DbState>, id: String) -> Result
     Ok(())
 }
 
+/// Resolve `node` to an absolute path on macOS, where GUI-launched apps inherit
+/// `/usr/bin:/bin:/usr/sbin:/sbin` (no /opt/homebrew, no /usr/local/bin, no
+/// nvm/volta/fnm shims), which makes `Command::new("node").spawn()` fail with
+/// `os error 2`. See issue #36. Cascade: current PATH → login shell → known
+/// install locations. Cached for the process lifetime. Non-macOS: bare "node".
+fn resolve_node() -> String {
+    #[cfg(not(target_os = "macos"))]
+    { "node".to_string() }
+    #[cfg(target_os = "macos")]
+    {
+        use std::sync::OnceLock;
+        static CACHED: OnceLock<String> = OnceLock::new();
+        CACHED.get_or_init(|| {
+            if let Ok(path) = std::env::var("PATH") {
+                for dir in path.split(':').filter(|s| !s.is_empty()) {
+                    let candidate = std::path::Path::new(dir).join("node");
+                    if candidate.is_file() {
+                        return candidate.to_string_lossy().into_owned();
+                    }
+                }
+            }
+            // Login shell honors the user's nvm/volta/fnm and dotfiles.
+            if let Ok(out) = std::process::Command::new("/bin/sh")
+                .args(["-lc", "command -v node"])
+                .output()
+            {
+                if out.status.success() {
+                    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    if !s.is_empty() && std::path::Path::new(&s).is_file() {
+                        return s;
+                    }
+                }
+            }
+            for p in ["/opt/homebrew/bin/node", "/usr/local/bin/node"] {
+                if std::path::Path::new(p).is_file() {
+                    return p.to_string();
+                }
+            }
+            // ponytail: fall back to bare "node" — spawn will error clearly.
+            "node".to_string()
+        }).clone()
+    }
+}
+
 /// Build a `Command` that never opens a console window on Windows.
 /// On every other platform this is identical to `std::process::Command::new`.
 fn new_command(program: &str) -> std::process::Command {
@@ -2375,7 +2419,7 @@ fn check_program_available(program: String) -> bool {
 
 #[tauri::command(async)]
 fn get_node_version() -> Option<String> {
-    new_command("node")
+    new_command(&resolve_node())
         .arg("--version")
         .output()
         .ok()

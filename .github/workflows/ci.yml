@@ -75,39 +75,39 @@ jobs:
     steps:
       # macOS GUI apps launched via LaunchServices / Finder inherit a minimal
       # PATH — no /opt/homebrew/bin, no /usr/local/bin, no nvm/volta/fnm shims.
-      # That's why `Command::new("node").spawn()` in start_atlas_index fails
-      # with `os error 2` even though `node` works fine from the user's shell
-      # (issue #36). Reproduce that PATH here so every CI run tells us where
-      # node actually lives on macOS runners and which resolution strategies
-      # succeed under restricted PATH. Extend to a full .app smoke once the
-      # fix approach is picked.
-      - name: Show Finder-launched PATH and probe node
+      # That's why `Command::new("node").spawn()` in start_atlas_index used to
+      # fail with `os error 2` even though `node` works from the user's shell
+      # (issue #36). This job asserts the strategies `resolve_node()` in
+      # src-tauri/src/lib.rs relies on still succeed on stock macOS runners:
+      # login-shell resolution and the hardcoded homebrew paths.
+      - name: Assert node resolves under Finder-launched restricted PATH
         shell: bash
         run: |
-          set +e
-          echo "=== host PATH (for reference) ==="
-          echo "$PATH"
-          echo "=== host node ==="
-          command -v node && node --version
-
-          echo
-          echo "=== simulating Finder-launched restricted PATH ==="
-          env -i HOME="$HOME" PATH=/usr/bin:/bin:/usr/sbin:/sbin bash -c '
+          set -eo pipefail
+          env -i HOME="$HOME" PATH=/usr/bin:/bin:/usr/sbin:/sbin bash -euo pipefail -c '
             echo "PATH=$PATH"
-            echo "--- direct lookup ---"
-            command -v node && node --version || echo "node NOT on restricted PATH"
-            echo "--- common install locations ---"
-            for p in \
-              /opt/homebrew/bin/node \
-              /usr/local/bin/node \
-              "$HOME/.volta/bin/node" \
-              "$HOME/.nvm/versions/node"; do
-              if [ -e "$p" ]; then echo "  FOUND: $p"; else echo "  missing: $p"; fi
+            # Direct lookup MUST fail — this is the bug we simulate.
+            if command -v node >/dev/null 2>&1; then
+              echo "UNEXPECTED: node on restricted PATH — probe no longer simulates the bug"; exit 1
+            fi
+            echo "confirmed: node NOT on restricted PATH"
+
+            # Strategy 1 (primary): login shell honors user dotfiles/nvm/volta/fnm.
+            resolved=$(/bin/sh -lc "command -v node" || true)
+            if [ -n "$resolved" ] && [ -x "$resolved" ]; then
+              echo "OK login-shell: $resolved ($($resolved --version))"
+            else
+              echo "FAIL login-shell resolution"; exit 1
+            fi
+
+            # Strategy 2 (fallback): hardcoded homebrew paths.
+            found=""
+            for p in /opt/homebrew/bin/node /usr/local/bin/node; do
+              if [ -x "$p" ]; then found="$p"; break; fi
             done
-            echo "--- login shell resolution ---"
-            /bin/sh -lc "command -v node && node --version" \
-              || echo "login shell resolution FAILED"
-            echo "--- /usr/libexec/path_helper ---"
-            eval "$(/usr/libexec/path_helper -s)" && echo "PATH after path_helper: $PATH"
-            command -v node || echo "still no node after path_helper"
+            if [ -n "$found" ]; then
+              echo "OK hardcoded: $found ($($found --version))"
+            else
+              echo "FAIL no hardcoded path exists"; exit 1
+            fi
           '
