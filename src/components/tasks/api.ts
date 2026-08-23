@@ -8,6 +8,8 @@ import type {
   LinearBootstrap,
   LinearListPage,
   LinearScope,
+  PrCheck,
+  PrFile,
   TaskThread,
 } from "./types";
 
@@ -51,6 +53,14 @@ export async function fetchGhThread(repo: string, number: number): Promise<TaskT
 
 export async function fetchLinearThread(id: string): Promise<TaskThread> {
   return invoke<TaskThread>("tasks_linear_thread", { id });
+}
+
+export async function fetchGhPrFiles(repo: string, number: number): Promise<PrFile[]> {
+  return invoke<PrFile[]>("tasks_github_pr_files", { repo, number });
+}
+
+export async function fetchGhPrChecks(repo: string, number: number): Promise<PrCheck[]> {
+  return invoke<PrCheck[]>("tasks_github_pr_checks", { repo, number });
 }
 
 export async function invalidateTasksCache(): Promise<void> {
