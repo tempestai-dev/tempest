@@ -1,32 +1,36 @@
-﻿.bc-overlay {
+.bc-overlay {
   position: fixed;
   inset: 0;
-  background: var(--tempest-ui-overlay);
+  z-index: 9000;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9000;
+  background: rgba(0, 0, 0, 0.55);
 }
 
 .bc-dialog {
-  background: var(--tempest-bg-panel);
-  border: 1px solid var(--tempest-border-subtle);
-  border-radius: 8px;
-  width: 420px;
+  width: 440px;
   max-width: calc(100vw - 48px);
+  background: var(--tempest-bg-panel);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 10px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 8px 32px var(--tempest-ui-shadow-lg);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
 }
 
-/* â”€â”€ Header â”€â”€ */
+/* ── Header ─────────────────────────────────────────────────────────────────── */
 .bc-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 14px 10px;
-  border-bottom: 1px solid var(--tempest-border-subtle);
+  padding: 12px 14px;
+  background: var(--tempest-bg-sidebar);
+  border-bottom: 1px solid var(--tempest-border-default);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tempest-fg-default);
 }
 
 .bc-header-icon {
@@ -35,66 +39,86 @@
 }
 
 .bc-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--tempest-fg-default);
   flex: 1;
 }
 
 .bc-close {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--tempest-fg-subtle);
-  padding: 2px;
+  margin-left: auto;
   display: flex;
   align-items: center;
-  border-radius: 3px;
-  transition: color 120ms, background 120ms;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 .bc-close:hover {
+  background: var(--tempest-border-default);
   color: var(--tempest-fg-default);
-  background: var(--tempest-bg-hover);
 }
 
-/* â”€â”€ Empty state â”€â”€ */
+/* ── Empty state ────────────────────────────────────────────────────────────── */
 .bc-empty {
-  font-size: 12px;
-  color: var(--tempest-fg-subtle);
+  font-size: 13px;
+  color: var(--tempest-fg-muted);
   text-align: center;
-  padding: 24px 16px;
+  padding: 28px 16px;
   margin: 0;
 }
 
-/* â”€â”€ Session list â”€â”€ */
+/* ── Body sections ──────────────────────────────────────────────────────────── */
+.bc-section-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 16px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--tempest-fg-subtle);
+}
+
+.bc-section-label .bc-count {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--tempest-fg-subtle);
+  text-transform: none;
+}
+
+/* ── Session list ───────────────────────────────────────────────────────────── */
 .bc-session-list {
   display: flex;
   flex-direction: column;
-  padding: 8px 0 4px;
-  border-bottom: 1px solid var(--tempest-border-subtle);
-  max-height: 180px;
+  margin: 0 8px;
+  padding: 2px 0;
+  max-height: 200px;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: var(--tempest-border-subtle) transparent;
+  scrollbar-color: var(--tempest-border-default) transparent;
 }
 
 .bc-session-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 14px;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 5px;
   cursor: pointer;
   user-select: none;
-  transition: background 100ms;
+  transition: background 0.1s ease;
 }
 .bc-session-row:hover {
   background: var(--tempest-bg-hover);
 }
 
 .bc-session-row--all {
-  border-bottom: 1px solid var(--tempest-border-subtle);
   margin-bottom: 2px;
-  padding-bottom: 7px;
 }
 
 .bc-checkbox {
@@ -106,27 +130,13 @@
 }
 
 .bc-all-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--tempest-fg-muted);
+  font-size: 13px;
+  color: var(--tempest-fg-default);
   flex: 1;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.bc-count {
-  font-size: 11px;
-  color: var(--tempest-fg-subtle);
-  background: var(--tempest-bg-editor);
-  border: 1px solid var(--tempest-border-subtle);
-  border-radius: 10px;
-  padding: 0 6px;
-  min-width: 20px;
-  text-align: center;
 }
 
 .bc-session-name {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--tempest-fg-default);
   font-family: "Geist Mono", monospace;
   flex: 1;
@@ -141,29 +151,31 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 100px;
+  max-width: 140px;
 }
 
-/* â”€â”€ Compose area â”€â”€ */
+/* ── Compose area ───────────────────────────────────────────────────────────── */
 .bc-compose {
-  padding: 12px 14px 6px;
+  padding: 6px 16px 4px;
+  border-top: 1px solid var(--tempest-border-default);
+  margin-top: 8px;
 }
 
 .bc-textarea {
   width: 100%;
   box-sizing: border-box;
-  background: var(--tempest-bg-editor);
-  border: 1px solid var(--tempest-border-subtle);
+  background: var(--tempest-bg-input);
+  border: 1px solid var(--tempest-border-default);
   border-radius: 5px;
   color: var(--tempest-fg-default);
-  font-size: 12.5px;
+  font-size: 13px;
   font-family: inherit;
-  padding: 8px 10px;
+  padding: 7px 10px;
   resize: vertical;
   outline: none;
-  transition: border-color 120ms;
+  transition: border-color 0.12s ease;
   scrollbar-width: thin;
-  scrollbar-color: var(--tempest-border-subtle) transparent;
+  scrollbar-color: var(--tempest-border-default) transparent;
 }
 .bc-textarea:focus {
   border-color: var(--tempest-accent-blue);
@@ -173,37 +185,45 @@
 }
 
 .bc-hint {
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--tempest-fg-subtle);
-  margin: 5px 0 0;
+  margin: 6px 0 0;
   text-align: right;
 }
 
-/* â”€â”€ Actions â”€â”€ */
+.bc-hint code {
+  font-family: "Geist Mono", monospace;
+  background: var(--tempest-border-default);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+/* ── Actions ────────────────────────────────────────────────────────────────── */
 .bc-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  padding: 10px 14px 12px;
+  padding: 12px 16px 14px;
 }
 
 .bc-btn {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
-  padding: 5px 12px;
+  font-family: inherit;
+  padding: 7px 14px;
   border-radius: 5px;
   border: 1px solid transparent;
   cursor: pointer;
-  transition: background 120ms, border-color 120ms, opacity 120ms;
+  transition: background 0.12s ease, border-color 0.12s ease, filter 0.12s ease, opacity 0.12s ease;
 }
 
 .bc-btn--cancel {
   background: transparent;
-  border-color: var(--tempest-border-subtle);
+  border-color: var(--tempest-border-default);
   color: var(--tempest-fg-muted);
 }
 .bc-btn--cancel:hover {
@@ -213,13 +233,14 @@
 
 .bc-btn--send {
   background: var(--tempest-accent-blue);
-  color: #fff;
-  border-color: transparent;
+  color: #ffffff;
+  font-weight: 600;
+  padding: 7px 16px;
 }
 .bc-btn--send:hover:not(:disabled) {
   filter: brightness(1.12);
 }
 .bc-btn--send:disabled {
-  opacity: 0.4;
+  opacity: 0.5;
   cursor: not-allowed;
 }

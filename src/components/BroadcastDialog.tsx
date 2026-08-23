@@ -73,6 +73,10 @@ export function BroadcastDialog({ sessions, onClose, onSend }: BroadcastDialogPr
           <p className="bc-empty">No agent sessions are currently running.</p>
         ) : (
           <>
+            <div className="bc-section-label">
+              Agents
+              <span className="bc-count">· {selected.size} of {sessions.length}</span>
+            </div>
             <div className="bc-session-list">
               <label className="bc-session-row bc-session-row--all">
                 <input
@@ -81,8 +85,7 @@ export function BroadcastDialog({ sessions, onClose, onSend }: BroadcastDialogPr
                   checked={allSelected}
                   onChange={toggleAll}
                 />
-                <span className="bc-all-label">All agents</span>
-                <span className="bc-count">{sessions.length}</span>
+                <span className="bc-all-label">Select all</span>
               </label>
 
               {sessions.map((s) => (
@@ -109,7 +112,7 @@ export function BroadcastDialog({ sessions, onClose, onSend }: BroadcastDialogPr
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
               />
-              <p className="bc-hint">Ctrl+Enter to send</p>
+              <p className="bc-hint"><code>Ctrl</code>+<code>Enter</code> to send</p>
             </div>
 
             <div className="bc-actions">
