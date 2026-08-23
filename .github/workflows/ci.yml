@@ -68,3 +68,46 @@ jobs:
       - name: Test
         working-directory: src-tauri
         run: cargo test
+
+  macos-atlas-probe:
+    name: macOS Atlas spawn probe
+    runs-on: macos-latest
+    steps:
+      # macOS GUI apps launched via LaunchServices / Finder inherit a minimal
+      # PATH — no /opt/homebrew/bin, no /usr/local/bin, no nvm/volta/fnm shims.
+      # That's why `Command::new("node").spawn()` in start_atlas_index fails
+      # with `os error 2` even though `node` works fine from the user's shell
+      # (issue #36). Reproduce that PATH here so every CI run tells us where
+      # node actually lives on macOS runners and which resolution strategies
+      # succeed under restricted PATH. Extend to a full .app smoke once the
+      # fix approach is picked.
+      - name: Show Finder-launched PATH and probe node
+        shell: bash
+        run: |
+          set +e
+          echo "=== host PATH (for reference) ==="
+          echo "$PATH"
+          echo "=== host node ==="
+          command -v node && node --version
+
+          echo
+          echo "=== simulating Finder-launched restricted PATH ==="
+          env -i HOME="$HOME" PATH=/usr/bin:/bin:/usr/sbin:/sbin bash -c '
+            echo "PATH=$PATH"
+            echo "--- direct lookup ---"
+            command -v node && node --version || echo "node NOT on restricted PATH"
+            echo "--- common install locations ---"
+            for p in \
+              /opt/homebrew/bin/node \
+              /usr/local/bin/node \
+              "$HOME/.volta/bin/node" \
+              "$HOME/.nvm/versions/node"; do
+              if [ -e "$p" ]; then echo "  FOUND: $p"; else echo "  missing: $p"; fi
+            done
+            echo "--- login shell resolution ---"
+            /bin/sh -lc "command -v node && node --version" \
+              || echo "login shell resolution FAILED"
+            echo "--- /usr/libexec/path_helper ---"
+            eval "$(/usr/libexec/path_helper -s)" && echo "PATH after path_helper: $PATH"
+            command -v node || echo "still no node after path_helper"
+          '
