@@ -8,6 +8,47 @@ import { ProgressiveBlur } from "@/components/global/progressive-blur";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
+const organizationSchema = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "@id": "https://www.tempestai.dev/#organization",
+  name: "Tempest",
+  url: "https://www.tempestai.dev",
+  logo: {
+    "@type": "ImageObject",
+    url: "https://www.tempestai.dev/og-image.png",
+    width: 1280,
+    height: 640,
+  },
+  email: "gsvprharsha@tempestai.dev",
+  contactPoint: [
+    {
+      "@type": "ContactPoint",
+      contactType: "customer support",
+      email: "gsvprharsha@tempestai.dev",
+      url: "https://www.tempestai.dev/contact",
+      availableLanguage: ["English"],
+      areaServed: "Worldwide",
+    },
+    {
+      "@type": "ContactPoint",
+      contactType: "security",
+      email: "gsvprharsha@tempestai.dev",
+      url: "https://github.com/tempestai-dev/tempest/security/policy",
+      availableLanguage: ["English"],
+      areaServed: "Worldwide",
+    },
+  ],
+  address: {
+    "@type": "PostalAddress",
+    addressCountry: "IN",
+  },
+  sameAs: [
+    "https://github.com/tempestai-dev/tempest",
+    "https://x.com/usetempest",
+  ],
+};
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -61,6 +102,10 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
+        />
         <Providers>
           <Header />
           {children}

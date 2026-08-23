@@ -37,21 +37,7 @@ export default function AboutPage() {
             url: "https://www.tempestai.dev/about",
             description:
               "Tempest is an open-source desktop app for running AI coding agents in parallel. Built with Tauri and React, Apache 2.0, local-first by design.",
-            mainEntity: {
-              "@type": "Organization",
-              name: "Tempest",
-              url: "https://www.tempestai.dev",
-              logo: {
-                "@type": "ImageObject",
-                url: "https://www.tempestai.dev/og-image.png",
-                width: 1280,
-                height: 640,
-              },
-              sameAs: [
-                "https://github.com/tempestai-dev/tempest",
-                "https://x.com/usetempest",
-              ],
-            },
+            mainEntity: { "@id": "https://www.tempestai.dev/#organization" },
           }),
         }}
       />

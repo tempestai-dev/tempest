@@ -28,16 +28,6 @@ const structuredDataSchema = {
       url: "https://www.tempestai.dev",
     },
     {
-      "@type": "Organization",
-      name: "Tempest",
-      url: "https://www.tempestai.dev",
-      logo: { "@type": "ImageObject", url: "https://www.tempestai.dev/og-image.png", width: 1280, height: 640 },
-      sameAs: [
-        "https://github.com/tempestai-dev/tempest",
-        "https://x.com/usetempest",
-      ],
-    },
-    {
       "@type": "WebSite",
       name: "Tempest",
       url: "https://www.tempestai.dev",

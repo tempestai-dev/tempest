@@ -54,6 +54,7 @@ export function Footer() {
             <p className="text-sm font-medium">Company</p>
             <nav className="flex flex-col gap-2.5">
               <Link href="/about" className="text-sm text-muted-foreground hover:text-foreground transition-colors w-fit">About</Link>
+              <Link href="/contact" className="text-sm text-muted-foreground hover:text-foreground transition-colors w-fit">Contact</Link>
               <Link href="/privacy" className="text-sm text-muted-foreground hover:text-foreground transition-colors w-fit">Privacy</Link>
               <Link href="/terms" className="text-sm text-muted-foreground hover:text-foreground transition-colors w-fit">Terms</Link>
             </nav>

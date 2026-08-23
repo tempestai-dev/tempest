@@ -34,6 +34,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE}/tempest-vs-agentsroom`, lastModified: new Date('2026-07-25') },
     { url: `${BASE}/tempest-vs-paseo`, lastModified: new Date('2026-07-25') },
     { url: `${BASE}/about`, lastModified: new Date('2026-07-25') },
+    { url: `${BASE}/contact`, lastModified: new Date('2026-08-23') },
     { url: `${BASE}/privacy`, lastModified: new Date('2026-07-25') },
     { url: `${BASE}/terms`, lastModified: new Date('2026-07-25') },
     { url: `${BASE}/parallel-ai-agents`, lastModified: new Date('2026-07-25') },
