@@ -3438,6 +3438,25 @@ fn resolve_shell() -> String {
     }
 }
 
+#[cfg(not(windows))]
+fn agent_shell_args(agent_invocation: String) -> Vec<String> {
+    vec![
+        "-lic".into(),
+        format!("{}; exec $SHELL -il", agent_invocation),
+    ]
+}
+
+#[cfg(all(test, not(windows)))]
+mod agent_shell_args_tests {
+    #[test]
+    fn launches_agent_from_interactive_login_shell() {
+        assert_eq!(
+            super::agent_shell_args("codex".into()),
+            vec!["-lic", "codex; exec $SHELL -il"]
+        );
+    }
+}
+
 #[tauri::command]
 async fn create_pty_session(
     session_id: String,
@@ -3565,10 +3584,7 @@ async fn create_pty_session(
             }
             #[cfg(not(windows))]
             {
-                (shell.clone(), vec![
-                    "-c".into(),
-                    format!("{}; exec $SHELL -i", agent_invocation),
-                ])
+                (shell.clone(), agent_shell_args(agent_invocation))
             }
         } else {
             // Bare shell session
@@ -3673,6 +3689,9 @@ async fn create_pty_session(
             c.cwd(&cwd);
             c
         };
+
+        #[cfg(not(windows))]
+        cmd.env("TERM", "xterm-256color");
 
         // Project env from tempest.yml. Applied before the DB block below so an
         // isolated session's DATABASE_URL can never be shadowed by the repo.
