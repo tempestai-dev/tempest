@@ -2441,11 +2441,58 @@ fn check_program_available(program: String) -> bool {
     let check_cmd = if cfg!(windows) { "where" } else { "which" };
     // Multi-word hints like "gh copilot" — only check the base executable name.
     let first = program.split_whitespace().next().unwrap_or(&program);
-    new_command(check_cmd)
+    let available_on_path = new_command(check_cmd)
         .arg(first)
         .output()
         .map(|o| o.status.success())
+        .unwrap_or(false);
+    if available_on_path {
+        return true;
+    }
+
+    #[cfg(unix)]
+    {
+        return login_shell_program_available(first);
+    }
+    #[cfg(not(unix))]
+    false
+}
+
+#[cfg(unix)]
+fn login_shell_program_available(program: &str) -> bool {
+    #[cfg(target_os = "macos")]
+    let fallback_shell = "/bin/zsh";
+    #[cfg(not(target_os = "macos"))]
+    let fallback_shell = "/bin/sh";
+
+    let shell = std::env::var("SHELL")
+        .ok()
+        .filter(|s| std::path::Path::new(s).is_file())
+        .unwrap_or_else(|| fallback_shell.to_string());
+    new_command(&shell)
+        .args(["-lic", "command -v \"$TEMPEST_PROGRAM\" >/dev/null 2>&1"])
+        .env("TEMPEST_PROGRAM", program)
+        .output()
+        .map(|o| o.status.success())
         .unwrap_or(false)
+}
+
+#[cfg(not(windows))]
+fn interactive_login_shell_args() -> Vec<String> {
+    vec!["-il".into()]
+}
+
+#[cfg(all(test, unix))]
+mod check_program_available_tests {
+    #[test]
+    fn login_shell_finds_available_program() {
+        assert!(super::login_shell_program_available("sh"));
+    }
+
+    #[test]
+    fn terminal_uses_interactive_login_shell() {
+        assert_eq!(super::interactive_login_shell_args(), vec!["-il"]);
+    }
 }
 
 #[tauri::command(async)]
@@ -3401,6 +3448,25 @@ fn resolve_shell() -> String {
     }
 }
 
+#[cfg(not(windows))]
+fn agent_shell_args(agent_invocation: String) -> Vec<String> {
+    vec![
+        "-lic".into(),
+        format!("{}; exec $SHELL -il", agent_invocation),
+    ]
+}
+
+#[cfg(all(test, not(windows)))]
+mod agent_shell_args_tests {
+    #[test]
+    fn launches_agent_from_interactive_login_shell() {
+        assert_eq!(
+            super::agent_shell_args("codex".into()),
+            vec!["-lic", "codex; exec $SHELL -il"]
+        );
+    }
+}
+
 #[tauri::command]
 async fn create_pty_session(
     session_id: String,
@@ -3528,14 +3594,18 @@ async fn create_pty_session(
             }
             #[cfg(not(windows))]
             {
-                (shell.clone(), vec![
-                    "-c".into(),
-                    format!("{}; exec $SHELL -i", agent_invocation),
-                ])
+                (shell.clone(), agent_shell_args(agent_invocation))
             }
         } else {
             // Bare shell session
-            (shell.clone(), Vec::new())
+            #[cfg(windows)]
+            {
+                (shell.clone(), Vec::new())
+            }
+            #[cfg(not(windows))]
+            {
+                (shell.clone(), interactive_login_shell_args())
+            }
         };
 
         // Optionally provision a Hephaestus isolation environment and rewrite the
@@ -3636,6 +3706,9 @@ async fn create_pty_session(
             c.cwd(&cwd);
             c
         };
+
+        #[cfg(not(windows))]
+        cmd.env("TERM", "xterm-256color");
 
         // Project env from tempest.yml. Applied before the DB block below so an
         // isolated session's DATABASE_URL can never be shadowed by the repo.
