@@ -17,7 +17,7 @@ import { antigravityAdapter } from "./adapters/antigravity.ts";
 import { codexAdapter } from "./adapters/codex.ts";
 import { hermesAdapter } from "./adapters/hermes.ts";
 import { opencodeAdapter } from "./adapters/opencode.ts";
-import { sha256Hex, computeTrustedHash } from "./codexTrust.ts";
+import { sha256Hex, computeTrustedHash, upsertTrustBlocks } from "./codexTrust.ts";
 import type { HookAdapter, HookPaths, JsonObject } from "./types.ts";
 
 const SCRIPT = "tempest-claude-hook.cmd";
@@ -248,6 +248,14 @@ checkPlan(cursorAdapter, "cursor", "/home/u/.cursor/hooks.json", "tempest-cursor
   const trusted = computeTrustedHash({ sourcePath: "/h/.codex/hooks.json", eventLabel: "stop", groupIndex: 0, handlerIndex: 0, command: "x", timeoutSec: 10 });
   assert.ok(/^sha256:[0-9a-f]{64}$/.test(trusted), "trusted hash is sha256:<64 hex>");
   assert.strictEqual(trusted, computeTrustedHash({ sourcePath: "/other", eventLabel: "stop", groupIndex: 5, handlerIndex: 9, command: "x", timeoutSec: 10 }), "hash ignores path/position (Codex hashes only the handler identity)");
+}
+
+// Replacing one trust block must preserve a newline before the next table.
+{
+  const entry = { sourcePath: "/h/.codex/hooks.json", eventLabel: "stop", groupIndex: 0, handlerIndex: 0, command: "new", timeoutSec: 10 };
+  const before = '[hooks.state."/h/.codex/hooks.json:stop:0:0"]\nenabled = true\ntrusted_hash = "old"\n[other]\nvalue = true\n';
+  const after = upsertTrustBlocks(before, [entry]);
+  assert.ok(after.includes(`trusted_hash = "${computeTrustedHash(entry)}"\n[other]`), "replacement keeps next TOML table on a new line");
 }
 
 // ── Codex: hooks.json + config.toml trust, positions shared across both ───────
