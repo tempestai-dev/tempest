@@ -85,7 +85,7 @@ export function upsertTrustBlocks(content: string, entries: CodexTrustEntry[]): 
     const block = [`[hooks.state."${escapeTomlBasic(key)}"]`, "enabled = true", `trusted_hash = "${hash}"`].join("\n");
     const range = findBlockRange(out, key);
     if (range) {
-      out = out.slice(0, range.start) + block + out.slice(range.end);
+      out = out.slice(0, range.start) + block + "\n" + out.slice(range.end);
     } else {
       const sep = out.length === 0 ? "" : out.endsWith("\n\n") ? "" : out.endsWith("\n") ? "\n" : "\n\n";
       out = `${out}${sep}${block}\n`;
