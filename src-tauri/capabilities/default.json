@@ -15,6 +15,7 @@
     "core:window:allow-unmaximize",
     "core:window:allow-is-maximized",
     "core:window:allow-set-fullscreen",
+    "core:window:allow-start-dragging",
     "updater:default",
     "process:allow-restart",
     "notification:default"
