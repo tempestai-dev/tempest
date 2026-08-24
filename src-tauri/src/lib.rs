@@ -1956,6 +1956,16 @@ fn db_delete_thread_edge(state: tauri::State<'_, DbState>, id: String) -> Result
 /// nvm/volta/fnm shims), which makes `Command::new("node").spawn()` fail with
 /// `os error 2`. See issue #36. Cascade: current PATH → login shell → known
 /// install locations. Cached for the process lifetime. Non-macOS: bare "node".
+#[cfg(target_os = "macos")]
+fn last_existing_shell_path(stdout: &[u8]) -> Option<String> {
+    String::from_utf8_lossy(stdout)
+        .lines()
+        .rev()
+        .map(str::trim)
+        .find(|s| !s.is_empty() && std::path::Path::new(s).is_file())
+        .map(str::to_string)
+}
+
 fn resolve_node() -> String {
     #[cfg(not(target_os = "macos"))]
     { "node".to_string() }
@@ -1972,15 +1982,22 @@ fn resolve_node() -> String {
                     }
                 }
             }
-            // Login shell honors the user's nvm/volta/fnm and dotfiles.
-            if let Ok(out) = std::process::Command::new("/bin/sh")
-                .args(["-lc", "command -v node"])
+            // NVM and other version managers are usually initialised by the
+            // user's interactive shell config (for example ~/.zshrc), so use
+            // their configured shell instead of /bin/sh.
+            let shell = std::env::var("SHELL")
+                .ok()
+                .filter(|s| std::path::Path::new(s).is_file())
+                .unwrap_or_else(|| "/bin/zsh".to_string());
+            if let Ok(out) = std::process::Command::new(shell)
+                .args(["-lic", "command -v node"])
                 .output()
             {
                 if out.status.success() {
-                    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                    if !s.is_empty() && std::path::Path::new(&s).is_file() {
-                        return s;
+                    // Shell startup files may print banners. `command -v node`
+                    // is the final command, so take the last valid path.
+                    if let Some(path) = last_existing_shell_path(&out.stdout) {
+                        return path;
                     }
                 }
             }
@@ -1992,6 +2009,20 @@ fn resolve_node() -> String {
             // ponytail: fall back to bare "node" — spawn will error clearly.
             "node".to_string()
         }).clone()
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod resolve_node_tests {
+    #[test]
+    fn shell_path_ignores_startup_output() {
+        let executable = std::env::current_exe().unwrap();
+        let output = format!("shell startup banner\n{}\n", executable.display());
+
+        assert_eq!(
+            super::last_existing_shell_path(output.as_bytes()),
+            Some(executable.to_string_lossy().into_owned())
+        );
     }
 }
 
