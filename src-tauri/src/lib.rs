@@ -2441,11 +2441,48 @@ fn check_program_available(program: String) -> bool {
     let check_cmd = if cfg!(windows) { "where" } else { "which" };
     // Multi-word hints like "gh copilot" — only check the base executable name.
     let first = program.split_whitespace().next().unwrap_or(&program);
-    new_command(check_cmd)
+    let available_on_path = new_command(check_cmd)
         .arg(first)
         .output()
         .map(|o| o.status.success())
+        .unwrap_or(false);
+    if available_on_path {
+        return true;
+    }
+
+    #[cfg(unix)]
+    {
+        return login_shell_program_available(first);
+    }
+    #[cfg(not(unix))]
+    false
+}
+
+#[cfg(unix)]
+fn login_shell_program_available(program: &str) -> bool {
+    #[cfg(target_os = "macos")]
+    let fallback_shell = "/bin/zsh";
+    #[cfg(not(target_os = "macos"))]
+    let fallback_shell = "/bin/sh";
+
+    let shell = std::env::var("SHELL")
+        .ok()
+        .filter(|s| std::path::Path::new(s).is_file())
+        .unwrap_or_else(|| fallback_shell.to_string());
+    new_command(&shell)
+        .args(["-lic", "command -v \"$TEMPEST_PROGRAM\" >/dev/null 2>&1"])
+        .env("TEMPEST_PROGRAM", program)
+        .output()
+        .map(|o| o.status.success())
         .unwrap_or(false)
+}
+
+#[cfg(all(test, unix))]
+mod check_program_available_tests {
+    #[test]
+    fn login_shell_finds_available_program() {
+        assert!(super::login_shell_program_available("sh"));
+    }
 }
 
 #[tauri::command(async)]
