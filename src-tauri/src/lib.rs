@@ -2477,11 +2477,21 @@ fn login_shell_program_available(program: &str) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(not(windows))]
+fn interactive_login_shell_args() -> Vec<String> {
+    vec!["-il".into()]
+}
+
 #[cfg(all(test, unix))]
 mod check_program_available_tests {
     #[test]
     fn login_shell_finds_available_program() {
         assert!(super::login_shell_program_available("sh"));
+    }
+
+    #[test]
+    fn terminal_uses_interactive_login_shell() {
+        assert_eq!(super::interactive_login_shell_args(), vec!["-il"]);
     }
 }
 
@@ -3588,7 +3598,14 @@ async fn create_pty_session(
             }
         } else {
             // Bare shell session
-            (shell.clone(), Vec::new())
+            #[cfg(windows)]
+            {
+                (shell.clone(), Vec::new())
+            }
+            #[cfg(not(windows))]
+            {
+                (shell.clone(), interactive_login_shell_args())
+            }
         };
 
         // Optionally provision a Hephaestus isolation environment and rewrite the
