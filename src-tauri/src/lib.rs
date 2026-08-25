@@ -40,12 +40,24 @@ fn register_service_route(slug: String, port: u16, routes: tauri::State<'_, Serv
 /// the first time a sandboxed PTY session is created.
 static ISOLATE: std::sync::OnceLock<Arc<dyn Isolate>> = std::sync::OnceLock::new();
 
+/// Register a project root with the asset:// scope so CodeMirrorPane can serve
+/// local images referenced from files inside it. `assetProtocol.scope` in
+/// `tauri.conf.json` starts empty (closed) — every path an image can come from
+/// must flow through here. Idempotent; a bad path is non-fatal.
+fn allow_project_asset_scope(app: &tauri::AppHandle, path: &str) {
+    use tauri::Manager;
+    if path.is_empty() { return; }
+    let _ = app.asset_protocol_scope().allow_directory(path, true);
+}
+
 
 #[tauri::command(async)]
-fn create_workspace(location: String, name: String) -> Result<String, String> {
+fn create_workspace(app: tauri::AppHandle, location: String, name: String) -> Result<String, String> {
     let path = std::path::Path::new(&location).join(&name);
     std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
-    Ok(path.to_string_lossy().to_string())
+    let s = path.to_string_lossy().to_string();
+    allow_project_asset_scope(&app, &s);
+    Ok(s)
 }
 
 #[derive(serde::Serialize)]
@@ -906,7 +918,7 @@ fn start_atlas_daemon(
     let mut map = state.0.lock().unwrap();
 
     // Check whether the existing child is still alive before spawning another.
-    if let Some(child) = map.get_mut(&project_path) {
+    if let Some((child, _)) = map.get_mut(&project_path) {
         match child.try_wait() {
             Ok(None) => return Ok(()), // still running — nothing to do
             _ => {}                    // exited or error — fall through and restart
@@ -934,7 +946,10 @@ fn start_atlas_daemon(
         .spawn()
         .map_err(|e| format!("Failed to spawn Atlas daemon: {e}"))?;
 
-    map.insert(project_path, child);
+    let pid = child.id();
+    atlas_daemons_set(&app, &project_path, Some(pid));
+    let job = hephaestus::lifecycle_job(pid).ok();
+    map.insert(project_path, (child, job));
     Ok(())
 }
 
@@ -942,14 +957,16 @@ fn start_atlas_daemon(
 /// from Tempest or the app is exiting.
 #[tauri::command(async)]
 fn stop_atlas_daemon(
+    app: tauri::AppHandle,
     state: tauri::State<'_, DaemonState>,
     project_path: String,
 ) -> Result<(), String> {
     let mut map = state.0.lock().unwrap();
-    if let Some(mut child) = map.remove(&project_path) {
+    if let Some((mut child, _job)) = map.remove(&project_path) {
         let _ = child.kill();
         let _ = child.wait();
     }
+    atlas_daemons_set(&app, &project_path, None);
     Ok(())
 }
 
@@ -1026,11 +1043,13 @@ fn spawn_atlas_mcp_bridge(app: &tauri::AppHandle, project_path: &str) -> Result<
     let stdin  = child.stdin.take().ok_or_else(||  "Failed to acquire Atlas MCP stdin".to_string())?;
     let stdout = child.stdout.take().ok_or_else(|| "Failed to acquire Atlas MCP stdout".to_string())?;
 
+    let job = hephaestus::lifecycle_job(child.id()).ok();
     let mut proc = McpBridgeProcess {
         child,
         writer:  std::io::BufWriter::new(stdin),
         reader:  std::io::BufReader::new(stdout),
         next_id: 1,
+        _job:    job,
     };
 
     mcp_request(&mut proc, "initialize", serde_json::json!({
@@ -1489,19 +1508,20 @@ fn db_load(state: tauri::State<'_, DbState>) -> Result<DbSnapshot, String> {
 // store (expanded, worktree_order, …). Used by the session write path to
 // guarantee the FK parent exists regardless of write ordering.
 #[tauri::command(async)]
-fn db_ensure_project(state: tauri::State<'_, DbState>, id: String, name: String, path: String) -> Result<(), String> {
+fn db_ensure_project(app: tauri::AppHandle, state: tauri::State<'_, DbState>, id: String, name: String, path: String) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT INTO projects (id, name, path) VALUES (?1, ?2, ?3) ON CONFLICT(id) DO NOTHING",
         rusqlite::params![id, name, path],
     )
     .map_err(|e| e.to_string())?;
+    allow_project_asset_scope(&app, &path);
     Ok(())
 }
 
 // Full project upsert owned by the projects store.
 #[tauri::command(async)]
-fn db_upsert_project(state: tauri::State<'_, DbState>, project: DbProject) -> Result<(), String> {
+fn db_upsert_project(app: tauri::AppHandle, state: tauri::State<'_, DbState>, project: DbProject) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     // atlas_indexed is intentionally NOT written here — it is owned by the atlas
     // decision store, and this list-level upsert must not reset it.
@@ -1517,6 +1537,7 @@ fn db_upsert_project(state: tauri::State<'_, DbState>, project: DbProject) -> Re
         ],
     )
     .map_err(|e| e.to_string())?;
+    allow_project_asset_scope(&app, &project.path);
     Ok(())
 }
 
@@ -1529,7 +1550,7 @@ fn db_set_project_atlas_indexed(state: tauri::State<'_, DbState>, id: String, in
 }
 
 #[tauri::command(async)]
-fn db_upsert_branch(state: tauri::State<'_, DbState>, branch: DbBranch) -> Result<(), String> {
+fn db_upsert_branch(app: tauri::AppHandle, state: tauri::State<'_, DbState>, branch: DbBranch) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT INTO branches (id, project_id, name, path) VALUES (?1, ?2, ?3, ?4) \
@@ -1538,6 +1559,7 @@ fn db_upsert_branch(state: tauri::State<'_, DbState>, branch: DbBranch) -> Resul
         rusqlite::params![branch.id, branch.project_id, branch.name, branch.path],
     )
     .map_err(|e| e.to_string())?;
+    allow_project_asset_scope(&app, &branch.path);
     Ok(())
 }
 
@@ -3366,11 +3388,70 @@ fn read_pid_file(worktree_path: &str) -> Option<u32> {
         .and_then(|contents| contents.trim().parse::<u32>().ok())
 }
 
+/// `<app_data>/atlas-daemons.json` — persisted `project_path → pid` map for
+/// every atlas daemon Tempest currently owns, used by the startup orphan
+/// sweep to reap leaks from a crashed previous Tempest.
+fn atlas_daemons_file(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    use tauri::Manager;
+    app.path().app_data_dir().ok().map(|d| d.join("atlas-daemons.json"))
+}
+
+fn atlas_daemons_read(app: &tauri::AppHandle) -> std::collections::HashMap<String, u32> {
+    atlas_daemons_file(app)
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn atlas_daemons_write(app: &tauri::AppHandle, map: &std::collections::HashMap<String, u32>) {
+    if let Some(p) = atlas_daemons_file(app) {
+        if let Some(parent) = p.parent() { let _ = std::fs::create_dir_all(parent); }
+        if let Ok(s) = serde_json::to_string(map) { let _ = std::fs::write(p, s); }
+    }
+}
+
+fn atlas_daemons_set(app: &tauri::AppHandle, project_path: &str, pid: Option<u32>) {
+    let mut map = atlas_daemons_read(app);
+    match pid {
+        Some(p) => { map.insert(project_path.to_string(), p); }
+        None    => { map.remove(project_path); }
+    }
+    atlas_daemons_write(app, &map);
+}
+
+/// Startup orphan sweep. Kills leaked PTY-shell PIDs (via `.tempest-pid`
+/// sidecars in each known worktree) and leaked atlas daemon PIDs (via
+/// `atlas-daemons.json` in app-data) left behind by a previous Tempest
+/// that crashed before cleaning up, then clears the persisted records.
+///
+/// ponytail: sweeps by PID only. Windows recycles PIDs after a reboot,
+/// so in the narrow window "previous Tempest crashed → machine rebooted →
+/// an unrelated process now owns that PID → user relaunches Tempest" we
+/// could kill something we shouldn't. Upgrade path: persist process
+/// creation time alongside the PID and cross-check before killing.
+fn sweep_orphan_processes(app: tauri::AppHandle, worktrees: Vec<String>) {
+    let me = std::process::id();
+    for wt in worktrees {
+        if let Some(pid) = read_pid_file(&wt) {
+            if pid != 0 && pid != me { kill_pid_tree(pid); }
+            let _ = std::fs::remove_file(pid_file_path(&wt));
+        }
+    }
+    let map = atlas_daemons_read(&app);
+    for pid in map.values() {
+        if *pid != 0 && *pid != me { kill_pid_tree(*pid); }
+    }
+    atlas_daemons_write(&app, &Default::default());
+}
+
 pub struct PtyState(pub(crate) Arc<DashMap<String, Arc<PtySession>>>);
 
 pub struct ZenState(pub Mutex<std::collections::HashMap<String, (String, String)>>);
 
-pub struct DaemonState(pub Mutex<std::collections::HashMap<String, std::process::Child>>);
+/// (child, KILL_ON_JOB_CLOSE handle). Dropping the LifecycleJob kills the
+/// daemon subtree — so even a hard-crashed Tempest cannot leak node.exe.
+/// `None` when the OS refused the job attach (very rare) or on non-Windows.
+pub struct DaemonState(pub Mutex<std::collections::HashMap<String, (std::process::Child, Option<hephaestus::LifecycleJob>)>>);
 
 pub struct RunState(pub Mutex<std::collections::HashMap<String, std::process::Child>>);
 
@@ -3381,6 +3462,10 @@ struct McpBridgeProcess {
     writer:  std::io::BufWriter<std::process::ChildStdin>,
     reader:  std::io::BufReader<std::process::ChildStdout>,
     next_id: u64,
+    /// KILL_ON_JOB_CLOSE handle for the bridge subtree. Dropping this reaps
+    /// the node.exe even if Tempest crashes. `None` on non-Windows or job
+    /// attach failure.
+    _job:    Option<hephaestus::LifecycleJob>,
 }
 
 pub struct AtlasMcpState(pub(crate) Mutex<std::collections::HashMap<String, McpBridgeProcess>>);
@@ -3802,24 +3887,51 @@ async fn create_pty_session(
     .await
     .map_err(|e| e.to_string())??;
 
-    // Pump PTY output to the frontend on a background thread, directly through
-    // this session's dedicated channel — O(1), no broadcast, no filtering.
+    // Pump PTY output to the frontend on a background thread, through this
+    // session's dedicated channel — O(1), no broadcast, no filtering. Reads
+    // are coalesced across a 16 ms window (or 64 KiB) so heavy output
+    // (`cargo build`, `npm install`, agent stdout floods) fires ~60 IPC events
+    // per second instead of thousands. Reader thread stays hot on the PTY;
+    // a batcher thread drains the mpsc and does the flushing.
     let sid = session_id.clone();
     let on_event_clone = on_event.clone();
     let mut reader = reader;
+    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
     std::thread::spawn(move || {
         let mut buf = [0u8; 4096];
         loop {
             match reader.read(&mut buf) {
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
-                    let data = String::from_utf8_lossy(&buf[..n]).to_string();
-                    on_event_clone.send(PtyOutputPayload {
-                        session_id: sid.clone(),
-                        data,
-                    }).ok();
+                    if tx.send(buf[..n].to_vec()).is_err() { break; }
                 }
             }
+        }
+    });
+    std::thread::spawn(move || {
+        use std::time::{Duration, Instant};
+        const FLUSH_WINDOW: Duration = Duration::from_millis(16);
+        const MAX_BATCH: usize = 64 * 1024;
+        loop {
+            // Block for the first chunk of this batch.
+            let Ok(first) = rx.recv() else { break; };
+            let mut pending = first;
+            let deadline = Instant::now() + FLUSH_WINDOW;
+            while pending.len() < MAX_BATCH {
+                let now = Instant::now();
+                if now >= deadline { break; }
+                match rx.recv_timeout(deadline - now) {
+                    Ok(more)                                          => pending.extend_from_slice(&more),
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout)   => break,
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                        let data = String::from_utf8_lossy(&pending).to_string();
+                        on_event_clone.send(PtyOutputPayload { session_id: sid.clone(), data }).ok();
+                        return;
+                    }
+                }
+            }
+            let data = String::from_utf8_lossy(&pending).to_string();
+            on_event_clone.send(PtyOutputPayload { session_id: sid.clone(), data }).ok();
         }
     });
 
@@ -4234,6 +4346,19 @@ pub fn run() {
         return;
     }
     tauri::Builder::default()
+        // Single-instance guard MUST be the first plugin. When a second
+        // Tempest.exe is launched, its argv is forwarded here and the process
+        // exits — no second PTY registry, atlas daemons, or DB scheduler.
+        // The callback focuses the existing main window so the user sees the
+        // click do something.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            use tauri::Manager;
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -4255,7 +4380,28 @@ pub fn run() {
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
             let conn = init_db(app.handle())
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            // Re-allow asset:// scope for every persisted project/branch path.
+            // The config now starts closed; without this, images referenced from
+            // files in a re-opened project won't load.
+            let handle = app.handle().clone();
+            let mut worktree_paths: Vec<String> = Vec::new();
+            for sql in ["SELECT path FROM projects WHERE archived_at IS NULL", "SELECT path FROM branches"] {
+                if let Ok(mut stmt) = conn.prepare(sql) {
+                    if let Ok(rows) = stmt.query_map([], |r| r.get::<_, String>(0)) {
+                        for p in rows.flatten() {
+                            allow_project_asset_scope(&handle, &p);
+                            worktree_paths.push(p);
+                        }
+                    }
+                }
+            }
             app.manage(DbState(Mutex::new(conn)));
+            // Reap PTY shells / atlas daemons leaked by a previous crashed
+            // Tempest. Spawned so it never blocks first paint.
+            let sweep_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                sweep_orphan_processes(sweep_handle, worktree_paths);
+            });
             automations::start_scheduler(app.handle().clone(), db_dir.join("tempest.db"));
             tauri::async_runtime::spawn(async { let _ = dbiso::sweep_orphans().await; });
             // Loopback receiver for agent lifecycle hooks. Best-effort; a bind
@@ -4410,10 +4556,12 @@ pub fn run() {
             if let tauri::RunEvent::Exit = event {
                 use tauri::Manager;
 
-                // Kill all atlas daemons cleanly on app exit.
+                // Kill all atlas daemons cleanly on app exit. Dropping the
+                // LifecycleJob first fires KILL_ON_JOB_CLOSE (belt-and-braces
+                // with the explicit kill for platforms without job objects).
                 let state = app_handle.state::<DaemonState>();
                 let mut map = state.0.lock().unwrap();
-                for (_, mut child) in map.drain() {
+                for (_, (mut child, _job)) in map.drain() {
                     let _ = child.kill();
                     let _ = child.wait();
                 }

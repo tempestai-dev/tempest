@@ -1834,15 +1834,28 @@ export function WorkspaceView({ zen, name, path }: Props) {
   // Re-check sidebar scroll fades after layout settles (rAF ensures DOM is measured post-paint)
   useEffect(() => { requestAnimationFrame(checkSidebarScroll); }, [projects, sessions]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Atlas daemon heartbeat — ping every 3 minutes. If a daemon exited (e.g. idle
-  // self-reap or OOM) the Rust command restarts it, keeping the file watcher alive.
+  // Atlas daemon heartbeat — ping every 3 minutes for projects the user has
+  // actually touched this session. If a daemon exited (idle self-reap, OOM) the
+  // Rust command restarts it. Ungated the loop used to spawn N daemons on every
+  // launch even if the user never opened Atlas — 5 projects = 5 permanent Node
+  // processes. Now we only keep watchers alive for what's live in this session;
+  // untouched projects start on demand.
+  const touchedAtlasPathsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!activeProjectPath) return;
+    if (!getSettings().atlasEnabled) return;
+    if ((getRuntimeState().atlasProjects ?? {})[activeProjectPath] !== true) return;
+    if (touchedAtlasPathsRef.current.has(activeProjectPath)) return;
+    touchedAtlasPathsRef.current.add(activeProjectPath);
+    invoke("start_atlas_daemon", { projectPath: activeProjectPath }).catch(() => {});
+  }, [activeProjectPath]);
   useEffect(() => {
     const id = setInterval(() => {
       if (!getSettings().atlasEnabled) return;
       const atlasProjects = getRuntimeState().atlasProjects ?? {};
-      for (const project of projectsRef.current) {
-        if (atlasProjects[project.path] === true) {
-          invoke("start_atlas_daemon", { projectPath: project.path }).catch(() => {});
+      for (const p of touchedAtlasPathsRef.current) {
+        if (atlasProjects[p] === true) {
+          invoke("start_atlas_daemon", { projectPath: p }).catch(() => {});
         }
       }
     }, 3 * 60 * 1000);

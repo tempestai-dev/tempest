@@ -40,18 +40,26 @@ export default function App() {
     window.addEventListener("unhandledrejection", onRej);
     window.addEventListener("keydown", onKey);
 
-    checkAgentAvailability();
-    void startRemoteAgentsFetch(); // verified remote agents manifest, else bundled
     const label = getCurrentWindow().label;
-    // Fire once per main-window launch (zen sub-windows don't re-count).
-    if (!label.startsWith("zen-")) {
-      void (async () => {
-        const app_version = await getVersion().catch(() => "unknown");
-        const os = osName();
-        void track("app_opened", { app_version, os, is_first_launch: !getRuntimeState().onboardingComplete });
-        void setPersonProperties({ app_version, os, atlas_enabled: getSettings().atlasEnabled });
-      })();
-    }
+    // Defer everything the first paint doesn't need: Windows `where` probes for
+    // every agent, remote-manifest fetch, telemetry — none of it blocks the
+    // welcome screen. requestIdleCallback in Chromium/WebView2; setTimeout(0)
+    // fallback covers older WebView2 (and lets Safari-ish paths not choke).
+    const idle: (cb: () => void) => number =
+      (window as unknown as { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback
+        ?? ((cb: () => void) => window.setTimeout(cb, 0));
+    idle(() => {
+      checkAgentAvailability();
+      void startRemoteAgentsFetch();
+      if (!label.startsWith("zen-")) {
+        void (async () => {
+          const app_version = await getVersion().catch(() => "unknown");
+          const os = osName();
+          void track("app_opened", { app_version, os, is_first_launch: !getRuntimeState().onboardingComplete });
+          void setPersonProperties({ app_version, os, atlas_enabled: getSettings().atlasEnabled });
+        })();
+      }
+    });
     if (label.startsWith("zen-")) {
       invoke<[string, string] | null>("get_zen_config", { label })
         .then((result) => {

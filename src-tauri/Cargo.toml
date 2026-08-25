@@ -41,6 +41,11 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tauri-plugin-notification = "2"
+# Prevents a second Tempest.exe from running alongside the first — the second
+# invocation forwards its argv to the running instance's callback, which we use
+# to focus the existing window. Without this, duplicate PTY registries / atlas
+# daemons / schedulers stack up.
+tauri-plugin-single-instance = "2"
 # Verifies the signed remote agents manifest (config/agents.json). Already in the
 # tree via tauri-plugin-updater; named here so the verify command can use it.
 minisign-verify = "0.2"
@@ -85,7 +90,7 @@ junction = "1"
 debug = "line-tables-only"  # smaller debuginfo -> much faster linking on Windows
 
 [profile.release]
-opt-level     = "z"     # optimize for size, not speed
+opt-level     = 3       # optimize for speed — desktop app, not embedded
 lto           = "thin"  # cross-crate dead-code elimination
 codegen-units = 1       # single unit lets LLVM optimize across more code
 strip         = true    # strip debug symbols

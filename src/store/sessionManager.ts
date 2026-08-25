@@ -15,8 +15,13 @@ const CEIL_MS = 12_000;
 // pre-output thinking window (e.g. Claude extended thinking before first token).
 // Explicit OSC/DEC signals bypass this gate entirely and always fire immediately.
 const TURN_STARTED_BYTES = 200;
-// Maximum bytes to keep in each session's replay buffer.
+// Maximum bytes to keep in each session's replay buffer while a renderer is
+// attached. Full scrollback for the visible pane, so xterm never sees a gap.
 const BUFFER_MAX_BYTES = 2 * 1024 * 1024;
+// Cap while nothing is attached — the pane is hidden, no scrollback to serve.
+// Just enough tail to cover the Claude permission recheck window (32 KB) plus
+// headroom. Cuts idle heap ~93% per session; grows back on attach.
+const BUFFER_DETACHED_MAX_BYTES = 128 * 1024;
 // Maximum bytes of tail carried across chunks for OSC/CSI sequence reassembly.
 // Keeps in-progress escape sequences that split at a chunk boundary alive until
 // the next chunk completes them.
@@ -196,7 +201,17 @@ class SessionManager {
 
   // Called by TerminalPane on unmount.
   detach(sessionId: string, onData: (data: string) => void) {
-    this.sessions.get(sessionId)?.listeners.delete(onData);
+    const record = this.sessions.get(sessionId);
+    if (record) {
+      record.listeners.delete(onData);
+      // Last renderer gone — trim the buffer down to the detached cap now
+      // instead of waiting for the next chunk to drain it.
+      if (record.listeners.size === 0) {
+        while (record.bufferBytes > BUFFER_DETACHED_MAX_BYTES && record.buffer.length > 1) {
+          record.bufferBytes -= record.buffer.shift()!.length;
+        }
+      }
+    }
     const pending = this.pending.get(sessionId);
     if (pending) {
       pending.delete(onData);
@@ -344,9 +359,13 @@ class SessionManager {
     if (!record) return;
 
     // Append to ring buffer, evicting old chunks from the front when over limit.
+    // Cap is dynamic — full 2 MB while a pane is attached (scrollback for the
+    // visible terminal), 128 KB while nothing is watching (just enough tail for
+    // the Claude permission recheck).
     record.buffer.push(data);
     record.bufferBytes += data.length;
-    while (record.bufferBytes > BUFFER_MAX_BYTES && record.buffer.length > 1) {
+    const cap = record.listeners.size > 0 ? BUFFER_MAX_BYTES : BUFFER_DETACHED_MAX_BYTES;
+    while (record.bufferBytes > cap && record.buffer.length > 1) {
       record.bufferBytes -= record.buffer.shift()!.length;
     }
 
