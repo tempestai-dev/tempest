@@ -4109,6 +4109,31 @@ async fn get_ide_panel_url(
     }
 }
 
+// ── Host machine identity ────────────────────────────────────────────────────
+
+/// OS hostname, used as the default device name when generating a mobile
+/// pairing QR. Falls back to "Tempest desktop" if the platform lookup fails.
+#[tauri::command]
+fn get_hostname() -> String {
+    #[cfg(windows)]
+    {
+        std::env::var("COMPUTERNAME").unwrap_or_else(|_| "Tempest desktop".into())
+    }
+    #[cfg(unix)]
+    {
+        use std::ffi::CStr;
+        let mut buf = [0u8; 256];
+        // SAFETY: buf is a valid mutable byte buffer of the given length.
+        let rc = unsafe { libc::gethostname(buf.as_mut_ptr() as *mut _, buf.len()) };
+        if rc == 0 {
+            let cstr = unsafe { CStr::from_ptr(buf.as_ptr() as *const _) };
+            cstr.to_string_lossy().into_owned()
+        } else {
+            "Tempest desktop".into()
+        }
+    }
+}
+
 // ── App ──────────────────────────────────────────────────────────────────────
 
 /// Open the webview devtools. Compiled in for release builds via the tauri
@@ -4299,6 +4324,7 @@ pub fn run() {
             node_ingest::scrape_url,
             node_ingest::fetch_media_info,
             open_devtools,
+            get_hostname,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

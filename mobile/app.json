@@ -19,6 +19,15 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Tempest uses the camera to scan the pairing QR shown by your desktop."
+        }
+      ]
+    ]
   }
 }
