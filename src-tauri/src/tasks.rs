@@ -16,6 +16,9 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tauri::{AppHandle, Emitter};
+
+use crate::tasks_store;
 
 // ────────────────────────────────────────────────────────────────────────
 // Shared types (mirrored on the TS side in src/components/tasks/types.ts)
@@ -200,15 +203,110 @@ fn cache_put(key: String, v: Value) {
 
 /// Frontend-facing: drop cached entries so a Refresh button forces a
 /// re-fetch. An optional `prefix` scopes it (e.g. `"gh:"` or `"linear:"`) so
-/// refreshing one source doesn't clobber cached data for the other.
+/// refreshing one source doesn't clobber cached data for the other. Both the
+/// in-memory map and the SQLite mirror are evicted identically.
 #[tauri::command(async)]
 pub fn tasks_cache_invalidate(prefix: Option<String>) {
+    let scoped = prefix.as_deref().filter(|p| !p.is_empty());
     if let Ok(mut c) = cache().lock() {
-        match prefix {
-            Some(p) if !p.is_empty() => c.retain(|k, _| !k.starts_with(&p)),
-            _ => c.clear(),
+        match scoped {
+            Some(p) => c.retain(|k, _| !k.starts_with(p)),
+            None => c.clear(),
         }
     }
+    match scoped {
+        Some(p) => tasks_store::delete_prefix(p),
+        None => {
+            tasks_store::delete_prefix("gh:");
+            tasks_store::delete_prefix("linear:");
+        }
+    }
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Persistent layer wiring: account identity + stale-while-revalidate.
+// The in-memory map above stays the hot path; SQLite (~/.tempest/tasks-
+// cache.db via tasks_store) mirrors every entry so lists/threads survive a
+// restart and get served instantly while a background fetch revalidates.
+// ────────────────────────────────────────────────────────────────────────
+
+static GH_OWNER: OnceLock<Option<String>> = OnceLock::new();
+
+/// GitHub login of the authenticated account, memoized for the process
+/// lifetime. Cached rows are tagged with it so switching gh accounts can't
+/// serve stale cross-account data after a restart.
+fn gh_owner() -> String {
+    GH_OWNER
+        .get_or_init(|| {
+            let out = gh_cmd().args(["auth", "status"]).output().ok()?;
+            let text = format!(
+                "{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            );
+            parse_gh_user(&text)
+        })
+        .clone()
+        .unwrap_or_else(|| "gh-anon".into())
+}
+
+static LN_OWNER: OnceLock<String> = OnceLock::new();
+
+/// Tag derived from the Linear API key (hashed — never stored raw).
+fn linear_owner() -> String {
+    LN_OWNER
+        .get_or_init(|| {
+            linear_key()
+                .map(|k| tasks_store::hash_owner(&k))
+                .unwrap_or_else(|_| "ln-anon".into())
+        })
+        .clone()
+}
+
+/// Shared tail of every cached command: turn the JSON payload from
+/// `cached_json` into the command's typed result.
+fn decode<T: serde::de::DeserializeOwned>(payload: Result<Value, String>) -> Result<T, String> {
+    payload.and_then(|v| serde_json::from_value(v).map_err(|e| e.to_string()))
+}
+
+/// Unified read path behind every persisted command:
+///   memory (< TTL) → SQLite fresh → SQLite stale + background revalidate →
+///   synchronous fetch. The fetch closure returns the final JSON payload; on
+/// success both layers are written. A stale serve emits
+/// `tasks:cache-refreshed` once the background fetch lands so the UI can
+/// hot-swap the fresher data without blocking on the network.
+fn cached_json<F>(app: &AppHandle, key: &str, owner: &str, fetch: F) -> Result<Value, String>
+where
+    F: FnOnce() -> Result<Value, String> + Send + 'static,
+{
+    if let Some(v) = cache_get(key) {
+        return Ok(v);
+    }
+    if let Some(v) = tasks_store::get_fresh(key, TTL.as_secs(), owner) {
+        cache_put(key.to_string(), v.clone());
+        return Ok(v);
+    }
+    if let Some(v) = tasks_store::get_stale(key, owner) {
+        let app2 = app.clone();
+        let key2 = key.to_string();
+        let owner2 = owner.to_string();
+        std::thread::spawn(move || {
+            if let Ok(fresh) = fetch() {
+                cache_put(key2.clone(), fresh.clone());
+                tasks_store::put(&key2, &fresh, &owner2);
+                let _ = app2.emit(
+                    "tasks:cache-refreshed",
+                    serde_json::json!({ "key": key2, "data": fresh }),
+                );
+            }
+        });
+        return Ok(v);
+    }
+    // Cold miss → synchronous fetch, write both layers.
+    let v = fetch()?;
+    cache_put(key.to_string(), v.clone());
+    tasks_store::put(key, &v, owner);
+    Ok(v)
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -307,15 +405,21 @@ pub fn tasks_github_auth() -> GhAuthState {
 }
 
 fn parse_gh_user(text: &str) -> Option<String> {
-    // "  ✓ Logged in to github.com as harsha (keyring)"
+    // gh ≥2.40:  "  ✓ Logged in to github.com account harsha (keyring)"
+    // older gh:  "  ✓ Logged in to github.com as harsha (keyring)"
+    // Match either so the cache owner tag survives a gh upgrade mid-session
+    // history (a mismatch would silently orphan every persisted row).
+    const MARKERS: [&str; 2] = [" account ", " as "];
     for line in text.lines() {
-        if let Some((_, after)) = line.split_once("as ") {
-            let user: String = after
-                .chars()
-                .take_while(|c| !c.is_whitespace() && *c != '(')
-                .collect();
-            if !user.is_empty() {
-                return Some(user);
+        for marker in MARKERS {
+            if let Some((_, after)) = line.split_once(marker) {
+                let user: String = after
+                    .chars()
+                    .take_while(|c| !c.is_whitespace() && *c != '(')
+                    .collect();
+                if !user.is_empty() {
+                    return Some(user);
+                }
             }
         }
     }
@@ -327,31 +431,29 @@ fn parse_gh_user(text: &str) -> Option<String> {
 /// silently truncating at a fixed cap — `gh repo list` has no cursor, only
 /// `--limit`, so a bigger page means re-running the whole listing.
 #[tauri::command(async)]
-pub fn tasks_github_repos(limit: i64) -> Result<GhRepoPage, String> {
+pub fn tasks_github_repos(app: AppHandle, limit: i64) -> Result<GhRepoPage, String> {
     let limit = limit.clamp(1, 1000);
     let key = format!("gh:repos:{limit}");
-    if let Some(v) = cache_get(&key) {
-        return serde_json::from_value(v).map_err(|e| e.to_string());
-    }
-    let limit_s = limit.to_string();
-    let raw = run_gh(&["repo", "list", "--json", "nameWithOwner,isFork", "--limit", &limit_s])?;
-    let parsed: Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
-    let repos: Vec<GhRepo> = parsed
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| {
-                    let full = v.get("nameWithOwner")?.as_str()?.to_string();
-                    let id = full.split('/').last()?.to_string();
-                    Some(GhRepo { id, full, favorite: false })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    let has_more = repos.len() as i64 == limit;
-    let page = GhRepoPage { items: repos, has_more };
-    cache_put(key, serde_json::to_value(&page).unwrap_or(Value::Null));
-    Ok(page)
+    decode(cached_json(&app, &key, &gh_owner(), move || {
+        let limit_s = limit.to_string();
+        let raw =
+            run_gh(&["repo", "list", "--json", "nameWithOwner,isFork", "--limit", &limit_s])?;
+        let parsed: Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+        let repos: Vec<GhRepo> = parsed
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| {
+                        let full = v.get("nameWithOwner")?.as_str()?.to_string();
+                        let id = full.split('/').last()?.to_string();
+                        Some(GhRepo { id, full, favorite: false })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let has_more = repos.len() as i64 == limit;
+        serde_json::to_value(GhRepoPage { items: repos, has_more }).map_err(|e| e.to_string())
+    }))
 }
 
 /// preset ∈ {all, assigned, created, mentioned, review, open, closed}
@@ -361,6 +463,7 @@ pub fn tasks_github_repos(limit: i64) -> Result<GhRepoPage, String> {
 ///          has no cursor, only `--limit`.
 #[tauri::command(async)]
 pub fn tasks_github_list(
+    app: AppHandle,
     preset: String,
     repo: String,
     kind: String,
@@ -368,39 +471,36 @@ pub fn tasks_github_list(
 ) -> Result<GhListPage, String> {
     let limit = limit.clamp(1, 1000);
     let key = format!("gh:list:{preset}:{repo}:{kind}:{limit}");
-    if let Some(v) = cache_get(&key) {
-        return serde_json::from_value(v).map_err(|e| e.to_string());
-    }
-
-    let mut items: Vec<GhItem> = Vec::new();
-    let mut has_more = false;
-    if kind == "both" {
-        // Independent `gh` calls — run issues on a background thread while
-        // prs runs here, instead of paying for both round-trips serially.
-        let preset_c = preset.clone();
-        let repo_c = repo.clone();
-        let issues_handle = std::thread::spawn(move || gh_search("issues", &preset_c, &repo_c, limit));
-        let prs = gh_search("prs", &preset, &repo, limit)?;
-        let issues = issues_handle
-            .join()
-            .map_err(|_| "gh: issues search thread panicked".to_string())??;
-        has_more = issues.len() as i64 == limit || prs.len() as i64 == limit;
-        items.extend(issues);
-        items.extend(prs);
-    } else if kind == "issues" {
-        let issues = gh_search("issues", &preset, &repo, limit)?;
-        has_more = issues.len() as i64 == limit;
-        items.extend(issues);
-    } else if kind == "prs" {
-        let prs = gh_search("prs", &preset, &repo, limit)?;
-        has_more = prs.len() as i64 == limit;
-        items.extend(prs);
-    }
-    // Newest first.
-    items.sort_by(|a, b| b.updated.cmp(&a.updated));
-    let page = GhListPage { items, has_more };
-    cache_put(key, serde_json::to_value(&page).unwrap_or(Value::Null));
-    Ok(page)
+    decode(cached_json(&app, &key, &gh_owner(), move || {
+        let mut items: Vec<GhItem> = Vec::new();
+        let mut has_more = false;
+        if kind == "both" {
+            // Independent `gh` calls — run issues on a background thread while
+            // prs runs here, instead of paying for both round-trips serially.
+            let preset_c = preset.clone();
+            let repo_c = repo.clone();
+            let issues_handle =
+                std::thread::spawn(move || gh_search("issues", &preset_c, &repo_c, limit));
+            let prs = gh_search("prs", &preset, &repo, limit)?;
+            let issues = issues_handle
+                .join()
+                .map_err(|_| "gh: issues search thread panicked".to_string())??;
+            has_more = issues.len() as i64 == limit || prs.len() as i64 == limit;
+            items.extend(issues);
+            items.extend(prs);
+        } else if kind == "issues" {
+            let issues = gh_search("issues", &preset, &repo, limit)?;
+            has_more = issues.len() as i64 == limit;
+            items.extend(issues);
+        } else if kind == "prs" {
+            let prs = gh_search("prs", &preset, &repo, limit)?;
+            has_more = prs.len() as i64 == limit;
+            items.extend(prs);
+        }
+        // Newest first.
+        items.sort_by(|a, b| b.updated.cmp(&a.updated));
+        serde_json::to_value(GhListPage { items, has_more }).map_err(|e| e.to_string())
+    }))
 }
 
 /// Turn a preset into `gh search` FLAGS (not query qualifiers). GitHub's
@@ -550,41 +650,41 @@ fn run_gh_paginated_array(path: &str) -> Result<Vec<Value>, String> {
 /// Both endpoints are fetched to completion (no 100-row cap) since a drawer is
 /// expected to show the full discussion, not a truncated slice of it.
 #[tauri::command(async)]
-pub fn tasks_github_thread(repo: String, number: i64) -> Result<TaskThread, String> {
+pub fn tasks_github_thread(
+    app: AppHandle,
+    repo: String,
+    number: i64,
+) -> Result<TaskThread, String> {
     let key = format!("gh:thread:{repo}:{number}");
-    if let Some(v) = cache_get(&key) {
-        return serde_json::from_value(v).map_err(|e| e.to_string());
-    }
+    decode(cached_json(&app, &key, &gh_owner(), move || {
+        // Comments and timeline are independent `gh api` calls — run timeline on
+        // a background thread while comments runs here, instead of paying for
+        // both round-trips serially.
+        let timeline_path = format!("/repos/{repo}/issues/{number}/timeline?per_page=100");
+        let timeline_handle = std::thread::spawn(move || run_gh_paginated_array(&timeline_path));
 
-    // Comments and timeline are independent `gh api` calls — run timeline on
-    // a background thread while comments runs here, instead of paying for
-    // both round-trips serially.
-    let timeline_path = format!("/repos/{repo}/issues/{number}/timeline?per_page=100");
-    let timeline_handle = std::thread::spawn(move || run_gh_paginated_array(&timeline_path));
+        let comments_path = format!("/repos/{repo}/issues/{number}/comments?per_page=100");
+        let comments_raw = run_gh_paginated_array(&comments_path)?;
+        let comments: Vec<TaskComment> = comments_raw
+            .into_iter()
+            .map(|v| TaskComment {
+                id: v.get("id").and_then(|n| n.as_i64()).map(|n| n.to_string()).unwrap_or_default(),
+                author: v.get("user").and_then(|u| u.get("login")).and_then(|s| s.as_str()).unwrap_or("").to_string(),
+                body: v.get("body").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+                created: v.get("created_at").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+            })
+            .collect();
 
-    let comments_path = format!("/repos/{repo}/issues/{number}/comments?per_page=100");
-    let comments_raw = run_gh_paginated_array(&comments_path)?;
-    let comments: Vec<TaskComment> = comments_raw
-        .into_iter()
-        .map(|v| TaskComment {
-            id: v.get("id").and_then(|n| n.as_i64()).map(|n| n.to_string()).unwrap_or_default(),
-            author: v.get("user").and_then(|u| u.get("login")).and_then(|s| s.as_str()).unwrap_or("").to_string(),
-            body: v.get("body").and_then(|s| s.as_str()).unwrap_or("").to_string(),
-            created: v.get("created_at").and_then(|s| s.as_str()).unwrap_or("").to_string(),
-        })
-        .collect();
+        let timeline_raw = timeline_handle
+            .join()
+            .map_err(|_| "gh: timeline thread panicked".to_string())??;
+        let activity: Vec<TaskActivity> = timeline_raw
+            .into_iter()
+            .filter_map(gh_event_from)
+            .collect();
 
-    let timeline_raw = timeline_handle
-        .join()
-        .map_err(|_| "gh: timeline thread panicked".to_string())??;
-    let activity: Vec<TaskActivity> = timeline_raw
-        .into_iter()
-        .filter_map(gh_event_from)
-        .collect();
-
-    let thread = TaskThread { comments, activity };
-    cache_put(key, serde_json::to_value(&thread).unwrap_or(Value::Null));
-    Ok(thread)
+        serde_json::to_value(TaskThread { comments, activity }).map_err(|e| e.to_string())
+    }))
 }
 
 fn gh_event_from(v: Value) -> Option<TaskActivity> {
@@ -631,24 +731,26 @@ fn gh_event_from(v: Value) -> Option<TaskActivity> {
 /// Files changed by a PR. Paginated to completion so the drawer shows the full
 /// list, not the first 100 rows.
 #[tauri::command(async)]
-pub fn tasks_github_pr_files(repo: String, number: i64) -> Result<Vec<PrFile>, String> {
+pub fn tasks_github_pr_files(
+    app: AppHandle,
+    repo: String,
+    number: i64,
+) -> Result<Vec<PrFile>, String> {
     let key = format!("gh:pr-files:{repo}:{number}");
-    if let Some(v) = cache_get(&key) {
-        return serde_json::from_value(v).map_err(|e| e.to_string());
-    }
-    let path = format!("/repos/{repo}/pulls/{number}/files?per_page=100");
-    let raw = run_gh_paginated_array(&path)?;
-    let files: Vec<PrFile> = raw
-        .into_iter()
-        .map(|v| PrFile {
-            filename: v.get("filename").and_then(|s| s.as_str()).unwrap_or("").to_string(),
-            status: v.get("status").and_then(|s| s.as_str()).unwrap_or("").to_string(),
-            additions: v.get("additions").and_then(|n| n.as_i64()).unwrap_or(0),
-            deletions: v.get("deletions").and_then(|n| n.as_i64()).unwrap_or(0),
-        })
-        .collect();
-    cache_put(key, serde_json::to_value(&files).unwrap_or(Value::Null));
-    Ok(files)
+    decode(cached_json(&app, &key, &gh_owner(), move || {
+        let path = format!("/repos/{repo}/pulls/{number}/files?per_page=100");
+        let raw = run_gh_paginated_array(&path)?;
+        let files: Vec<PrFile> = raw
+            .into_iter()
+            .map(|v| PrFile {
+                filename: v.get("filename").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+                status: v.get("status").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+                additions: v.get("additions").and_then(|n| n.as_i64()).unwrap_or(0),
+                deletions: v.get("deletions").and_then(|n| n.as_i64()).unwrap_or(0),
+            })
+            .collect();
+        serde_json::to_value(files).map_err(|e| e.to_string())
+    }))
 }
 
 /// Check-runs for a PR's head commit. One `gh api graphql` call folds the
@@ -657,50 +759,52 @@ pub fn tasks_github_pr_files(repo: String, number: i64) -> Result<Vec<PrFile>, S
 /// come back UPPERCASE (`COMPLETED`, `SUCCESS`); lowercase them so downstream
 /// class names and comparisons match the shape the old REST path returned.
 #[tauri::command(async)]
-pub fn tasks_github_pr_checks(repo: String, number: i64) -> Result<Vec<PrCheck>, String> {
+pub fn tasks_github_pr_checks(
+    app: AppHandle,
+    repo: String,
+    number: i64,
+) -> Result<Vec<PrCheck>, String> {
     let key = format!("gh:pr-checks:{repo}:{number}");
-    if let Some(v) = cache_get(&key) {
-        return serde_json::from_value(v).map_err(|e| e.to_string());
-    }
-    let (owner, name) = repo
-        .split_once('/')
-        .ok_or_else(|| format!("gh: bad repo slug {repo}"))?;
-    let query = format!(
-        r#"query {{ repository(owner: "{owner}", name: "{name}") {{ pullRequest(number: {number}) {{ commits(last: 1) {{ nodes {{ commit {{ checkSuites(first: 20) {{ nodes {{ checkRuns(first: 100) {{ nodes {{ name status conclusion startedAt completedAt }} }} }} }} }} }} }} }} }} }}"#
-    );
-    let query_arg = format!("query={query}");
-    let raw = run_gh(&["api", "graphql", "-f", &query_arg])?;
-    let v: Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
-    let suites = v
-        .pointer("/data/repository/pullRequest/commits/nodes/0/commit/checkSuites/nodes")
-        .and_then(|a| a.as_array())
-        .cloned()
-        .unwrap_or_default();
-    let runs: Vec<PrCheck> = suites
-        .into_iter()
-        .flat_map(|s| {
-            s.pointer("/checkRuns/nodes")
-                .and_then(|a| a.as_array())
-                .cloned()
-                .unwrap_or_default()
-        })
-        .map(|r| PrCheck {
-            name: r.get("name").and_then(|s| s.as_str()).unwrap_or("").to_string(),
-            status: r
-                .get("status")
-                .and_then(|s| s.as_str())
-                .map(|s| s.to_lowercase())
-                .unwrap_or_default(),
-            conclusion: r
-                .get("conclusion")
-                .and_then(|s| s.as_str())
-                .map(|s| s.to_lowercase()),
-            started_at: r.get("startedAt").and_then(|s| s.as_str()).map(String::from),
-            completed_at: r.get("completedAt").and_then(|s| s.as_str()).map(String::from),
-        })
-        .collect();
-    cache_put(key, serde_json::to_value(&runs).unwrap_or(Value::Null));
-    Ok(runs)
+    decode(cached_json(&app, &key, &gh_owner(), move || {
+        let (owner, name) = repo
+            .split_once('/')
+            .ok_or_else(|| format!("gh: bad repo slug {repo}"))?;
+        let query = format!(
+            r#"query {{ repository(owner: "{owner}", name: "{name}") {{ pullRequest(number: {number}) {{ commits(last: 1) {{ nodes {{ commit {{ checkSuites(first: 20) {{ nodes {{ checkRuns(first: 100) {{ nodes {{ name status conclusion startedAt completedAt }} }} }} }} }} }} }} }} }} }}"#
+        );
+        let query_arg = format!("query={query}");
+        let raw = run_gh(&["api", "graphql", "-f", &query_arg])?;
+        let v: Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+        let suites = v
+            .pointer("/data/repository/pullRequest/commits/nodes/0/commit/checkSuites/nodes")
+            .and_then(|a| a.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let runs: Vec<PrCheck> = suites
+            .into_iter()
+            .flat_map(|s| {
+                s.pointer("/checkRuns/nodes")
+                    .and_then(|a| a.as_array())
+                    .cloned()
+                    .unwrap_or_default()
+            })
+            .map(|r| PrCheck {
+                name: r.get("name").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+                status: r
+                    .get("status")
+                    .and_then(|s| s.as_str())
+                    .map(|s| s.to_lowercase())
+                    .unwrap_or_default(),
+                conclusion: r
+                    .get("conclusion")
+                    .and_then(|s| s.as_str())
+                    .map(|s| s.to_lowercase()),
+                started_at: r.get("startedAt").and_then(|s| s.as_str()).map(String::from),
+                completed_at: r.get("completedAt").and_then(|s| s.as_str()).map(String::from),
+            })
+            .collect();
+        serde_json::to_value(runs).map_err(|e| e.to_string())
+    }))
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -805,94 +909,92 @@ fn linear_page_info(conn: &Value) -> (bool, Option<String>) {
 }
 
 #[tauri::command(async)]
-pub fn tasks_linear_bootstrap() -> Result<LinearBootstrap, String> {
+pub fn tasks_linear_bootstrap(app: AppHandle) -> Result<LinearBootstrap, String> {
     let key = "linear:bootstrap".to_string();
-    if let Some(v) = cache_get(&key) {
-        return serde_json::from_value(v).map_err(|e| e.to_string());
-    }
-    let data = linear_post(BOOTSTRAP_QUERY, Value::Object(Default::default()))?;
-    let viewer_name = data
-        .get("viewer")
-        .and_then(|v| v.get("name"))
-        .and_then(|s| s.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    let parse_team = |t: &Value| -> Option<LinearTeam> {
-        Some(LinearTeam {
-            id: t.get("key")?.as_str()?.to_string(),
-            name: t.get("name")?.as_str()?.to_string(),
-            color: t.get("color").and_then(|s| s.as_str()).unwrap_or("#62a6ff").to_string(),
-        })
-    };
-    let parse_project = |p: &Value| -> Option<LinearProject> {
-        let id = p.get("id")?.as_str()?.to_string();
-        let name = p.get("name")?.as_str()?.to_string();
-        let team = p
-            .get("teams")
-            .and_then(|t| t.get("nodes"))
-            .and_then(|a| a.as_array())
-            .and_then(|arr| arr.first())
-            .and_then(|t0| t0.get("key"))
+    decode(cached_json(&app, &key, &linear_owner(), || {
+        let data = linear_post(BOOTSTRAP_QUERY, Value::Object(Default::default()))?;
+        let viewer_name = data
+            .get("viewer")
+            .and_then(|v| v.get("name"))
             .and_then(|s| s.as_str())
             .unwrap_or("")
             .to_string();
-        Some(LinearProject { id, name, team })
-    };
-    let parse_view = |v: &Value| -> Option<LinearView> {
-        Some(LinearView {
-            id: v.get("id")?.as_str()?.to_string(),
-            name: v.get("name")?.as_str()?.to_string(),
-            builtin: false,
-        })
-    };
 
-    // First page of each connection came back in one round trip via
-    // BOOTSTRAP_QUERY. Only fall back to extra requests — one per remaining
-    // page — when an account actually has more than 100 teams/projects/views;
-    // that keeps the common case at a single call like before.
-    let teams_conn = data.get("teams").cloned().unwrap_or(Value::Null);
-    let mut teams: Vec<LinearTeam> = teams_conn
-        .get("nodes")
-        .and_then(|a| a.as_array())
-        .map(|arr| arr.iter().filter_map(parse_team).collect())
-        .unwrap_or_default();
-    let (teams_more, teams_cursor) = linear_page_info(&teams_conn);
-    if teams_more {
-        teams.extend(linear_collect_more(TEAMS_MORE_QUERY, "teams", teams_cursor, &parse_team)?);
-    }
+        let parse_team = |t: &Value| -> Option<LinearTeam> {
+            Some(LinearTeam {
+                id: t.get("key")?.as_str()?.to_string(),
+                name: t.get("name")?.as_str()?.to_string(),
+                color: t.get("color").and_then(|s| s.as_str()).unwrap_or("#62a6ff").to_string(),
+            })
+        };
+        let parse_project = |p: &Value| -> Option<LinearProject> {
+            let id = p.get("id")?.as_str()?.to_string();
+            let name = p.get("name")?.as_str()?.to_string();
+            let team = p
+                .get("teams")
+                .and_then(|t| t.get("nodes"))
+                .and_then(|a| a.as_array())
+                .and_then(|arr| arr.first())
+                .and_then(|t0| t0.get("key"))
+                .and_then(|s| s.as_str())
+                .unwrap_or("")
+                .to_string();
+            Some(LinearProject { id, name, team })
+        };
+        let parse_view = |v: &Value| -> Option<LinearView> {
+            Some(LinearView {
+                id: v.get("id")?.as_str()?.to_string(),
+                name: v.get("name")?.as_str()?.to_string(),
+                builtin: false,
+            })
+        };
 
-    let projects_conn = data.get("projects").cloned().unwrap_or(Value::Null);
-    let mut projects: Vec<LinearProject> = projects_conn
-        .get("nodes")
-        .and_then(|a| a.as_array())
-        .map(|arr| arr.iter().filter_map(parse_project).collect())
-        .unwrap_or_default();
-    let (projects_more, projects_cursor) = linear_page_info(&projects_conn);
-    if projects_more {
-        projects.extend(linear_collect_more(PROJECTS_MORE_QUERY, "projects", projects_cursor, &parse_project)?);
-    }
+        // First page of each connection came back in one round trip via
+        // BOOTSTRAP_QUERY. Only fall back to extra requests — one per remaining
+        // page — when an account actually has more than 100 teams/projects/views;
+        // that keeps the common case at a single call like before.
+        let teams_conn = data.get("teams").cloned().unwrap_or(Value::Null);
+        let mut teams: Vec<LinearTeam> = teams_conn
+            .get("nodes")
+            .and_then(|a| a.as_array())
+            .map(|arr| arr.iter().filter_map(parse_team).collect())
+            .unwrap_or_default();
+        let (teams_more, teams_cursor) = linear_page_info(&teams_conn);
+        if teams_more {
+            teams.extend(linear_collect_more(TEAMS_MORE_QUERY, "teams", teams_cursor, &parse_team)?);
+        }
 
-    let mut views = vec![
-        LinearView { id: "v-my".into(), name: "My issues".into(), builtin: true },
-        LinearView { id: "v-active".into(), name: "Active".into(), builtin: true },
-        LinearView { id: "v-back".into(), name: "Backlog".into(), builtin: true },
-    ];
-    let views_conn = data.get("customViews").cloned().unwrap_or(Value::Null);
-    let mut custom_views: Vec<LinearView> = views_conn
-        .get("nodes")
-        .and_then(|a| a.as_array())
-        .map(|arr| arr.iter().filter_map(parse_view).collect())
-        .unwrap_or_default();
-    let (views_more, views_cursor) = linear_page_info(&views_conn);
-    if views_more {
-        custom_views.extend(linear_collect_more(VIEWS_MORE_QUERY, "customViews", views_cursor, &parse_view)?);
-    }
-    views.extend(custom_views);
+        let projects_conn = data.get("projects").cloned().unwrap_or(Value::Null);
+        let mut projects: Vec<LinearProject> = projects_conn
+            .get("nodes")
+            .and_then(|a| a.as_array())
+            .map(|arr| arr.iter().filter_map(parse_project).collect())
+            .unwrap_or_default();
+        let (projects_more, projects_cursor) = linear_page_info(&projects_conn);
+        if projects_more {
+            projects.extend(linear_collect_more(PROJECTS_MORE_QUERY, "projects", projects_cursor, &parse_project)?);
+        }
 
-    let bootstrap = LinearBootstrap { viewer_name, teams, projects, views };
-    cache_put(key, serde_json::to_value(&bootstrap).unwrap_or(Value::Null));
-    Ok(bootstrap)
+        let mut views = vec![
+            LinearView { id: "v-my".into(), name: "My issues".into(), builtin: true },
+            LinearView { id: "v-active".into(), name: "Active".into(), builtin: true },
+            LinearView { id: "v-back".into(), name: "Backlog".into(), builtin: true },
+        ];
+        let views_conn = data.get("customViews").cloned().unwrap_or(Value::Null);
+        let mut custom_views: Vec<LinearView> = views_conn
+            .get("nodes")
+            .and_then(|a| a.as_array())
+            .map(|arr| arr.iter().filter_map(parse_view).collect())
+            .unwrap_or_default();
+        let (views_more, views_cursor) = linear_page_info(&views_conn);
+        if views_more {
+            custom_views.extend(linear_collect_more(VIEWS_MORE_QUERY, "customViews", views_cursor, &parse_view)?);
+        }
+        views.extend(custom_views);
+
+        serde_json::to_value(LinearBootstrap { viewer_name, teams, projects, views })
+            .map_err(|e| e.to_string())
+    }))
 }
 
 const ISSUES_QUERY: &str = r#"
@@ -921,6 +1023,7 @@ query Issues($filter: IssueFilter, $first: Int, $after: String) {
 /// `first` is the page size the caller wants (frontend defaults to 50).
 #[tauri::command(async)]
 pub fn tasks_linear_list(
+    app: AppHandle,
     scope_kind: String,
     scope_id: String,
     after: Option<String>,
@@ -928,53 +1031,50 @@ pub fn tasks_linear_list(
 ) -> Result<LinearListPage, String> {
     let first = first.clamp(1, 250);
     let key = format!("linear:list:{scope_kind}:{scope_id}:{}:{first}", after.as_deref().unwrap_or(""));
-    if let Some(v) = cache_get(&key) {
-        return serde_json::from_value(v).map_err(|e| e.to_string());
-    }
+    decode(cached_json(&app, &key, &linear_owner(), move || {
+        // Build filter from the scope. Custom views by id go through a separate
+        // customView() lookup — but a scoped filter over issues() is sufficient
+        // for the built-ins the UI ships.
+        let mut filter = serde_json::Map::new();
+        match (scope_kind.as_str(), scope_id.as_str()) {
+            ("view", "v-my") => {
+                filter.insert("assignee".into(), serde_json::json!({ "isMe": { "eq": true } }));
+            }
+            ("view", "v-active") => {
+                filter.insert(
+                    "state".into(),
+                    serde_json::json!({ "type": { "in": ["started", "unstarted"] } }),
+                );
+            }
+            ("view", "v-back") => {
+                filter.insert("state".into(), serde_json::json!({ "type": { "eq": "backlog" } }));
+            }
+            ("team", id) => {
+                filter.insert("team".into(), serde_json::json!({ "key": { "eq": id } }));
+            }
+            ("project", id) => {
+                filter.insert("project".into(), serde_json::json!({ "id": { "eq": id } }));
+            }
+            _ => {} // "all" or unknown → no filter
+        }
 
-    // Build filter from the scope. Custom views by id go through a separate
-    // customView() lookup — but a scoped filter over issues() is sufficient
-    // for the built-ins the UI ships.
-    let mut filter = serde_json::Map::new();
-    match (scope_kind.as_str(), scope_id.as_str()) {
-        ("view", "v-my") => {
-            filter.insert("assignee".into(), serde_json::json!({ "isMe": { "eq": true } }));
-        }
-        ("view", "v-active") => {
-            filter.insert(
-                "state".into(),
-                serde_json::json!({ "type": { "in": ["started", "unstarted"] } }),
-            );
-        }
-        ("view", "v-back") => {
-            filter.insert("state".into(), serde_json::json!({ "type": { "eq": "backlog" } }));
-        }
-        ("team", id) => {
-            filter.insert("team".into(), serde_json::json!({ "key": { "eq": id } }));
-        }
-        ("project", id) => {
-            filter.insert("project".into(), serde_json::json!({ "id": { "eq": id } }));
-        }
-        _ => {} // "all" or unknown → no filter
-    }
+        let variables = serde_json::json!({
+            "filter": Value::Object(filter),
+            "first": first,
+            "after": after,
+        });
 
-    let variables = serde_json::json!({
-        "filter": Value::Object(filter),
-        "first": first,
-        "after": after,
-    });
-
-    let data = linear_post(ISSUES_QUERY, variables)?;
-    let issues_conn = data.get("issues").cloned().unwrap_or(Value::Null);
-    let items: Vec<LinearItem> = issues_conn
-        .get("nodes")
-        .and_then(|a| a.as_array())
-        .map(|arr| arr.iter().filter_map(linear_item_from).collect())
-        .unwrap_or_default();
-    let (has_more, end_cursor) = linear_page_info(&issues_conn);
-    let page = LinearListPage { items, has_more, end_cursor };
-    cache_put(key, serde_json::to_value(&page).unwrap_or(Value::Null));
-    Ok(page)
+        let data = linear_post(ISSUES_QUERY, variables)?;
+        let issues_conn = data.get("issues").cloned().unwrap_or(Value::Null);
+        let items: Vec<LinearItem> = issues_conn
+            .get("nodes")
+            .and_then(|a| a.as_array())
+            .map(|arr| arr.iter().filter_map(linear_item_from).collect())
+            .unwrap_or_default();
+        let (has_more, end_cursor) = linear_page_info(&issues_conn);
+        serde_json::to_value(LinearListPage { items, has_more, end_cursor })
+            .map_err(|e| e.to_string())
+    }))
 }
 
 fn linear_item_from(v: &Value) -> Option<LinearItem> {
@@ -1092,54 +1192,51 @@ query Thread($team: String!, $number: Float!) {
 "#;
 
 #[tauri::command(async)]
-pub fn tasks_linear_thread(id: String) -> Result<TaskThread, String> {
+pub fn tasks_linear_thread(app: AppHandle, id: String) -> Result<TaskThread, String> {
     let key = format!("linear:thread:{id}");
-    if let Some(v) = cache_get(&key) {
-        return serde_json::from_value(v).map_err(|e| e.to_string());
-    }
-    let (team, number) = id
-        .split_once('-')
-        .ok_or_else(|| format!("bad linear identifier: {id}"))?;
-    let number: i64 = number
-        .parse()
-        .map_err(|_| format!("bad linear number in: {id}"))?;
-    let variables = serde_json::json!({ "team": team, "number": number });
-    let data = linear_post(THREAD_QUERY, variables)?;
+    decode(cached_json(&app, &key, &linear_owner(), move || {
+        let (team, number) = id
+            .split_once('-')
+            .ok_or_else(|| format!("bad linear identifier: {id}"))?;
+        let number: i64 = number
+            .parse()
+            .map_err(|_| format!("bad linear number in: {id}"))?;
+        let variables = serde_json::json!({ "team": team, "number": number });
+        let data = linear_post(THREAD_QUERY, variables)?;
 
-    let node = data
-        .get("issues")
-        .and_then(|i| i.get("nodes"))
-        .and_then(|a| a.as_array())
-        .and_then(|arr| arr.first())
-        .cloned()
-        .unwrap_or(Value::Null);
+        let node = data
+            .get("issues")
+            .and_then(|i| i.get("nodes"))
+            .and_then(|a| a.as_array())
+            .and_then(|arr| arr.first())
+            .cloned()
+            .unwrap_or(Value::Null);
 
-    let comments: Vec<TaskComment> = node
-        .get("comments")
-        .and_then(|c| c.get("nodes"))
-        .and_then(|a| a.as_array())
-        .map(|arr| {
-            arr.iter()
-                .map(|v| TaskComment {
-                    id: v.get("id").and_then(|s| s.as_str()).unwrap_or("").to_string(),
-                    author: v.get("user").and_then(|u| u.get("name")).and_then(|s| s.as_str()).unwrap_or("").to_string(),
-                    body: v.get("body").and_then(|s| s.as_str()).unwrap_or("").to_string(),
-                    created: v.get("createdAt").and_then(|s| s.as_str()).unwrap_or("").to_string(),
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+        let comments: Vec<TaskComment> = node
+            .get("comments")
+            .and_then(|c| c.get("nodes"))
+            .and_then(|a| a.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .map(|v| TaskComment {
+                        id: v.get("id").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+                        author: v.get("user").and_then(|u| u.get("name")).and_then(|s| s.as_str()).unwrap_or("").to_string(),
+                        body: v.get("body").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+                        created: v.get("createdAt").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
 
-    let activity: Vec<TaskActivity> = node
-        .get("history")
-        .and_then(|h| h.get("nodes"))
-        .and_then(|a| a.as_array())
-        .map(|arr| arr.iter().filter_map(linear_event_from).collect())
-        .unwrap_or_default();
+        let activity: Vec<TaskActivity> = node
+            .get("history")
+            .and_then(|h| h.get("nodes"))
+            .and_then(|a| a.as_array())
+            .map(|arr| arr.iter().filter_map(linear_event_from).collect())
+            .unwrap_or_default();
 
-    let thread = TaskThread { comments, activity };
-    cache_put(key, serde_json::to_value(&thread).unwrap_or(Value::Null));
-    Ok(thread)
+        serde_json::to_value(TaskThread { comments, activity }).map_err(|e| e.to_string())
+    }))
 }
 
 fn linear_event_from(v: &Value) -> Option<TaskActivity> {
@@ -1286,23 +1383,54 @@ mod tests {
         assert!(some.detail.contains("In Progress"));
     }
 
+    // Serialize every test that touches the process-wide CACHE map; cargo runs
+    // tests in parallel and an interleaved invalidate would flake assertions.
+    static CACHE_TEST_LOCK: Mutex<()> = Mutex::new(());
+
     #[test]
     fn cache_ttl_returns_and_expires() {
+        let _g = CACHE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let k = "test:cache-key".to_string();
         cache_put(k.clone(), Value::String("hi".into()));
         assert_eq!(cache_get(&k), Some(Value::String("hi".into())));
         // Simulate stale by clearing manually — we can't fast-forward Instant.
-        tasks_cache_invalidate(None);
+        // Direct map clear rather than tasks_cache_invalidate: the latter now
+        // also evicts the developer's real on-disk SQLite mirror.
+        if let Ok(mut c) = cache().lock() {
+            c.clear();
+        }
         assert_eq!(cache_get(&k), None);
     }
 
     #[test]
     fn cache_invalidate_prefix_leaves_other_scopes() {
+        let _g = CACHE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         cache_put("gh:x".into(), Value::String("g".into()));
         cache_put("linear:x".into(), Value::String("l".into()));
-        tasks_cache_invalidate(Some("gh:".into()));
+        if let Ok(mut c) = cache().lock() {
+            c.retain(|k, _| !k.starts_with("gh:"));
+        }
         assert_eq!(cache_get("gh:x"), None);
         assert_eq!(cache_get("linear:x"), Some(Value::String("l".into())));
-        tasks_cache_invalidate(None);
+        if let Ok(mut c) = cache().lock() {
+            c.clear();
+        }
+    }
+
+    #[test]
+    fn parse_gh_user_handles_both_auth_status_formats() {
+        // gh ≥2.40 prints "account <login>"; older builds print "as <login>".
+        // The persisted-cache owner tag comes from this parser, so missing the
+        // new format would silently orphan every row written before a gh
+        // upgrade (all data re-fetched once per restart).
+        assert_eq!(
+            parse_gh_user("  ✓ Logged in to github.com account octocat (keyring)"),
+            Some("octocat".to_string())
+        );
+        assert_eq!(
+            parse_gh_user("  ✓ Logged in to github.com as octocat (keyring)"),
+            Some("octocat".to_string())
+        );
+        assert_eq!(parse_gh_user("not logged in"), None);
     }
 }

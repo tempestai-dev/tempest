@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import {
   fetchGhAuth,
   fetchGhList,
@@ -31,12 +32,54 @@ export type Async<T> = {
 // ponytail: unbounded Map; add LRU cap if it ever balloons in a long session.
 const CACHE = new Map<string, unknown>();
 
+type RefreshPayload = { key: string; data: unknown };
+
+// The Rust layer serves stale SQLite rows instantly and revalidates in a
+// background thread; when the fresh payload lands it emits
+// `tasks:cache-refreshed` tagged with the exact cache key. Hooks register
+// their current remote key here so the UI hot-swaps without a refresh click.
+function useCacheRefreshed(handler: (key: string, data: unknown) => void) {
+  const ref = useRef(handler);
+  ref.current = handler;
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let dead = false;
+    listen<RefreshPayload>("tasks:cache-refreshed", (e) => {
+      if (!dead) ref.current(e.payload.key, e.payload.data);
+    }).then((u) => { if (dead) u(); else unlisten = u; });
+    return () => { dead = true; unlisten?.(); };
+  }, []);
+}
+
+// Drop this hook's previous cache entry whenever its key moves on — otherwise
+// a long session accumulates every preset/repo/page/bump ever visited in the
+// module-level map forever.
+function usePrunePrevKey(cacheKey: string) {
+  const prev = useRef(cacheKey);
+  useEffect(() => {
+    if (prev.current !== cacheKey) {
+      CACHE.delete(prev.current);
+      prev.current = cacheKey;
+    }
+  }, [cacheKey]);
+}
+
 function useAsync<T>(
   key: string,
   fn: () => Promise<T>,
   bump: number,
+  remoteKey?: string | null,
 ): Async<T> {
   const cacheKey = `${bump}:${key}`;
+  usePrunePrevKey(cacheKey);
+  useCacheRefreshed((rKey, data) => {
+    if (remoteKey && rKey === remoteKey) {
+      CACHE.set(cacheKey, data);
+      setData(data as T);
+      setLoading(false);
+      setError(null);
+    }
+  });
   const cached = CACHE.has(cacheKey) ? (CACHE.get(cacheKey) as T) : null;
   const [data, setData] = useState<T | null>(cached);
   const [loading, setLoading] = useState<boolean>(cached === null);
@@ -121,8 +164,20 @@ function usePagedByLimit<T>(
   limit: number,
   fetchPage: (limit: number) => Promise<{ items: T[]; has_more: boolean }>,
   bump: number,
+  remoteKeyFor: (limit: number) => string | null,
 ): Omit<Paged<T>, "loadMore"> {
   const cacheKey = `${bump}:${scopeKey}:${limit}`;
+  usePrunePrevKey(cacheKey);
+  useCacheRefreshed((rKey, data) => {
+    const page = data as { items?: unknown; has_more?: boolean };
+    if (remoteKeyFor(limit) === rKey && page && Array.isArray(page.items)) {
+      const fresh = { items: page.items as T[], has_more: !!page.has_more };
+      CACHE.set(cacheKey, fresh);
+      setResult(fresh);
+      setLoading(false);
+      setError(null);
+    }
+  });
   const cached = CACHE.has(cacheKey) ? (CACHE.get(cacheKey) as { items: T[]; has_more: boolean }) : null;
   const [result, setResult] = useState(cached);
   const [loading, setLoading] = useState(cached === null);
@@ -168,7 +223,11 @@ export function useGhRepos(enabled: boolean, bump: number): Paged<GhRepo> {
   const fetchPage = enabled
     ? (l: number) => fetchGhRepos(l)
     : async () => ({ items: [] as GhRepo[], has_more: false });
-  const page = usePagedByLimit(scopeKey, limit, fetchPage, bump);
+  // Mirrors the Rust cache key `gh:repos:{limit}` so a background revalidation
+  // of the persisted row lands in the right entry.
+  const page = usePagedByLimit(scopeKey, limit, fetchPage, bump, (l) =>
+    enabled ? `gh:repos:${l}` : null,
+  );
   return { ...page, loadMore: () => setLimit((l) => l + pageSize) };
 }
 
@@ -185,13 +244,16 @@ export function useGhList(
   const fetchPage = enabled
     ? (l: number) => fetchGhList(preset, repo, kind, l)
     : async () => ({ items: [] as GhItem[], has_more: false });
-  const page = usePagedByLimit(scopeKey, limit, fetchPage, bump);
+  // Mirrors the Rust cache key `gh:list:{preset}:{repo}:{kind}:{limit}`.
+  const page = usePagedByLimit(scopeKey, limit, fetchPage, bump, (l) =>
+    enabled ? `gh:list:${preset}:${repo}:${kind}:${l}` : null,
+  );
   return { ...page, loadMore: () => setLimit((l) => l + pageSize) };
 }
 
 export function useLinearBootstrap(enabled: boolean, bump: number): Async<LinearBootstrap | null> {
   const fn = enabled ? fetchLinearBootstrap : async () => null;
-  return useAsync(`ln:bootstrap:${enabled}`, fn, bump);
+  return useAsync(`ln:bootstrap:${enabled}`, fn, bump, enabled ? "linear:bootstrap" : null);
 }
 
 const LN_LIST_PAGE = 50;
@@ -207,6 +269,24 @@ export function useLinearList(
 ): Paged<LinearItem> {
   const scopeKey = `ln:list:${enabled}:${scope.kind}:${scope.id}`;
   const cacheKey = `${bump}:${scopeKey}`;
+  usePrunePrevKey(cacheKey);
+  useCacheRefreshed((rKey, data) => {
+    // Only mirror the first-page revalidation while no deeper pages have been
+    // appended — swapping would drop rows the user already loaded.
+    if (accum && accum.cursor) return;
+    const p = data as { items?: unknown; has_more?: boolean; end_cursor?: string | null };
+    if (
+      enabled &&
+      rKey === `linear:list:${scope.kind}:${scope.id}::${LN_LIST_PAGE}` &&
+      p && Array.isArray(p.items)
+    ) {
+      const next: LnAccum = { items: p.items as LinearItem[], cursor: p.end_cursor ?? null, hasMore: !!p.has_more };
+      CACHE.set(cacheKey, next);
+      setAccum(next);
+      setLoading(false);
+      setError(null);
+    }
+  });
   const cached = CACHE.has(cacheKey) ? (CACHE.get(cacheKey) as LnAccum) : null;
   const [accum, setAccum] = useState<LnAccum | null>(cached);
   const [loading, setLoading] = useState(cached === null);
