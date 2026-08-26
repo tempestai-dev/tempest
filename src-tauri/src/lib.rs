@@ -16,6 +16,7 @@ mod quota;
 mod secrets;
 mod service_proxy;
 mod tasks;
+mod tasks_store;
 mod warp_bridge;
 
 /// Managed slug → dev-server-port map, read by the reverse proxy in
