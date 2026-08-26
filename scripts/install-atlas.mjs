@@ -1,6 +1,7 @@
 import { cpSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
+import { pruneCruft } from './prune-bundle.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const rootModules = join(root, 'node_modules')
@@ -66,6 +67,7 @@ for (const pkg of BUNDLE_ROOTS) copyClosure(pkg)
 // ponytail: prunes by process.platform of the build machine; per-platform CI
 // already runs this script per target, so each installer gets exactly one.
 const ORT_PLATFORMS = ['darwin', 'linux', 'win32']
+const ORT_ARCHES = ['x64', 'arm64', 'ia32']
 const ortBin = join(destModules, 'onnxruntime-node', 'bin', 'napi-v3')
 if (existsSync(ortBin)) {
   for (const p of ORT_PLATFORMS) {
@@ -73,6 +75,31 @@ if (existsSync(ortBin)) {
       rmSync(join(ortBin, p), { recursive: true, force: true })
     }
   }
+  // Also prune sibling archs of the current platform (win32/arm64 alongside
+  // win32/x64 etc). ~9MB per unused arch on Windows.
+  const platDir = join(ortBin, process.platform)
+  if (existsSync(platDir)) {
+    for (const a of ORT_ARCHES) {
+      if (a !== process.arch) {
+        rmSync(join(platDir, a), { recursive: true, force: true })
+      }
+    }
+  }
+}
+
+// @usetempest/atlas ships src/ AND dist/ — dist/ is the runtime entry (see
+// package.json `main`), src/ is TS + duplicate wasm + schema.sql (all mirrored
+// into dist/ by the package's copy-assets step). Only .map files reference
+// ../src/ and those get pruned right below. Saves ~30MB.
+const atlasSrc = join(destModules, '@usetempest', 'atlas', 'src')
+if (existsSync(atlasSrc)) rmSync(atlasSrc, { recursive: true, force: true })
+
+// Generic cruft prune: .map, .md, .d.ts, test/, docs/, examples/, CI files.
+// Runtime is byte-identical.
+const bytesPruned = pruneCruft(destModules)
+if (bytesPruned > 0) {
+  const mb = (bytesPruned / 1024 / 1024).toFixed(1)
+  console.log(`[install-atlas] pruned ${mb} MB of cruft`)
 }
 
 // `sharp` is npm-nested inside @xenova/transformers (not hoisted) so the
