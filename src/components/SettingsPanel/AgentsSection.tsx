@@ -8,6 +8,7 @@ import {
 } from "../../lib/agentConfig";
 import { LUCIDE_ICON_NAMES, AgentIcon } from "../NewSessionMenu";
 import { Terminal, Bot, Code2, Command as CommandIcon, Cpu, Zap, Sparkles, Package, Rocket, Wrench, Ghost, Play } from "lucide-react";
+import { useSettings, updateSetting } from "../../store/appSettings";
 
 // Local copy of the picker's icon map. Kept in sync with LUCIDE_ICON_NAMES
 // (the single source of truth for which icon slugs are legal). Duplicated
@@ -76,6 +77,8 @@ export function AgentsSection() {
         {" "}<code>{"{WORKSPACE_ID}"}</code>.
       </p>
 
+      <ClaudeCliPathField />
+
       <div className="sp-agents-list">
         {agents.map((a) => (
           <AgentRow
@@ -86,6 +89,30 @@ export function AgentsSection() {
           />
         ))}
       </div>
+    </div>
+  );
+}
+
+// Override for the `claude` CLI the Claude Code chat bridge invokes. Empty →
+// bridge falls back to a PATH lookup. Only affects chat nodes with backend "cli"
+// on the Claude Code agent; PTY-launched sessions use the OS PATH directly.
+function ClaudeCliPathField() {
+  const { claudeCliPath } = useSettings();
+  const [value, setValue] = useState(claudeCliPath);
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <label className="sp-agent-label">
+        Path to claude binary <span className="sp-agent-hint">optional; overrides PATH lookup for the Claude Code chat bridge</span>
+      </label>
+      <input
+        className="sp-agent-input"
+        value={value}
+        placeholder={"C:\\path\\to\\claude.cmd  (leave blank to use PATH)"}
+        spellCheck={false}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => updateSetting("claudeCliPath", value.trim())}
+        onKeyDown={(e) => e.stopPropagation()}
+      />
     </div>
   );
 }

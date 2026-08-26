@@ -32,6 +32,10 @@ export interface AppSettings {
   // Experimental: Warp (warpllm) chat backend on canvas chat nodes. Off by
   // default; when on, a "Warp" row appears in a chat node's Agents picker.
   experimentalWarp: boolean;
+  // Override for the `claude` CLI the Claude Code chat bridge invokes. Empty →
+  // bridge falls back to `where`/`which claude` on PATH. Corporate/offline
+  // users can point this at their pinned install.
+  claudeCliPath: string;
 }
 
 export const SETTINGS_DEFAULTS: AppSettings = {
@@ -52,6 +56,7 @@ export const SETTINGS_DEFAULTS: AppSettings = {
   desktopNotifications: true,
   telemetryEnabled: false,
   experimentalWarp: false,
+  claudeCliPath: "",
 };
 
 export const FONT_FAMILY_OPTIONS: { label: string; value: string }[] = [

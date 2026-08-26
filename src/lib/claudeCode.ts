@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { ChatStreamEvent } from "./chat";
 import type { CliAgent } from "./chatModels";
+import { getSettings } from "../store/appSettings";
 
 // CLI chat backend: drive one of four CLI coding agents (Claude Code, Codex,
 // OpenCode, Gemini CLI) via the Node sidecar bridge, and map its NDJSON events
@@ -102,6 +103,8 @@ export function streamClaudeCode(options: StreamClaudeCodeOptions): ClaudeCodeSt
         }
       });
 
+      // Only the `claude` bridge honors claudePath; other agents ignore it.
+      const claudePath = (agent ?? "claude") === "claude" ? getSettings().claudeCliPath.trim() : "";
       await invoke("claude_stream_start", {
         streamId,
         config: {
@@ -112,6 +115,7 @@ export function streamClaudeCode(options: StreamClaudeCodeOptions): ClaudeCodeSt
           ...(model ? { model } : {}),
           ...(systemPrompt ? { systemPrompt } : {}),
           ...(projectId ? { project: projectId } : {}),
+          ...(claudePath ? { claudePath } : {}),
         },
       });
     } catch (err) {
