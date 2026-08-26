@@ -19,6 +19,7 @@ type BridgeEvent =
   | { t: "permission"; id: string; name: string; title?: string; description?: string; input: unknown }
   | { t: "result"; sessionId: string; inputTokens: number; outputTokens: number; isError: boolean; errorSubtype?: string }
   | { t: "closed" }
+  | { t: "error"; message: string }
   | { t: "log"; text: string };
 
 export interface StreamClaudeCodeOptions {
@@ -86,6 +87,9 @@ export function streamClaudeCode(options: StreamClaudeCodeOptions): ClaudeCodeSt
           case "result":
             if (ev.isError) onEvent({ type: "error", message: `${agentLabel} error: ${ev.errorSubtype ?? "unknown"}` });
             onEvent({ type: "finish", inputTokens: ev.inputTokens, outputTokens: ev.outputTokens, sessionId: ev.sessionId });
+            break;
+          case "error":
+            onEvent({ type: "error", message: `${agentLabel}: ${ev.message}` });
             break;
           case "closed":
             cleanup();
