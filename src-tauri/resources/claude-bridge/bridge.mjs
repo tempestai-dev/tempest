@@ -15,10 +15,25 @@
 // stderr comes to us via `options.stderr`.
 
 import { createInterface } from "node:readline";
+import { execFileSync } from "node:child_process";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 
 function emit(obj) {
   process.stdout.write(JSON.stringify(obj) + "\n");
+}
+
+// Resolve the system-installed `claude` CLI. We ship the SDK's JS but not the
+// per-platform binaries it optionally bundles (~250 MB), so we point the SDK
+// at the user's own install. Override wins → PATH lookup → clear error.
+function resolveClaude(override) {
+  if (override) return override;
+  const cmd = process.platform === "win32" ? "where" : "which";
+  try {
+    const out = execFileSync(cmd, ["claude"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    const first = out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)[0];
+    if (first) return first;
+  } catch { /* fall through */ }
+  throw new Error("claude CLI not found on PATH. Install with: npm install -g @anthropic-ai/claude-code");
 }
 
 // toolUseID → resolve fn for a pending canUseTool promise.
@@ -58,6 +73,7 @@ rl.on("line", (line) => {
 async function run(cfg) {
   const options = {
     cwd: cfg.cwd,
+    pathToClaudeCodeExecutable: resolveClaude(cfg.claudePath),
     // v1 = default permission mode; every tool is gated through canUseTool below.
     permissionMode: "default",
     ...(cfg.resume ? { resume: cfg.resume } : {}),
