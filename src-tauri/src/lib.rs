@@ -2012,7 +2012,7 @@ fn resolve_node() -> String {
                 .ok()
                 .filter(|s| std::path::Path::new(s).is_file())
                 .unwrap_or_else(|| "/bin/zsh".to_string());
-            if let Ok(out) = std::process::Command::new(shell)
+            if let Ok(out) = new_detached_command(&shell)
                 .args(["-lic", "command -v node"])
                 .output()
             {
@@ -2063,6 +2063,121 @@ fn new_command(program: &str) -> std::process::Command {
     #[cfg(not(windows))]
     {
         std::process::Command::new(program)
+    }
+}
+
+/// Build a `Command` for a probe whose output we capture, detached from any
+/// controlling terminal.
+///
+/// We run these probes through an *interactive* login shell (`-lic`) so they see
+/// PATH entries that only `~/.bashrc` / `~/.zshrc` set up — nvm, asdf, mise. The
+/// `-i` is load-bearing, but it also makes the shell run bash's job-control
+/// initialisation, which loops
+///
+/// ```text
+/// while (tcgetpgrp(tty) != getpgrp()) kill(-getpgrp(), SIGTTIN);
+/// ```
+///
+/// until its process group owns the terminal. Launched from a terminal, the probe
+/// inherits Tempest's controlling terminal but is never that terminal's foreground
+/// group — so it stops *itself* and never resumes, wedging the app's whole process
+/// group. The window comes up white and will not close (Linux; on macOS the app is
+/// usually launched from Finder with no controlling terminal, which is why this
+/// stayed hidden).
+///
+/// `setsid()` puts the child in a fresh session with no controlling terminal, so
+/// bash's fallback `open("/dev/tty")` fails, job control is disabled, and the probe
+/// simply runs. Interactive rc files are still sourced — that part depends on `-i`,
+/// not on owning a tty.
+///
+/// PTY-backed spawns (terminal panes, agent launches) intentionally keep their
+/// controlling terminal and must NOT use this.
+#[cfg(unix)]
+fn new_detached_command(program: &str) -> std::process::Command {
+    use std::os::unix::process::CommandExt;
+    let mut cmd = new_command(program);
+    unsafe {
+        // SAFETY: runs in the forked child between fork and exec, where only
+        // async-signal-safe calls are legal. `setsid` is async-signal-safe and
+        // touches nothing but the child's own session and process group.
+        // A failure here (EPERM if the child were already a group leader) is
+        // non-fatal: the probe still runs, it just keeps the old behaviour.
+        cmd.pre_exec(|| {
+            libc::setsid();
+            Ok(())
+        });
+    }
+    cmd
+}
+
+#[cfg(all(test, unix))]
+mod detached_command_tests {
+    // Waits for `pid` to reach its post-exec session, returning that sid.
+    fn settled_sid(pid: libc::pid_t) -> libc::pid_t {
+        let mut last = -1;
+        for _ in 0..200 {
+            let sid = unsafe { libc::getsid(pid) };
+            if sid != -1 {
+                last = sid;
+                // A detached child becomes its own session leader (sid == pid);
+                // stop as soon as that lands so the test isn't timing-flaky.
+                if sid == pid {
+                    return sid;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        last
+    }
+
+    #[test]
+    fn detached_child_leaves_our_session() {
+        // The point of new_detached_command: the child must leave our session, so
+        // an interactive shell finds no controlling terminal, skips bash's
+        // job-control handshake, and cannot stop itself waiting for a foreground
+        // process group it will never be given.
+        let mut child = super::new_detached_command("sh")
+            .args(["-c", "sleep 5"])
+            .spawn()
+            .expect("spawn sh");
+        let pid = child.id() as libc::pid_t;
+        let child_sid = settled_sid(pid);
+        let our_sid = unsafe { libc::getsid(0) };
+        let _ = child.kill();
+        let _ = child.wait();
+
+        assert_eq!(child_sid, pid, "detached child should lead its own session");
+        assert_ne!(child_sid, our_sid, "detached child must not share our session");
+    }
+
+    #[test]
+    fn plain_child_stays_in_our_session() {
+        // The contrast case, and a guard against over-applying the fix: plain
+        // new_command must keep inheriting our session. PTY-backed spawns
+        // (terminal panes, agent launches) need their controlling terminal.
+        let mut child = super::new_command("sh")
+            .args(["-c", "sleep 5"])
+            .spawn()
+            .expect("spawn sh");
+        let pid = child.id() as libc::pid_t;
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let child_sid = unsafe { libc::getsid(pid) };
+        let our_sid = unsafe { libc::getsid(0) };
+        let _ = child.kill();
+        let _ = child.wait();
+
+        assert_eq!(child_sid, our_sid, "new_command must not detach the child");
+    }
+
+    #[test]
+    fn interactive_login_probe_terminates() {
+        // End-to-end: the exact shape that wedged the app. Without setsid this
+        // stops on SIGTTIN/SIGTTOU whenever the launching process owns a terminal,
+        // and `.output()` blocks forever instead of returning.
+        super::new_detached_command("sh")
+            .args(["-lic", "command -v sh >/dev/null 2>&1"])
+            .output()
+            .expect("interactive login probe should terminate, not hang");
     }
 }
 
@@ -2492,7 +2607,7 @@ fn login_shell_program_available(program: &str) -> bool {
         .ok()
         .filter(|s| std::path::Path::new(s).is_file())
         .unwrap_or_else(|| fallback_shell.to_string());
-    new_command(&shell)
+    new_detached_command(&shell)
         .args(["-lic", "command -v \"$TEMPEST_PROGRAM\" >/dev/null 2>&1"])
         .env("TEMPEST_PROGRAM", program)
         .output()
