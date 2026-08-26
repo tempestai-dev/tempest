@@ -1603,12 +1603,12 @@
   align-self: flex-start;
   border-color: var(--tempest-fg-default);
   background: var(--tempest-fg-default);
-  color: var(--tempest-bg-default);
+  color: var(--tempest-bg-base);
 }
 
 .sp-mobile-btn--primary:hover {
   background: var(--tempest-fg-default);
-  color: var(--tempest-bg-default);
+  color: var(--tempest-bg-base);
   opacity: 0.9;
 }
 
