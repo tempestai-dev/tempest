@@ -1,15 +1,14 @@
-import { useState, useEffect, useRef, type CSSProperties } from "react";
+﻿import { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { sessionManager } from "../store/sessionManager";
 import { setActiveIslandSession, onIslandFocusRequest } from "../store/islandNotifs";
 import { open } from "@tauri-apps/plugin-dialog";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { createWorktree, gitInit } from "../lib/worktree";
 import { addRecent, getRecents, removeRecent } from "../store/recents";
 import { getOpenProjects, saveOpenProjects } from "../store/openProjects";
 import { track } from "../lib/telemetry";
-import { getSession, getBranchSessions, getWorktreeAgentSession, getRootSessionsForProject, getAllSessions, getBranchPath, getProjectPath, saveSession, setSessionConversationId, markSessionClosed, markSessionOpen, removeBranchByPath, removeSession, pruneSessions, type WorktreeSession } from "../store/sessions";
+import { getSession, getBranchSessions, getRootSessionsForProject, getAllSessions, getBranchPath, getProjectPath, saveSession, setSessionConversationId, markSessionClosed, removeBranchByPath, removeSession, pruneSessions } from "../store/sessions";
 import { getRuntimeState, setRuntimeState } from "../lib/runtimeState";
 import { loadProjectSettings } from "./ProjectSettingsPanel/useProjectSettings";
 import { loadTempestConfig } from "../lib/tempestConfig";
@@ -19,42 +18,22 @@ import type { Session, Worktree, Project, NavSection } from "../types/workspace"
 import { DeleteWorkspaceDialog, type DeleteDialogState } from "./WorkspaceView/DeleteWorkspaceDialog";
 import { UpdateConfirmDialog } from "./WorkspaceView/UpdateConfirmDialog";
 import { DiffPickerModal } from "./WorkspaceView/DiffPickerModal";
-import { PromptPickerPopover } from "./WorkspaceView/PromptPickerPopover";
-import { NotesPopover } from "./WorkspaceView/NotesPopover";
 import { ContextMenu, type CtxMenuState } from "./WorkspaceView/ContextMenu";
 import { TitleBar } from "./WorkspaceView/TitleBar";
+import { LeftSidebar } from "./WorkspaceView/LeftSidebar";
+import { TopBar } from "./WorkspaceView/TopBar";
+import { useEvent } from "../lib/useEvent";
 import {
-  LayoutGrid,
-  Brain,
-  FolderPlus,
   FolderOpen,
-  Bug,
   Settings,
-  Mail,
   TerminalSquare,
-  Eye,
   X,
-  Plus,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
-  Globe,
-  FileCode,
-  BookOpen,
   Cpu,
-  SplitSquareHorizontal,
-  PencilLine,
-  Keyboard,
   PanelLeft,
   PanelRight,
-  SunMoon,
-  GitBranch,
-  Cog,
   Loader,
-  Waypoints,
-  Trash2,
-  Workflow,
-  List,
 } from "lucide-react";
 import { setWorkState, clearWorkState, getWorkState, setAttention, getAttention } from "../store/workState";
 import { useKeybindings, matchesEvent, formatShortcut } from "../store/keybindings";
@@ -70,17 +49,15 @@ import {
   saveThread, deleteThread as deleteThreadFromStore,
 } from "../store/threads";
 import { RightSidebar } from "./RightSidebar";
-import { NewSessionMenu, NewSessionPlacement, AgentConfig, AGENT_CONFIGS, AgentIcon, type BranchLaunch } from "./NewSessionMenu";
+import { NewSessionMenu, NewSessionPlacement, AgentConfig, AGENT_CONFIGS, type BranchLaunch } from "./NewSessionMenu";
 import { BranchSessionMenu } from "./BranchSessionMenu";
 import { SettingsPanel } from "./SettingsPanel";
 import { ProjectSettingsPanel } from "./ProjectSettingsPanel";
-import { Tooltip } from "./Tooltip";
 import { BroadcastDialog, BroadcastSession } from "./BroadcastDialog";
 import "./BroadcastDialog.css";
 import { CommandPalette } from "./CommandPalette";
 import { QueuePanel } from "./QueuePanel";
 import { dequeue } from "../store/messageQueue";
-import { getPrompts, type PromptEntry } from "../store/prompts";
 import { useTheme, builtinThemes } from "../themes/ThemeContext";
 import { Mark } from "../assets/Mark";
 import { StatusBar } from "./StatusBar";
@@ -92,10 +69,9 @@ import { AtlasIndexModal } from "./AtlasIndexModal";
 import { KnowledgeBasePage } from "./KnowledgeBasePage";
 import { TasksPage } from "./TasksPage";
 import { AutomationsPage } from "./Automations/AutomationsPage";
-import { Toolbar } from "./Toolbar";
 import AgentTabs from "./AgentTabs";
 import IconCapsule from "./IconCapsule";
-import { SidebarWorkBadge, ProjectWorkBadge, AttentionPill } from "./SessionBadges";
+import { AttentionPill } from "./SessionBadges";
 import "./StatusBar.css";
 import "./UpdateNotice.css";
 import "./TopBar.css";
@@ -111,19 +87,6 @@ interface Props {
 // Directories under .tempest/ that are internal to Tempest and must never be
 // treated as git worktrees in the sidebar.
 const TEMPEST_INTERNAL_DIRS = new Set(["atlas", "logs"]);
-
-// One sidebar row: either a live session or the ghost of a closed one.
-type SbRow = { id: string; at: string; live?: Session; ghost?: WorktreeSession };
-
-// Interleave live and ghost rows in creation order. Rendering live rows first
-// and ghosts after made a session jump position the moment it was closed or
-// re-opened; ordering both by the persisted createdAt keeps every row put.
-function sbRows(live: Session[], ghosts: WorktreeSession[]): SbRow[] {
-  return [
-    ...live.map((s): SbRow => ({ id: s.id, at: s.createdAt, live: s })),
-    ...ghosts.map((g): SbRow => ({ id: g.id, at: g.createdAt, ghost: g })),
-  ].sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id));
-}
 
 import { folderName, timeAgo } from "../lib/format";
 import { getHookCommands, runHook, type HookKind } from "../lib/worktreeHooks";
@@ -190,23 +153,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const [atlasIndexingPaths, setAtlasIndexingPaths] = useState<string[]>([]);
   const [atlasDebugModal, setAtlasDebugModal] = useState(false);
   const [queueOpenSessionId, setQueueOpenSessionId] = useState<string | null>(null);
-  const [promptPickerOpen, setPromptPickerOpen] = useState(false);
-  const [promptPickerItems, setPromptPickerItems] = useState<PromptEntry[]>([]);
-  const [promptSentId, setPromptSentId] = useState<string | null>(null);
-  const promptPickerRef = useRef<HTMLDivElement>(null);
-  const promptBtnRef = useRef<SVGSVGElement>(null);
-  const [promptPickerPos, setPromptPickerPos] = useState<{ top: number; right: number } | null>(null);
-  const [notesOpen, setNotesOpen] = useState(false);
-  const [notesPos, setNotesPos] = useState<{ top: number; right: number } | null>(null);
-  const notesBtnRef = useRef<SVGSVGElement>(null);
   const [diffPickerOpen, setDiffPickerOpen] = useState(false);
   const [diffPickerBranches, setDiffPickerBranches] = useState<Record<string, BranchInfo[]>>({});
   const [diffPickerLoading, setDiffPickerLoading] = useState(false);
-  const [sidebarAtTop, setSidebarAtTop] = useState(true);
-  const [sidebarAtBottom, setSidebarAtBottom] = useState(false);
-  const sidebarScrollRef = useRef<HTMLDivElement>(null);
   const [expandedWorktrees, setExpandedWorktrees] = useState<Set<string>>(new Set());
-  const [sidebarDragOver, setSidebarDragOver] = useState<{ id: string; side: "before" | "after" } | null>(null);
 
   // Split pane layout. null = single-pane mode (normal). Non-null = one or more
   // splits active. activeSessionId continues to track which pane has focus.
@@ -250,8 +200,6 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const [threadsVersion, setThreadsVersion] = useState(0);
   const bumpThreads = () => setThreadsVersion((v) => v + 1);
   const loadedThreadProjects = useRef<Set<string>>(new Set());
-  const [renamingThreadId, setRenamingThreadId] = useState<string | null>(null);
-  const [threadRenameValue, setThreadRenameValue] = useState("");
 
   // Sidebar right-click context menu
   const [ctxMenu, setCtxMenu] = useState<CtxMenuState | null>(null);
@@ -291,8 +239,6 @@ export function WorkspaceView({ zen, name, path }: Props) {
   };
 
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-  const [inlineCreateProjectId, setInlineCreateProjectId] = useState<string | null>(null);
-  const [inlineCreateName, setInlineCreateName] = useState("");
 
 
   // Persist projects list to SQLite whenever it changes
@@ -1076,7 +1022,6 @@ export function WorkspaceView({ zen, name, path }: Props) {
 
   async function openDiffPicker() {
     setDiffPickerOpen((open) => !open);
-    setPromptPickerOpen(false);
     if (diffPickerLoading || Object.keys(diffPickerBranches).length > 0) return;
     const pickerProjects = zen && path
       ? [{ id: "zen", name: name ?? folderName(path), path, expanded: true, worktrees: zenWorktrees }]
@@ -1202,7 +1147,6 @@ export function WorkspaceView({ zen, name, path }: Props) {
       const tab = getTabs().find((tb) => tb.instanceId === threadId);
       if (tab) upsertTab({ ...tab, name: trimmed });
     }
-    setRenamingThreadId(null);
     bumpThreads();
   }
 
@@ -1703,21 +1647,9 @@ export function WorkspaceView({ zen, name, path }: Props) {
     }
   }
 
-  function navBtn(section: NavSection) {
-    const isActive = !activeSessionId && activeSection === section;
-    return `sidebar-nav-btn${isActive ? " sidebar-nav-btn--active" : ""}`;
-  }
-
   function goTo(section: NavSection) {
     setActiveSection(section);
     setActiveSessionId(null);
-  }
-
-  function checkSidebarScroll() {
-    const el = sidebarScrollRef.current;
-    if (!el) return;
-    setSidebarAtTop(el.scrollTop < 8);
-    setSidebarAtBottom(el.scrollTop + el.clientHeight >= el.scrollHeight - 8);
   }
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
@@ -1797,42 +1729,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
       .catch(() => setActiveBranch(null));
   }, [activeSession?.cwd]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (!notesOpen) return;
-    if (notesBtnRef.current) {
-      const r = notesBtnRef.current.getBoundingClientRect();
-      setNotesPos({ top: r.bottom + 8, right: window.innerWidth - r.right });
-    }
-    function onDown(e: MouseEvent) {
-      const target = e.target as Node;
-      const inBtn = notesBtnRef.current?.contains(target);
-      const inPicker = (e.target as Element)?.closest?.(".sub-bar-notes-picker");
-      if (!inBtn && !inPicker) setNotesOpen(false);
-    }
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [notesOpen]);
 
-  useEffect(() => {
-    if (!promptPickerOpen) return;
-    setPromptPickerItems(getPrompts().filter((p) => p.enabled));
-    if (promptBtnRef.current) {
-      const r = promptBtnRef.current.getBoundingClientRect();
-      setPromptPickerPos({ top: r.bottom + 8, right: window.innerWidth - r.right });
-    }
-    function onDown(e: MouseEvent) {
-      const target = e.target as Node;
-      const inBtn = promptBtnRef.current?.contains(target);
-      const inPicker = (e.target as Element)?.closest?.(".sub-bar-prompt-picker");
-      if (!inBtn && !inPicker) setPromptPickerOpen(false);
-    }
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [promptPickerOpen]);
-
-
-  // Re-check sidebar scroll fades after layout settles (rAF ensures DOM is measured post-paint)
-  useEffect(() => { requestAnimationFrame(checkSidebarScroll); }, [projects, sessions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Atlas daemon heartbeat — ping every 3 minutes for projects the user has
   // actually touched this session. If a daemon exited (idle self-reap, OOM) the
@@ -1863,14 +1760,17 @@ export function WorkspaceView({ zen, name, path }: Props) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Zen mode: merge worktrees from disk with any non-worktree sessions
-  const zenSidebarItems: Worktree[] = zen
-    ? [
-        ...zenWorktrees,
-        ...sessions
-          .filter((s) => !zenWorktrees.some((w) => w.path === s.cwd))
-          .map((s) => ({ name: s.name, path: s.cwd })),
-      ]
-    : [];
+  const zenSidebarItems: Worktree[] = useMemo(() =>
+    zen
+      ? [
+          ...zenWorktrees,
+          ...sessions
+            .filter((s) => !zenWorktrees.some((w) => w.path === s.cwd))
+            .map((s) => ({ name: s.name, path: s.cwd })),
+        ]
+      : [],
+    [zen, zenWorktrees, sessions],
+  );
 
   // Default mode: active project
   const activeSessionProject = zen
@@ -1955,723 +1855,78 @@ export function WorkspaceView({ zen, name, path }: Props) {
     ? [{ id: "zen", name: name ?? folderName(path), path, expanded: true, worktrees: zenWorktrees }]
     : projects;
 
+  // Stable handler identities so memoized children (LeftSidebar, TopBar) skip
+  // re-renders when unrelated parent state changes. useEvent always dispatches
+  // to the latest closure, so callers see fresh state without new refs.
+  const goToStable = useEvent(goTo);
+  const addWorkspaceStable = useEvent(addWorkspace);
+  const openSessionMenuStable = useEvent(openSessionMenu);
+  const openBranchSessionMenuStable = useEvent(openBranchSessionMenu);
+  const openCtxMenuStable = useEvent(openCtxMenu);
+  const openSessionStable = useEvent(openSession);
+  const openThreadTabStable = useEvent(openThreadTab);
+  const toggleProjectStable = useEvent(toggleProject);
+  const toggleWorktreeStable = useEvent(toggleWorktree);
+  const toggleThemeStable = useEvent(toggleTheme);
+  const ensureThreadsLoadedStable = useEvent(ensureThreadsLoaded);
+  const createThreadStable = useEvent(createThread);
+  const renameThreadStable = useEvent(renameThread);
+  const removeThreadStable = useEvent(removeThread);
+  const openDiffPickerStable = useEvent(openDiffPicker);
+  const openSettingsFromTopBar = useEvent((section?: string) => {
+    if (section) setSettingsInitialSection(section);
+    setSettingsOpen(true);
+  });
+
   // Build the workspace list shown in OverviewPage from live session state.
   return (
     <div className="app">
       <TitleBar />
 
-      <Toolbar
+      <TopBar
         tabsMode={tabsMode}
-        projectName={activeSessionProject?.name ?? projects[0]?.name ?? ""}
-        rightActions={
-          <>
-            <Tooltip content="Notes" placement="bottom">
-              <PencilLine
-                ref={notesBtnRef}
-                className={`topbar-icon${notesOpen ? " active" : ""}`}
-                onClick={() => setNotesOpen((o) => !o)}
-              />
-            </Tooltip>
-            {notesOpen && notesPos && (
-              <NotesPopover
-                pos={notesPos}
-                projectPath={activeSessionProject?.path ?? (zen ? path : projects[0]?.path)}
-                projectName={activeSessionProject?.name ?? (zen ? name : projects[0]?.name)}
-              />
-            )}
-            <Tooltip content="Open diff view" placement="bottom">
-              <SplitSquareHorizontal
-                className={`topbar-icon${diffPickerOpen || sessions.some(s => s.kind === "diff") ? " active" : ""}`}
-                onClick={openDiffPicker}
-              />
-            </Tooltip>
-            <Tooltip content="Keyboard shortcuts" placement="bottom">
-              <Keyboard
-                className="topbar-icon"
-                onClick={() => { setSettingsInitialSection("keyboard"); setSettingsOpen(true); }}
-              />
-            </Tooltip>
-            <div className="topbar-prompt-wrap" ref={promptPickerRef}>
-              <Tooltip content="Prompts" placement="bottom">
-                <BookOpen
-                  ref={promptBtnRef}
-                  className={`topbar-icon${promptPickerOpen ? " active" : ""}`}
-                  onClick={() => setPromptPickerOpen((o) => !o)}
-                />
-              </Tooltip>
-              {promptPickerOpen && promptPickerPos && (
-                <PromptPickerPopover
-                  pos={promptPickerPos}
-                  items={promptPickerItems}
-                  sentId={promptSentId}
-                  onCopy={(p) => {
-                    navigator.clipboard.writeText(p.body);
-                    setPromptSentId(p.id);
-                    setTimeout(() => {
-                      setPromptPickerOpen(false);
-                      setPromptSentId(null);
-                    }, 800);
-                  }}
-                  onManage={() => {
-                    setPromptPickerOpen(false);
-                    setSettingsInitialSection("prompts");
-                    setSettingsOpen(true);
-                  }}
-                />
-              )}
-            </div>
-          </>
-        }
+        projectName={activeSessionProject?.name ?? (zen ? name : projects[0]?.name) ?? ""}
+        projectPath={activeSessionProject?.path ?? (zen ? path : projects[0]?.path)}
+        diffIconActive={diffPickerOpen || sessions.some((s) => s.kind === "diff")}
+        onOpenDiffPicker={openDiffPickerStable}
+        onOpenSettings={openSettingsFromTopBar}
       />
 
       <div className="body">
-        <aside className={`sidebar-left${sidebarOpen ? "" : " sidebar-left--collapsed"}`} style={{ "--sidebar-fs": `${sidebarFontSize}px` } as CSSProperties}>
-
-          {/* Fixed top: nav items */}
-          <div className="sidebar-nav">
-            <button className={navBtn("overview")} onClick={() => goTo("overview")}>
-              <LayoutGrid size={16} />
-              <span>Overview</span>
-            </button>
-            <button className={navBtn("knowledge-base")} onClick={() => goTo("knowledge-base")}>
-              <Brain size={16} />
-              <span>Knowledge Base</span>
-            </button>
-            <button className={navBtn("tasks")} onClick={() => goTo("tasks")}>
-              <List size={16} />
-              <span>My Tasks</span>
-            </button>
-            <button className={navBtn("automations")} onClick={() => goTo("automations")}>
-              <Workflow size={16} />
-              <span>Automations</span>
-            </button>
-          </div>
-
-          {/* Scrollable middle */}
-          <div className="sidebar-scroll-wrap">
-          <div className={`sidebar-fade-top${sidebarAtTop ? " sidebar-fade--hidden" : ""}`} />
-          <div className="sidebar-scroll" ref={sidebarScrollRef} onScroll={checkSidebarScroll}
-            onContextMenu={(e) => {
-              const proj = projects.find((p) => p.id === (activeSession?.projectId ?? null)) ?? projects[0];
-              if (!proj) return;
-              openCtxMenu(e, null, proj.path, proj.id, null);
-            }}
-          >
-          {zen ? (
-            /* ── Zen mode sidebar ── */
-            <>
-              <button
-                className="sidebar-nav-btn"
-                onClick={(e) => openSessionMenu(e, null, "right")}
-              >
-                <FolderPlus size={16} />
-                <span>New Workspace</span>
-              </button>
-              <div className="sidebar-section-label">Workspaces</div>
-              {zenSidebarItems.length === 0 ? (
-                <div className="agents-empty">No open workspaces</div>
-              ) : (
-                zenSidebarItems.map((item) => {
-                  const session = sessions.find((s) => s.cwd === item.path);
-                  const savedMeta = !session ? getWorktreeAgentSession(item.path) : null;
-                  const isAgent = !!(session?.agent || savedMeta?.agent);
-                  const isActive = session?.id === activeSessionId;
-                  return (
-                    <button
-                      key={item.path}
-                      className={`sidebar-nav-btn${isActive ? " sidebar-nav-btn--active" : ""}`}
-                      onClick={() => {
-                        if (session) {
-                          setActiveSessionId(session.id);
-                        } else {
-                          const saved = savedMeta ?? getWorktreeAgentSession(item.path);
-                          if (saved) {
-                            openSession(saved.name, item.path, saved.projectId, saved.agent, undefined, undefined, saved.agent ? saved.conversationId : undefined, undefined, undefined, false, saved.id).catch(() => {});
-                            markSessionOpen(saved.id);
-                          } else {
-                            openSession("Terminal", item.path, "").catch(() => {});
-                          }
-                        }
-                      }}
-                      onContextMenu={(e) =>
-                        openCtxMenu(e, item, path ?? "", "", session?.id ?? null)
-                      }
-                    >
-                      {isAgent ? <AgentIcon hint={session?.agent ?? savedMeta?.agent} size={15} /> : <TerminalSquare size={15} />}
-                      <span className="sidebar-session-name">{item.name}</span>
-                      {session?.agent && <SidebarWorkBadge sessionId={session.id} />}
-                    </button>
-                  );
-                })
-              )}
-            </>
-          ) : (
-            /* ── Default mode sidebar ── */
-            <>
-              <div className="sidebar-section-label sidebar-section-label--row">
-                <span>Projects</span>
-                <Tooltip content="Add project" placement="top">
-                  <FolderPlus size={13} className="sidebar-section-add" onClick={addWorkspace} />
-                </Tooltip>
-              </div>
-              {projects.length === 0 ? (
-                <div className="projects-empty-box">No projects added</div>
-              ) : (
-                <div className="sidebar-proj-list">
-                {projects.map((project) => {
-                  const projectSessions = sessions.filter((s) => s.projectId === project.id);
-
-                  // Root rows — live sessions plus the ghosts of closed ones, in
-                  // one creation-ordered list so neither group jumps the other.
-                  const liveRootSessions = projectSessions.filter((s) => s.isRootSession && s.kind !== "diff" && !s.parentSessionId);
-                  const liveRootIds = new Set(liveRootSessions.map((s) => s.id));
-                  const storedRootEntries = getRootSessionsForProject(project.path);
-                  const rootRows = sbRows(liveRootSessions, storedRootEntries.filter((g) => !liveRootIds.has(g.id)));
-
-                  const rootKey = project.path + "::root";
-                  const rootExpanded = expandedWorktrees.has(rootKey);
-                  const rootAgentRows    = rootRows.filter((r) => !!(r.live ?? r.ghost)!.agent);
-                  const rootTerminalRows = rootRows.filter((r) =>  !(r.live ?? r.ghost)!.agent);
-                  const primaryRootAgent = rootAgentRows.find((r) => r.live)?.live;
-                  const isGitProject = gitProjectIds.has(project.id) ||
-                    project.worktrees.length > 0 ||
-                    liveRootSessions.some((s) => !s.noGit) ||
-                    storedRootEntries.some((e) => !e.noGit);
-
-                  return (
-                    <div
-                      key={project.id}
-                      className={`sidebar-project${sidebarDragOver?.id === project.id ? ` sidebar-drag-over--${sidebarDragOver.side}` : ""}`}
-                      onDragOver={(e) => {
-                        if (!e.dataTransfer.types.includes("sidebar/project")) return;
-                        e.preventDefault();
-                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                        const side: "before" | "after" = e.clientY < rect.top + rect.height / 2 ? "before" : "after";
-                        setSidebarDragOver(prev => prev?.id === project.id && prev.side === side ? prev : { id: project.id, side });
-                      }}
-                      onDragLeave={(e) => {
-                        const rt = e.relatedTarget as Node | null;
-                        if (!rt || !(e.currentTarget as HTMLElement).contains(rt)) setSidebarDragOver(null);
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        const fromId = e.dataTransfer.getData("sidebar/project");
-                        if (!fromId || fromId === project.id) { setSidebarDragOver(null); return; }
-                        const side = sidebarDragOver?.id === project.id ? sidebarDragOver.side : "after";
-                        setSidebarDragOver(null);
-                        setProjects(prev => {
-                          const result = [...prev];
-                          const fromIdx = result.findIndex(p => p.id === fromId);
-                          const [moved] = result.splice(fromIdx, 1);
-                          const toIdx = result.findIndex(p => p.id === project.id);
-                          result.splice(side === "before" ? toIdx : toIdx + 1, 0, moved);
-                          return result;
-                        });
-                      }}
-                      onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, null)}
-                    >
-                      {/* Project header — drag handle */}
-                      <div
-                        className="sidebar-project-header"
-                        draggable
-                        onDragStart={(e) => {
-                          e.stopPropagation();
-                          e.dataTransfer.effectAllowed = "move";
-                          e.dataTransfer.setData("sidebar/project", project.id);
-                        }}
-                        onDragEnd={() => setSidebarDragOver(null)}
-                        onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, null, true)}
-                      >
-                        <button
-                          className="sidebar-project-toggle"
-                          onClick={() => toggleProject(project.id)}
-                        >
-                          {project.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                          <span>{project.name}</span>
-                        </button>
-                        {atlasEnabled && getRuntimeState().atlasProjects[project.path] === true && (
-                          <Cpu size={11} className="sidebar-project-atlas-icon" aria-label="Token Intelligence indexed" />
-                        )}
-                        <ProjectWorkBadge sessionIds={sessions.filter((s) => s.projectId === project.id).map((s) => s.id)} />
-                        {(isGitProject || rootRows.length > 0) && (
-                          <span className="sidebar-project-count">{project.worktrees.length + (rootRows.length > 0 ? 1 : 0)}</span>
-                        )}
-                        <Tooltip content="Project settings" placement="right">
-                          <button
-                            className="sidebar-project-settings-btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setProjectSettingsPanelId(project.id);
-                            }}
-                            aria-label="Project settings"
-                          >
-                            <Cog size={12} />
-                          </button>
-                        </Tooltip>
-                        <Tooltip content="New session" placement="right">
-                          <button
-                            className="sidebar-project-add-btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openSessionMenu(e, project.id, "right");
-                            }}
-                            onContextMenu={(e) => {
-                              e.stopPropagation();
-                              openSessionMenu(e, project.id, "right");
-                            }}
-                            aria-label="New session"
-                          >
-                            <Plus size={12} />
-                          </button>
-                        </Tooltip>
-                      </div>
-
-                      {project.expanded && (
-                        <div className="sidebar-project-sessions">
-                          {/* Root sessions — expandable row */}
-                          {(isGitProject || rootRows.length > 0) && (
-                            <div className="sb-worktree">
-                              <div
-                                className="sb-worktree-row"
-                                onClick={() => toggleWorktree(rootKey)}
-                                onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, null, false, true)}
-                              >
-                                <ChevronRight size={9} className={`sb-worktree-chevron${rootExpanded ? " open" : ""}`} />
-                                <span className="sb-worktree-label">{isGitProject ? "main" : "root"}</span>
-                                {isGitProject && <GitBranch size={10} className="sb-worktree-branch-icon" />}
-                                {primaryRootAgent && <SidebarWorkBadge sessionId={primaryRootAgent.id} />}
-                                <button
-                                  className="sb-worktree-add"
-                                  onClick={(e) => openBranchSessionMenu(e, project.path, project.id, "main", true)}
-                                >
-                                  <Plus size={10} />
-                                </button>
-                              </div>
-                              {rootExpanded && (() => {
-                                const rootAgentsEmpty = rootAgentRows.length === 0;
-                                const rootTerminalsEmpty = rootTerminalRows.length === 0;
-                                return (
-                                  <div className="sb-worktree-dropdown">
-                                    {rootAgentsEmpty && rootTerminalsEmpty ? (
-                                      <div className="sb-dropdown-empty-box">
-                                        <span className="sb-dropdown-empty-text">No sessions open. Start one with +</span>
-                                      </div>
-                                    ) : (
-                                      <>
-                                        <div className="sb-dropdown-section">
-                                          <span className="sb-dropdown-label">Agent Sessions</span>
-                                          {rootAgentRows.map(({ live: s, ghost }) => s ? (
-                                            <button
-                                              key={s.id}
-                                              className={`sb-dropdown-item${s.id === activeSessionId ? " sb-dropdown-item--active" : ""}`}
-                                              onClick={() => setActiveSessionId(s.id)}
-                                              onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, s.id, false, true, s.id)}
-                                            >
-                                              <AgentIcon hint={s.agent} size={11} />
-                                              <span className="sb-dropdown-item-name">{s.name}</span>
-                                              {s.agent && atlasEnabled && getRuntimeState().atlasProjects[project.path] === true && (
-                                                <Cpu size={10} className="sidebar-session-atlas-badge" />
-                                              )}
-                                              <SidebarWorkBadge sessionId={s.id} />
-                                            </button>
-                                          ) : (
-                                            <button
-                                              key={ghost!.id}
-                                              className="sb-dropdown-item sb-dropdown-item--ghost"
-                                              onClick={() => openSession(ghost!.name, project.path, project.id, ghost!.agent, undefined, undefined, ghost!.conversationId, true, ghost!.noGit, false, ghost!.id).catch(() => {})}
-                                              onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, null, false, true, ghost!.id)}
-                                            >
-                                              <AgentIcon hint={ghost!.agent} size={11} />
-                                              <span className="sb-dropdown-item-name">{ghost!.name}</span>
-                                            </button>
-                                          ))}
-                                          {rootAgentsEmpty && (
-                                            <div className="sb-dropdown-empty-box">
-                                              <span className="sb-dropdown-empty-text">No agent sessions</span>
-                                            </div>
-                                          )}
-                                        </div>
-                                        <div className="sb-dropdown-section">
-                                          <span className="sb-dropdown-label">Terminals</span>
-                                          {rootTerminalRows.map(({ live: s, ghost }) => s ? (
-                                            <button
-                                              key={s.id}
-                                              className={`sb-dropdown-item${s.id === activeSessionId ? " sb-dropdown-item--active" : ""}`}
-                                              onClick={() => setActiveSessionId(s.id)}
-                                              onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, s.id, false, true, s.id)}
-                                            >
-                                              <TerminalSquare size={11} />
-                                              <span className="sb-dropdown-item-name">{s.name}</span>
-                                            </button>
-                                          ) : (
-                                            <button
-                                              key={ghost!.id}
-                                              className="sb-dropdown-item sb-dropdown-item--ghost"
-                                              onClick={() => openSession(ghost!.name, project.path, project.id, undefined, undefined, undefined, undefined, true, ghost!.noGit, false, ghost!.id).catch(() => {})}
-                                              onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, null, false, true, ghost!.id)}
-                                            >
-                                              <TerminalSquare size={11} />
-                                              <span className="sb-dropdown-item-name">{ghost!.name}</span>
-                                            </button>
-                                          ))}
-                                          {rootTerminalsEmpty && (
-                                            <div className="sb-dropdown-empty-box">
-                                              <span className="sb-dropdown-empty-text">No terminals</span>
-                                            </div>
-                                          )}
-                                        </div>
-                                      </>
-                                    )}
-                                  </div>
-                                );
-                              })()}
-                            </div>
-                          )}
-
-                          {/* Worktree rows — one expandable row per branch */}
-                          {project.worktrees.map((wt) => {
-                            const wtSessions = projectSessions.filter((s) => s.cwd === wt.path && !s.parentSessionId);
-                            const subSessions = projectSessions.filter((s) => s.parentSessionId && wtSessions.some((ws) => ws.id === s.parentSessionId));
-                            const allAtPath = [...wtSessions, ...subSessions];
-                            const wtKindTabs = allAtPath.filter((s) => !s.agent && !!s.kind);
-                            // Every persisted non-sub session in this branch. Anything not
-                            // matched by a live session id renders as a ghost — so closing one
-                            // session never affects another. Live and ghost rows share one
-                            // creation-ordered list so a row keeps its place either way.
-                            const liveIds = new Set(allAtPath.map((s) => s.id));
-                            const ghostEntries = getBranchSessions(wt.path).filter((e) => !liveIds.has(e.id));
-                            const wtRows = sbRows(allAtPath.filter((s) => !s.kind), ghostEntries);
-                            const wtAgentRows    = wtRows.filter((r) => !!(r.live ?? r.ghost)!.agent);
-                            const wtTerminalRows = wtRows.filter((r) =>  !(r.live ?? r.ghost)!.agent);
-                            const primaryAgent = wtAgentRows.find((r) => r.live)?.live ?? null;
-                            const wtExpanded = expandedWorktrees.has(wt.path);
-
-                            return (
-                              <div
-                                key={wt.path}
-                                className={`sb-worktree${sidebarDragOver?.id === wt.path ? ` sidebar-drag-over--${sidebarDragOver.side}` : ""}`}
-                                onDragOver={(e) => {
-                                  if (!e.dataTransfer.types.includes("sidebar/worktree")) return;
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                  const side: "before" | "after" = e.clientY < rect.top + rect.height / 2 ? "before" : "after";
-                                  setSidebarDragOver(prev => prev?.id === wt.path && prev.side === side ? prev : { id: wt.path, side });
-                                }}
-                                onDragLeave={(e) => {
-                                  const rt = e.relatedTarget as Node | null;
-                                  if (!rt || !(e.currentTarget as HTMLElement).contains(rt)) setSidebarDragOver(null);
-                                }}
-                                onDrop={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  const fromPath = e.dataTransfer.getData("sidebar/worktree");
-                                  const fromProjectId = e.dataTransfer.getData("sidebar/projectId");
-                                  if (!fromPath || fromPath === wt.path || fromProjectId !== project.id) { setSidebarDragOver(null); return; }
-                                  const side = sidebarDragOver?.id === wt.path ? sidebarDragOver.side : "after";
-                                  setSidebarDragOver(null);
-                                  setProjects(prev => prev.map(p => {
-                                    if (p.id !== project.id) return p;
-                                    const ws = [...p.worktrees];
-                                    const fi = ws.findIndex(w => w.path === fromPath);
-                                    const [moved] = ws.splice(fi, 1);
-                                    const ti = ws.findIndex(w => w.path === wt.path);
-                                    ws.splice(side === "before" ? ti : ti + 1, 0, moved);
-                                    return { ...p, worktrees: ws };
-                                  }));
-                                }}
-                              >
-                                <div
-                                  className="sb-worktree-row"
-                                  draggable
-                                  onDragStart={(e) => {
-                                    e.stopPropagation();
-                                    e.dataTransfer.effectAllowed = "move";
-                                    e.dataTransfer.setData("sidebar/worktree", wt.path);
-                                    e.dataTransfer.setData("sidebar/projectId", project.id);
-                                  }}
-                                  onDragEnd={() => setSidebarDragOver(null)}
-                                  onClick={() => toggleWorktree(wt.path)}
-                                  onContextMenu={(e) => openCtxMenu(e, wt, project.path, project.id, wtSessions[0]?.id ?? null)}
-                                >
-                                  <ChevronRight size={9} className={`sb-worktree-chevron${wtExpanded ? " open" : ""}`} />
-                                  <span className="sb-worktree-label">{wt.name}</span>
-                                  <GitBranch size={10} className="sb-worktree-branch-icon" />
-                                  {primaryAgent && <SidebarWorkBadge sessionId={primaryAgent.id} />}
-                                  <button
-                                    className="sb-worktree-add"
-                                    onClick={(e) => openBranchSessionMenu(e, wt.path, project.id, wt.name, false)}
-                                  >
-                                    <Plus size={10} />
-                                  </button>
-                                </div>
-                                {wtExpanded && (() => {
-                                  const wtAgentsEmpty = wtAgentRows.length === 0;
-                                  const wtTerminalsEmpty = wtTerminalRows.length === 0;
-                                  return (
-                                    <div className="sb-worktree-dropdown">
-                                      {wtAgentsEmpty && wtTerminalsEmpty && wtKindTabs.length === 0 ? (
-                                        <div className="sb-dropdown-empty-box">
-                                          <span className="sb-dropdown-empty-text">No sessions open. Start one with +</span>
-                                        </div>
-                                      ) : (
-                                        <>
-                                          <div className="sb-dropdown-section">
-                                            <span className="sb-dropdown-label">Agent Sessions</span>
-                                            {wtAgentRows.map(({ live: s, ghost: g }) => s ? (
-                                              <button
-                                                key={s.id}
-                                                className={`sb-dropdown-item${s.id === activeSessionId ? " sb-dropdown-item--active" : ""}`}
-                                                onClick={() => setActiveSessionId(s.id)}
-                                                onContextMenu={(e) => openCtxMenu(e, wt, project.path, project.id, s.id)}
-                                              >
-                                                <AgentIcon hint={s.agent} size={11} />
-                                                <span className="sb-dropdown-item-name">{s.name}</span>
-                                                {s.agent && atlasEnabled && getRuntimeState().atlasProjects[project.path] === true && (
-                                                  <Cpu size={10} className="sidebar-session-atlas-badge" />
-                                                )}
-                                                <SidebarWorkBadge sessionId={s.id} />
-                                              </button>
-                                            ) : (
-                                              <button
-                                                key={g!.id}
-                                                className="sb-dropdown-item sb-dropdown-item--ghost"
-                                                onClick={() => { openSession(g!.name, wt.path, project.id, g!.agent, undefined, undefined, g!.conversationId, undefined, undefined, false, g!.id).catch(() => {}); markSessionOpen(g!.id); }}
-                                                onContextMenu={(e) => openCtxMenu(e, wt, project.path, project.id, null, false, false, g!.id)}
-                                              >
-                                                <AgentIcon hint={g!.agent} size={11} />
-                                                <span className="sb-dropdown-item-name">{g!.name}</span>
-                                              </button>
-                                            ))}
-                                            {wtAgentsEmpty && (
-                                              <div className="sb-dropdown-empty-box">
-                                                <span className="sb-dropdown-empty-text">No agent sessions</span>
-                                              </div>
-                                            )}
-                                          </div>
-                                          <div className="sb-dropdown-section">
-                                            <span className="sb-dropdown-label">Terminals</span>
-                                            {wtTerminalRows.map(({ live: s, ghost: g }) => s ? (
-                                              <button
-                                                key={s.id}
-                                                className={`sb-dropdown-item${s.id === activeSessionId ? " sb-dropdown-item--active" : ""}`}
-                                                onClick={() => setActiveSessionId(s.id)}
-                                                onContextMenu={(e) => openCtxMenu(e, wt, project.path, project.id, s.id)}
-                                              >
-                                                <TerminalSquare size={11} />
-                                                <span className="sb-dropdown-item-name">{s.name}</span>
-                                              </button>
-                                            ) : (
-                                              <button
-                                                key={g!.id}
-                                                className="sb-dropdown-item sb-dropdown-item--ghost"
-                                                onClick={() => { openSession(g!.name, wt.path, project.id, undefined, undefined, undefined, undefined, undefined, undefined, false, g!.id).catch(() => {}); markSessionOpen(g!.id); }}
-                                                onContextMenu={(e) => openCtxMenu(e, wt, project.path, project.id, null, false, false, g!.id)}
-                                              >
-                                                <TerminalSquare size={11} />
-                                                <span className="sb-dropdown-item-name">{g!.name}</span>
-                                              </button>
-                                            ))}
-                                            {wtTerminalsEmpty && (
-                                              <div className="sb-dropdown-empty-box">
-                                                <span className="sb-dropdown-empty-text">No terminals</span>
-                                              </div>
-                                            )}
-                                          </div>
-                                          {wtKindTabs.length > 0 && (
-                                            <div className="sb-dropdown-section">
-                                              {wtKindTabs.map((s) => (
-                                                <button
-                                                  key={s.id}
-                                                  className={`sb-dropdown-item${s.id === activeSessionId ? " sb-dropdown-item--active" : ""}`}
-                                                  onClick={() => setActiveSessionId(s.id)}
-                                                  onContextMenu={(e) => openCtxMenu(e, wt, project.path, project.id, s.id)}
-                                                >
-                                                  <Globe size={11} />
-                                                  <span className="sb-dropdown-item-name">{s.name}</span>
-                                                </button>
-                                              ))}
-                                            </div>
-                                          )}
-                                        </>
-                                      )}
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                            );
-                          })}
-
-                          {/* Non-worktree tabs (diff, preview, editor, chat) — threads live in their own dropdown below */}
-                          {projectSessions
-                            .filter((s) => s.kind !== "thread" && !s.isRootSession && !s.parentSessionId && !project.worktrees.some((w) => w.path === s.cwd))
-                            .map((s) => (
-                              <div key={s.id} className="sidebar-session-group">
-                                <button
-                                  className={`sidebar-project-session${s.id === activeSessionId ? " sidebar-project-session--active" : ""}`}
-                                  onClick={() => setActiveSessionId(s.id)}
-                                  onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, s.id)}
-                                >
-                                  {s.kind === "diff" ? <Eye size={12} /> : s.kind === "preview" ? <Globe size={12} /> : s.kind === "editor" ? <FileCode size={12} /> : s.agent ? <AgentIcon hint={s.agent} size={12} /> : <TerminalSquare size={12} />}
-                                  <span>{s.name}</span>
-                                  {s.agent && <SidebarWorkBadge sessionId={s.id} />}
-                                </button>
-                              </div>
-                            ))}
-
-                          {/* Threads (canvas chat) — project-scoped collapsible dropdown */}
-                          {(() => {
-                            const threadsKey = project.path + "::threads";
-                            const threadsExpanded = expandedWorktrees.has(threadsKey);
-                            void threadsVersion; // re-render on lazy load
-                            const canvases = getProjectThreads(project.id);
-                            return (
-                              <div className="sidebar-session-group">
-                                <div
-                                  className="sidebar-thread-session"
-                                  style={{ cursor: "pointer" }}
-                                  onClick={() => { ensureThreadsLoaded(project.id); toggleWorktree(threadsKey); }}
-                                >
-                                  {threadsExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                                  <span>Threads</span>
-                                  <button
-                                    className="sidebar-project-add-btn"
-                                    onClick={(e) => { e.stopPropagation(); ensureThreadsLoaded(project.id); createThread(project.id); }}
-                                    aria-label="New thread"
-                                  >
-                                    <Plus size={10} />
-                                  </button>
-                                </div>
-                                {threadsExpanded && canvases.map((c) => (
-                                  renamingThreadId === c.id ? (
-                                    <input
-                                      key={c.id}
-                                      autoFocus
-                                      className="sb-inline-create-input"
-                                      value={threadRenameValue}
-                                      onChange={(e) => setThreadRenameValue(e.target.value)}
-                                      onBlur={() => renameThread(c.id, threadRenameValue)}
-                                      onKeyDown={(e) => {
-                                        if (e.key === "Enter") renameThread(c.id, threadRenameValue);
-                                        else if (e.key === "Escape") setRenamingThreadId(null);
-                                      }}
-                                    />
-                                  ) : (
-                                    <div key={c.id} style={{ display: "flex", alignItems: "center" }}>
-                                      <button
-                                        className={`sidebar-thread-session${c.id === activeSessionId ? " sidebar-thread-session--active" : ""}`}
-                                        style={{ flex: 1 }}
-                                        onClick={() => openThreadTab(project.id, c.id)}
-                                        onDoubleClick={() => { setThreadRenameValue(c.name); setRenamingThreadId(c.id); }}
-                                      >
-                                        <Waypoints size={12} />
-                                        <span>{c.name}</span>
-                                      </button>
-                                      <button
-                                        className="sidebar-project-settings-btn"
-                                        onClick={() => removeThread(c.id)}
-                                        aria-label="Delete thread"
-                                      >
-                                        <Trash2 size={12} />
-                                      </button>
-                                    </div>
-                                  )
-                                ))}
-                                {threadsExpanded && canvases.length === 0 && (
-                                  <div className="sb-dropdown-empty-box">
-                                    <span className="sb-dropdown-empty-text">No threads yet. Create one with +</span>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })()}
-
-                          {/* Project-level empty state */}
-                          {(() => {
-                            const hasGitRows = isGitProject;
-                            const hasRootRows = !isGitProject && rootRows.length > 0;
-                            const hasOtherSessions = projectSessions.some((s) => !s.isRootSession && !s.parentSessionId && !project.worktrees.some((w) => w.path === s.cwd));
-                            if (!hasGitRows && !hasRootRows && !hasOtherSessions && inlineCreateProjectId !== project.id) {
-                              return (
-                                <div className="sb-dropdown-empty-box">
-                                  <span className="sb-dropdown-empty-text">No sessions open. Start one with +</span>
-                                </div>
-                              );
-                            }
-                            return null;
-                          })()}
-
-                          {/* Inline quick-create row — click + on project header to show */}
-                          {inlineCreateProjectId === project.id && (
-                            <div className="sb-inline-create">
-                              <input
-                                autoFocus
-                                className="sb-inline-create-input"
-                                placeholder="Session name…"
-                                value={inlineCreateName}
-                                onChange={(e) => setInlineCreateName(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter" && inlineCreateName.trim()) {
-                                    openSession(inlineCreateName.trim(), project.path, project.id, "claude", undefined, undefined, undefined, true).catch(() => {});
-                                    setInlineCreateProjectId(null);
-                                    setInlineCreateName("");
-                                  } else if (e.key === "Escape") {
-                                    setInlineCreateProjectId(null);
-                                    setInlineCreateName("");
-                                  }
-                                }}
-                                onBlur={() => {
-                                  setInlineCreateProjectId(null);
-                                  setInlineCreateName("");
-                                }}
-                              />
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-                </div>
-              )}
-            </>
-          )}
-
-          </div>{/* end sidebar-scroll */}
-          <div className={`sidebar-fade-bottom${sidebarAtBottom ? " sidebar-fade--hidden" : ""}`} />
-          </div>{/* end sidebar-scroll-wrap */}
-
-          <div className="sidebar-bottom-wrap">
-            <div className="sidebar-bottom-sep" />
-            <div className="sidebar-bottom">
-              <div className="sidebar-bottom-group">
-                <Tooltip content="Report a bug" placement="top">
-                  <Bug size={16} className="sidebar-bottom-icon" onClick={() => openUrl("https://github.com/tempestai-dev/tempest/issues")} />
-                </Tooltip>
-                <Tooltip content="Email us" placement="top">
-                  <Mail size={16} className="sidebar-bottom-icon" onClick={() => openUrl("mailto:tempestai.dev@gmail.com")} />
-                </Tooltip>
-              </div>
-              <div className="sidebar-bottom-group">
-                <Tooltip content="Toggle theme" placement="top">
-                  <SunMoon size={16} className="sidebar-bottom-icon" onClick={toggleTheme} />
-                </Tooltip>
-                <Tooltip content="Settings" placement="top">
-                  <Settings size={16} className="sidebar-bottom-icon" onClick={() => setSettingsOpen(true)} />
-                </Tooltip>
-                {zen ? (
-                  <Tooltip content={name ?? "Project"} placement="top">
-                    <FolderOpen size={16} className="sidebar-bottom-icon" />
-                  </Tooltip>
-                ) : (
-                  <Tooltip content="Add project" placement="top">
-                    <FolderPlus size={16} className="sidebar-bottom-icon" onClick={addWorkspace} />
-                  </Tooltip>
-                )}
-              </div>
-            </div>
-          </div>
-        </aside>
+        <LeftSidebar
+          zen={!!zen}
+          path={path}
+          name={name}
+          sidebarOpen={sidebarOpen}
+          sidebarFontSize={sidebarFontSize}
+          activeSection={activeSection}
+          projects={projects}
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          zenSidebarItems={zenSidebarItems}
+          gitProjectIds={gitProjectIds}
+          atlasEnabled={atlasEnabled}
+          threadsVersion={threadsVersion}
+          expandedWorktrees={expandedWorktrees}
+          setActiveSessionId={setActiveSessionId}
+          setProjects={setProjects}
+          setProjectSettingsPanelId={setProjectSettingsPanelId}
+          setSettingsOpen={setSettingsOpen}
+          goTo={goToStable}
+          addWorkspace={addWorkspaceStable}
+          openSessionMenu={openSessionMenuStable}
+          openBranchSessionMenu={openBranchSessionMenuStable}
+          openCtxMenu={openCtxMenuStable}
+          openSession={openSessionStable}
+          openThreadTab={openThreadTabStable}
+          toggleProject={toggleProjectStable}
+          toggleWorktree={toggleWorktreeStable}
+          toggleTheme={toggleThemeStable}
+          ensureThreadsLoaded={ensureThreadsLoadedStable}
+          createThread={createThreadStable}
+          renameThread={renameThreadStable}
+          removeThread={removeThreadStable}
+        />
 
         <div className="workspace">
           <div className="canvas-wrap">
