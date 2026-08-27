@@ -8,7 +8,9 @@
     "docs",
     "apps/mobile",
     "apps/relay",
-    "packages/*"
+    "packages/core",
+    "packages/crypto",
+    "packages/transport"
   ],
   "scripts": {
     "dev": "tauri dev",
