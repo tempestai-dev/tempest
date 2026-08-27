@@ -19,8 +19,6 @@ writeFileSync(
   JSON.stringify({ name: '@tempest/atlas-runtime', private: true, type: 'commonjs' }, null, 2) + '\n'
 )
 
-cpSync(src, join(destModules, '@usetempest', 'atlas'), { recursive: true })
-
 // Copy the transitive closure of every dep the shipped Atlas needs at runtime.
 // npm hoists deps to the *root* node_modules and we only cpSync'd the Atlas
 // package itself above — so in the installer (no parent tree to walk up into)
@@ -48,7 +46,7 @@ function copyClosure(pkg, seen = new Set()) {
     console.warn(`[install-atlas] WARN: dependency not found in root node_modules: ${pkg}`)
     return
   }
-  cpSync(from, join(destModules, ...pkg.split('/')), { recursive: true })
+  cpSync(from, join(destModules, ...pkg.split('/')), { recursive: true, dereference: true })
   let meta
   try { meta = JSON.parse(readFileSync(pkgJson, 'utf8')) } catch { return }
   // Walk both `dependencies` and `optionalDependencies` — @xenova/transformers
