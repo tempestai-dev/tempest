@@ -7,11 +7,18 @@ export interface QueueItem {
 
 const queues = new Map<string, QueueItem[]>();
 const listeners = new Map<string, Set<() => void>>();
+const allListeners = new Set<(sessionId: string) => void>();
 const EMPTY: QueueItem[] = [];
 
 function emit(sessionId: string) {
   const subs = listeners.get(sessionId);
   if (subs) for (const fn of subs) fn();
+  for (const fn of allListeners) fn(sessionId);
+}
+
+export function subscribeAllQueueChanges(fn: (sessionId: string) => void): () => void {
+  allListeners.add(fn);
+  return () => { allListeners.delete(fn); };
 }
 
 function subscribe(sessionId: string, fn: () => void): () => void {
@@ -54,6 +61,20 @@ export function removeFromQueue(sessionId: string, itemId: string): void {
 
 export function clearQueue(sessionId: string): void {
   if (queues.delete(sessionId)) emit(sessionId);
+}
+
+export function reorderQueue(sessionId: string, itemId: string, toIndex: number): void {
+  const q = queues.get(sessionId);
+  if (!q) return;
+  const from = q.findIndex((i) => i.id === itemId);
+  if (from < 0) return;
+  const clamped = Math.max(0, Math.min(q.length - 1, toIndex));
+  if (from === clamped) return;
+  const next = [...q];
+  const [item] = next.splice(from, 1);
+  next.splice(clamped, 0, item);
+  queues.set(sessionId, next);
+  emit(sessionId);
 }
 
 export function getQueue(sessionId: string): QueueItem[] {

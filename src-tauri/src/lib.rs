@@ -12,6 +12,7 @@ mod canvas_mcp;
 mod claude_bridge;
 mod node_ingest;
 mod notes;
+mod pairing_relay;
 mod quota;
 mod secrets;
 mod service_proxy;
@@ -4441,6 +4442,31 @@ async fn get_ide_panel_url(
     }
 }
 
+// ── Host machine identity ────────────────────────────────────────────────────
+
+/// OS hostname, used as the default device name when generating a mobile
+/// pairing QR. Falls back to "Tempest desktop" if the platform lookup fails.
+#[tauri::command]
+fn get_hostname() -> String {
+    #[cfg(windows)]
+    {
+        std::env::var("COMPUTERNAME").unwrap_or_else(|_| "Tempest desktop".into())
+    }
+    #[cfg(unix)]
+    {
+        use std::ffi::CStr;
+        let mut buf = [0u8; 256];
+        // SAFETY: buf is a valid mutable byte buffer of the given length.
+        let rc = unsafe { libc::gethostname(buf.as_mut_ptr() as *mut _, buf.len()) };
+        if rc == 0 {
+            let cstr = unsafe { CStr::from_ptr(buf.as_ptr() as *const _) };
+            cstr.to_string_lossy().into_owned()
+        } else {
+            "Tempest desktop".into()
+        }
+    }
+}
+
 // ── App ──────────────────────────────────────────────────────────────────────
 
 /// Open the webview devtools. Compiled in for release builds via the tauri
@@ -4528,6 +4554,9 @@ pub fn run() {
             let routes: service_proxy::Routes = Default::default();
             let proxy_up = service_proxy::start(routes.clone());
             app.manage(ServiceRoutes(routes, proxy_up));
+            // Phone pairing: local WS router + cloudflared quick tunnel.
+            // Lazy-started by the first `start_pairing_relay` invoke.
+            app.manage(pairing_relay::PairingRelayState::new());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -4664,7 +4693,10 @@ pub fn run() {
             node_ingest::extract_file_text,
             node_ingest::scrape_url,
             node_ingest::fetch_media_info,
+            pairing_relay::start_pairing_relay,
+            pairing_relay::stop_pairing_relay,
             open_devtools,
+            get_hostname,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -4694,6 +4726,12 @@ pub fn run() {
 
                 // Kill any in-flight Claude Code chat-backend turns.
                 claude_bridge::kill_all(app_handle);
+
+                // Kill the cloudflared quick tunnel (if any) so it doesn't
+                // outlive the app. shutdown() awaits a Mutex, so block on the
+                // async runtime.
+                let pr = app_handle.state::<pairing_relay::PairingRelayState>();
+                tauri::async_runtime::block_on(pr.shutdown());
 
                 // Tear down every live PTY session so agent subprocesses (e.g.
                 // Notepad spawned via `Start-Process`) never outlive the app.

@@ -1,0 +1,14 @@
+name = "tempest-relay"
+main = "src/index.js"
+compatibility_date = "2025-01-15"
+
+[[durable_objects.bindings]]
+name = "SESSION"
+class_name = "Session"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Session"]
+
+[observability]
+enabled = true

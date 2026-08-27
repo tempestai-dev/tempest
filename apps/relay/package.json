@@ -1,0 +1,18 @@
+{
+  "name": "tempest-relay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloudflare Worker + Durable Object frame router for Tempest mobile pairing.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "smoke": "node smoke.mjs"
+  },
+  "devDependencies": {
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1",
+    "wrangler": "^4.0.0",
+    "ws": "^8.18.0"
+  }
+}

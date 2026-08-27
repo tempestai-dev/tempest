@@ -42,6 +42,7 @@
     "active": true,
     "createUpdaterArtifacts": true,
     "targets": ["nsis", "msi"],
+    "externalBin": ["binaries/cloudflared"],
     "resources": [
       "resources/atlas/**/*",
       "resources/claude-bridge/**/*",

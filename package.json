@@ -5,7 +5,12 @@
   "type": "module",
   "workspaces": [
     "web",
-    "docs"
+    "docs",
+    "apps/mobile",
+    "apps/relay",
+    "packages/core",
+    "packages/crypto",
+    "packages/transport"
   ],
   "scripts": {
     "dev": "tauri dev",
@@ -13,7 +18,7 @@
     "dev:web": "npm run dev --workspace=tempest-web",
     "dev:docs": "npm run dev --workspace=tempest-docs",
     "build": "tauri build && node scripts/collect-artifacts.mjs",
-    "postinstall": "node scripts/install-atlas.mjs && node scripts/install-claude-bridge.mjs",
+    "postinstall": "node scripts/install-atlas.mjs && node scripts/install-claude-bridge.mjs && node scripts/install-cloudflared.mjs",
     "build:frontend": "tsc && vite build",
     "build:web": "npm run build --workspace=tempest-web",
     "build:docs": "npm run build --workspace=tempest-docs",
@@ -45,6 +50,7 @@
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "^2.10.1",
     "@types/d3-force": "^3.0.10",
+    "@types/qrcode": "^1.5.6",
     "@usetempest/atlas": "^1.3.2",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-search": "^0.16.0",
@@ -64,6 +70,9 @@
     "lucide-react": "^1.32.0",
     "motion": "^12.43.0",
     "posthog-js": "^1.418.1",
+    "qrcode": "^1.5.4",
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-markdown": "^10.1.0",

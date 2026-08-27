@@ -61,6 +61,9 @@ jobs:
       - name: Stub atlas bundle for cargo check
         run: mkdir -p src-tauri/resources/atlas && touch src-tauri/resources/atlas/.keep
 
+      - name: Stub cloudflared sidecar for cargo check
+        run: mkdir -p src-tauri/binaries && touch src-tauri/binaries/cloudflared-x86_64-unknown-linux-gnu
+
       - name: Check
         working-directory: src-tauri
         run: cargo check
