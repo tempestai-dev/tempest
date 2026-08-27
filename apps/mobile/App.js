@@ -25,13 +25,17 @@ const WELCOME_SEEN_KEY = 'welcome_seen';
 const shortId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 // Pair.js completes the handshake and hands us a real record. We only add
-// the local id + timestamp here.
+// the local id + timestamp here. sessionKey + sessionId + relayUrl are
+// what the RPC client uses to (re)connect within one Tempest run.
 const pairingFromHandshake = (r) => ({
   id: shortId(),
   name: r.name || 'Tempest desktop',
   endpoint: r.endpoint,
   pubkey: r.pubkey,
   fingerprint: r.fingerprint,
+  sessionId: r.sessionId,
+  sessionKey: r.sessionKey,
+  relayUrl: r.relayUrl,
   createdAt: Date.now(),
 });
 

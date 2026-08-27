@@ -5,7 +5,10 @@
   "type": "module",
   "workspaces": [
     "web",
-    "docs"
+    "docs",
+    "apps/mobile",
+    "apps/relay",
+    "packages/*"
   ],
   "scripts": {
     "dev": "tauri dev",

@@ -12,6 +12,7 @@ const attentions = new Set<string>();
 // session's badge, instead of every subscriber (O(N) per chunk, not O(N²)).
 const sessionListeners = new Map<string, Set<() => void>>();
 const versionListeners = new Set<() => void>();
+const allListeners = new Set<(sessionId: string) => void>();
 let version = 0;
 
 function emit(sessionId: string) {
@@ -19,6 +20,12 @@ function emit(sessionId: string) {
   const subs = sessionListeners.get(sessionId);
   if (subs) for (const fn of subs) fn();
   for (const fn of versionListeners) fn();
+  for (const fn of allListeners) fn(sessionId);
+}
+
+export function subscribeAllWorkStateChanges(fn: (sessionId: string) => void): () => void {
+  allListeners.add(fn);
+  return () => { allListeners.delete(fn); };
 }
 
 function subscribeSession(sessionId: string, fn: () => void): () => void {

@@ -11,7 +11,7 @@ import {
   deriveSessionKey,
   open as boxOpen,
   seal as boxSeal,
-} from "./nacl";
+} from "@tempest/crypto";
 
 export interface LaptopSession {
   sessionId: string;
@@ -23,6 +23,8 @@ export interface LaptopSession {
 export interface PairResult {
   phonePubkey: Uint8Array;
   sessionKey: Uint8Array;
+  /** Present iff RunOptions.keepAliveOnPair is true — hand off to RpcPeer. */
+  ws?: WebSocket;
 }
 
 export type PairStatus =
@@ -40,6 +42,12 @@ export interface RunOptions {
   ttlMs: number;
   onStatus?: (s: PairStatus, detail?: string) => void;
   signal?: AbortSignal;
+  /**
+   * When true, hand the still-open WebSocket to the resolver (as
+   * `PairResult.ws`) instead of closing it — the caller wraps it in an
+   * RpcPeer for the post-pair companion session.
+   */
+  keepAliveOnPair?: boolean;
 }
 
 interface Frame {
@@ -60,7 +68,7 @@ export function runLaptopPairing(opts: RunOptions): {
   result: Promise<PairResult>;
   cancel: () => void;
 } {
-  const { relayUrl, session, ttlMs, onStatus, signal } = opts;
+  const { relayUrl, session, ttlMs, onStatus, signal, keepAliveOnPair } = opts;
   const url = `${relayUrl}?session=${encodeURIComponent(session.sessionId)}&role=laptop`;
 
   let ws: WebSocket | null = null;
@@ -85,8 +93,19 @@ export function runLaptopPairing(opts: RunOptions): {
       if (settled) return;
       settled = true;
       onStatus?.("paired");
-      cleanup();
-      resolve(r);
+      if (keepAliveOnPair && ws) {
+        // Cancel the TTL timer but leave the WS open for RpcPeer takeover.
+        if (ttlTimer) { clearTimeout(ttlTimer); ttlTimer = null; }
+        // Detach the WS-level handlers now under our control — the caller's
+        // RpcPeer installs its own.
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+        resolve({ ...r, ws });
+      } else {
+        cleanup();
+        resolve(r);
+      }
     };
 
     onStatus?.("connecting");

@@ -48,6 +48,9 @@ export default function Pair({ onBack, onPaired }) {
           endpoint: payload.relay_url,
           pubkey: r.pubkey,
           fingerprint: r.fingerprint,
+          sessionId: r.sessionId,
+          sessionKey: r.sessionKey,
+          relayUrl: r.relayUrl,
         });
       })
       .catch((e) => {

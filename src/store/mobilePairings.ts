@@ -72,24 +72,20 @@ export function addPairedPhone(input: {
   name: string;
   pubkey: string;
   fingerprint: string;
-}): void {
+}): PairedPhone {
   const now = Date.now();
-  _state = {
-    ..._state,
-    paired: [
-      ..._state.paired,
-      {
-        id: `${now.toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-        name: input.name,
-        pubkey: input.pubkey,
-        fingerprint: input.fingerprint,
-        pairedAt: now,
-        lastSeenAt: now,
-      },
-    ],
+  const record: PairedPhone = {
+    id: `${now.toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    name: input.name,
+    pubkey: input.pubkey,
+    fingerprint: input.fingerprint,
+    pairedAt: now,
+    lastSeenAt: now,
   };
+  _state = { ..._state, paired: [..._state.paired, record] };
   persist();
   emit();
+  return record;
 }
 
 function persist(): void {

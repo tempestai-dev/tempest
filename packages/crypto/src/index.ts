@@ -1,10 +1,9 @@
-// NaCl primitives shared by the desktop pairing flow. Same shape lives on
-// mobile (apps/mobile/lib/pairing.js) — keep the two in sync until Phase 2
-// extracts them into packages/crypto.
-//
-// Wire: pairing_secret authenticates the very first hello (proves the QR
-// scan). After that, both sides derive a session key from their ephemeral
+// @tempest/crypto — NaCl primitives shared by desktop pairing (loopback dial)
+// and mobile. Both sides derive the same session key from their ephemeral
 // X25519 keypairs and use secretbox for the remaining frames.
+//
+// Platforms that lack webcrypto (React Native inside Expo Go) must call
+// seedPrng() at startup with a byte source before any keygen call.
 
 import nacl from "tweetnacl";
 import naclUtil from "tweetnacl-util";
@@ -24,6 +23,17 @@ export interface KeyPair {
   secretKey: Uint8Array;
 }
 
+/**
+ * Seed tweetnacl's PRNG. Idempotent — safe to call from any platform init.
+ * Desktop (webcrypto present) doesn't need this; mobile (Expo Go) does.
+ */
+export function seedPrng(source: (n: number) => Uint8Array): void {
+  nacl.setPRNG((x, n) => {
+    const buf = source(n);
+    for (let i = 0; i < n; i++) x[i] = buf[i];
+  });
+}
+
 export function newKeyPair(): KeyPair {
   const kp = nacl.box.keyPair();
   return { publicKey: kp.publicKey, secretKey: kp.secretKey };
@@ -33,7 +43,7 @@ export function randomBytes(n: number): Uint8Array {
   return nacl.randomBytes(n);
 }
 
-// SSH-style short fingerprint of a pubkey: sha512 → 8 hex → aaaa-bbbb.
+/** SSH-style short fingerprint: sha512(pubkey) → first 8 hex → aaaa-bbbb. */
 export function fingerprint(pubkey: Uint8Array): string {
   const h = nacl.hash(pubkey);
   let hex = "";
@@ -56,7 +66,6 @@ export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   return diff === 0;
 }
 
-// Secretbox under an arbitrary 32-byte key.
 export function seal(plaintext: Uint8Array, key: Uint8Array): { nonce: string; box: string } {
   const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
   const box = nacl.secretbox(plaintext, nonce, key);
@@ -66,11 +75,9 @@ export function seal(plaintext: Uint8Array, key: Uint8Array): { nonce: string; b
 export function open(nonceB64: string, boxB64: string, key: Uint8Array): Uint8Array | null {
   const nonce = b64.dec(nonceB64);
   const box = b64.dec(boxB64);
-  const out = nacl.secretbox.open(box, nonce, key);
-  return out ?? null;
+  return nacl.secretbox.open(box, nonce, key) ?? null;
 }
 
-// Derive the session key both sides use for post-hello frames.
 export function deriveSessionKey(peerPubkey: Uint8Array, mySecretkey: Uint8Array): Uint8Array {
   return nacl.box.before(peerPubkey, mySecretkey);
 }

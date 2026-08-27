@@ -37,6 +37,19 @@ const _projects = new Map<string, DbProject>();
 const _branchById = new Map<string, DbBranch>();
 const _branchByPath = new Map<string, DbBranch>();
 
+// Lifecycle listeners — { updated, removed } fired from the mutation
+// helpers below so out-of-tree consumers (mobile bridge) can push deltas
+// without React subscriptions.
+type LifecycleEvent = { kind: "updated" | "removed"; id: string };
+const _lifecycleListeners = new Set<(e: LifecycleEvent) => void>();
+function emitLifecycle(e: LifecycleEvent): void {
+  for (const fn of _lifecycleListeners) { try { fn(e); } catch { /* isolate */ } }
+}
+export function subscribeSessionLifecycle(fn: (e: LifecycleEvent) => void): () => void {
+  _lifecycleListeners.add(fn);
+  return () => { _lifecycleListeners.delete(fn); };
+}
+
 function basename(p: string): string {
   return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 }
@@ -237,6 +250,7 @@ export function saveSession(input: SaveSessionInput): void {
   };
   _sessions.set(session.id, session);
   persistSession(session);
+  emitLifecycle({ kind: "updated", id: session.id });
 }
 
 // Update only the captured conversation id (agents that mint their own id from
@@ -253,6 +267,7 @@ export function markSessionClosed(id: string): void {
   if (!s || s.closed === true) return;
   s.closed = true;
   persistSession(s);
+  emitLifecycle({ kind: "updated", id });
 }
 
 export function markSessionOpen(id: string): void {
@@ -260,11 +275,13 @@ export function markSessionOpen(id: string): void {
   if (!s || s.closed !== true) return;
   s.closed = false;
   persistSession(s);
+  emitLifecycle({ kind: "updated", id });
 }
 
 export function removeSession(id: string): void {
   if (!_sessions.delete(id)) return;
   dbDeleteSession(id).catch(logErr("delete session"));
+  emitLifecycle({ kind: "removed", id });
 }
 
 // Delete a worktree's branch and all its sessions (worktree removed from disk).

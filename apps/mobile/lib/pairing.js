@@ -1,76 +1,30 @@
-// Mobile pairing crypto + relay client. Mirrors src/lib/pairing/ on the
-// desktop — keep the two in sync until Phase 2 extracts a shared package.
+// Phone-side pairing handshake. Crypto primitives live in @tempest/crypto;
+// the WS runner below owns the phone_hello / laptop_ok / phone_ack dance
+// specifically. If we ever move this into @tempest/transport, it stays
+// symmetrical with the desktop-side dialer.
 
-import nacl from 'tweetnacl';
-import naclUtil from 'tweetnacl-util';
 import * as Crypto from 'expo-crypto';
+import {
+  b64,
+  utf8,
+  seal,
+  open,
+  concatBytes,
+  bytesEqual,
+  deriveSessionKey,
+  fingerprint,
+  newKeyPair,
+  seedPrng,
+} from '@tempest/crypto';
+import nacl from 'tweetnacl';
 
-// Seed tweetnacl's PRNG from expo-crypto so it works in Expo Go without
-// pulling in react-native-get-random-values (which would require a dev
-// build). expo-crypto's sync getRandomBytes is fine here — small
-// allocations only.
-nacl.setPRNG((x, n) => {
-  const buf = Crypto.getRandomBytes(n);
-  for (let i = 0; i < n; i++) x[i] = buf[i];
-});
+// Expo Go has no webcrypto; seed once before any keygen.
+seedPrng((n) => Crypto.getRandomBytes(n));
 
-export const b64 = {
-  enc: (b) => naclUtil.encodeBase64(b),
-  dec: (s) => naclUtil.decodeBase64(s),
-};
+export { b64, fingerprint };
 
-export const utf8 = {
-  enc: (s) => naclUtil.decodeUTF8(s),
-  dec: (b) => naclUtil.encodeUTF8(b),
-};
-
-export const newKeyPair = () => {
-  const kp = nacl.box.keyPair();
-  return { publicKey: kp.publicKey, secretKey: kp.secretKey };
-};
-
-export const randomBytes = (n) => nacl.randomBytes(n);
-
-export const fingerprint = (pubkey) => {
-  const h = nacl.hash(pubkey);
-  const hex = Array.from(h.slice(0, 4))
-    .map((x) => x.toString(16).padStart(2, '0'))
-    .join('');
-  return `${hex.slice(0, 4)}-${hex.slice(4, 8)}`;
-};
-
-const concatBytes = (...parts) => {
-  const total = parts.reduce((n, p) => n + p.length, 0);
-  const out = new Uint8Array(total);
-  let off = 0;
-  for (const p of parts) { out.set(p, off); off += p.length; }
-  return out;
-};
-
-const bytesEqual = (a, b) => {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
-  return diff === 0;
-};
-
-const seal = (plaintext, key) => {
-  const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
-  const box = nacl.secretbox(plaintext, nonce, key);
-  return { nonce: b64.enc(nonce), box: b64.enc(box) };
-};
-
-const open = (nonceB64, boxB64, key) => {
-  const nonce = b64.dec(nonceB64);
-  const box = b64.dec(boxB64);
-  return nacl.secretbox.open(box, nonce, key);
-};
-
-const deriveSessionKey = (peerPubkey, mySecretkey) =>
-  nacl.box.before(peerPubkey, mySecretkey);
-
-// Parse the JSON payload the desktop encoded in the QR. Returns null if
-// the string is not a valid v1 pairing payload.
+// Parse the JSON payload the desktop encoded in the QR. Returns null on any
+// shape mismatch.
 export const parseQrPayload = (raw) => {
   let p;
   try { p = JSON.parse(raw); } catch { return null; }
@@ -83,9 +37,8 @@ export const parseQrPayload = (raw) => {
 };
 
 // Run the phone-side handshake. Returns { promise, cancel }.
-// promise resolves with { pubkey (b64), name, fingerprint } on success.
-// The WSS dial is retried on connect failure — TryCloudflare's public
-// DNS/edge routing can take ~30s to propagate after cloudflared reports ready.
+// Retries the dial while the TTL window is open — TryCloudflare DNS/edge
+// propagation can trail cloudflared's `/ready` by ~30s.
 export const runPhonePairing = (payload, { onStatus, ttlMs = 60_000 } = {}) => {
   const url = `${payload.relay_url}?session=${encodeURIComponent(payload.session_id)}&role=phone`;
 
@@ -203,6 +156,9 @@ export const runPhonePairing = (payload, { onStatus, ttlMs = 60_000 } = {}) => {
               pubkey: payload.laptop_pubkey,
               name: payload.name || 'Tempest desktop',
               fingerprint: fingerprint(laptopPubkey),
+              sessionKey: b64.enc(sessionKey),
+              relayUrl: payload.relay_url,
+              sessionId: payload.session_id,
             });
           } catch (e) {
             try { ws.send(JSON.stringify({ t: 'error', reason: e.message })); } catch {}
@@ -220,8 +176,6 @@ export const runPhonePairing = (payload, { onStatus, ttlMs = 60_000 } = {}) => {
     const scheduleRetry = () => {
       if (settled || cancelled) return;
       if (ws) { try { ws.close(); } catch {} ws = null; }
-      // Stop retrying past the TTL — the ttlTimer will fire and fail the
-      // whole thing regardless, but no point burning cycles.
       if (Date.now() - startedAt > ttlMs - 1000) return;
       onStatus?.('waiting_for_laptop');
       retryTimer = setTimeout(dial, 2000);

@@ -10,8 +10,9 @@ import {
   renamePairedPhone,
   addPairedPhone,
 } from "../../store/mobilePairings";
-import { b64, fingerprint, newKeyPair, randomBytes } from "../../lib/pairing/nacl";
+import { b64, fingerprint, newKeyPair, randomBytes } from "@tempest/crypto";
 import { runLaptopPairing, type PairStatus } from "../../lib/pairing/relayClient";
+import { registerBridge } from "../../lib/mobileBridge/registry";
 
 const QR_TTL_SECONDS = 60;
 
@@ -181,16 +182,20 @@ export function MobileSection() {
       },
       ttlMs: QR_TTL_SECONDS * 1000,
       onStatus: (s) => setStatus(s),
+      keepAliveOnPair: true,
     });
     activeCancelRef.current = run.cancel;
 
     run.result
       .then((r) => {
-        addPairedPhone({
+        const record = addPairedPhone({
           name: "Paired phone",
           pubkey: b64.enc(r.phonePubkey),
           fingerprint: fingerprint(r.phonePubkey),
         });
+        // Hand the still-open WS off to the RPC bridge so the phone can
+        // start querying agents / queues / permissions immediately.
+        if (r.ws) registerBridge(record.id, r.ws, r.sessionKey);
         // Give the "Paired." label a beat, then close the panel.
         setTimeout(() => {
           setLive(null);
