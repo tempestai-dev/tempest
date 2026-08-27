@@ -22,33 +22,18 @@ const DEV = process.env.EXPO_PUBLIC_DEV === 'true';
 const PAIRINGS_KEY = 'pairings';
 const WELCOME_SEEN_KEY = 'welcome_seen';
 
-// djb2 → 8-hex chars → xxxx-xxxx. Not collision-resistant; identity display only.
-// ponytail: swap for truncated sha256 of the real pubkey when Phase 1 lands.
-const fingerprint = (input) => {
-  let h = 5381;
-  const s = String(input || '');
-  for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
-  const hex = (h >>> 0).toString(16).padStart(8, '0');
-  return `${hex.slice(0, 4)}-${hex.slice(4, 8)}`;
-};
-
 const shortId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-// QR payload → pairing record. Phase 1 QR ships JSON; today's mock accepts anything.
-const pairingFromQR = (raw) => {
-  let parsed = {};
-  try { parsed = JSON.parse(raw); } catch {}
-  const pubkey = parsed.pubkey || parsed.laptop_pubkey || raw;
-  return {
-    id: shortId(),
-    name: parsed.name || 'Tempest desktop',
-    endpoint: parsed.endpoint || parsed.relay_url || raw,
-    pubkey,
-    secret: parsed.secret || parsed.pairing_secret || null,
-    fingerprint: fingerprint(pubkey),
-    createdAt: Date.now(),
-  };
-};
+// Pair.js completes the handshake and hands us a real record. We only add
+// the local id + timestamp here.
+const pairingFromHandshake = (r) => ({
+  id: shortId(),
+  name: r.name || 'Tempest desktop',
+  endpoint: r.endpoint,
+  pubkey: r.pubkey,
+  fingerprint: r.fingerprint,
+  createdAt: Date.now(),
+});
 
 // Geist family per weight — RN needs an exact family per weight, no synthesis.
 export const geist = {
@@ -265,8 +250,8 @@ export default function App() {
     setScreen('pair');
   };
 
-  const handlePaired = (data) => {
-    const p = pairingFromQR(data);
+  const handlePaired = (record) => {
+    const p = pairingFromHandshake(record);
     persistPairings([...pairings, p]);
     setActiveId(p.id);
     setScreen('connected');

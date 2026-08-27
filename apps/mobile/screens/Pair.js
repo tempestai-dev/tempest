@@ -1,19 +1,67 @@
-import { useState } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { StatusBar } from 'expo-status-bar';
+import { parseQrPayload, runPhonePairing } from '../lib/pairing';
 
 const geist = { regular: 'Geist_400Regular', semibold: 'Geist_600SemiBold' };
 
+const STATUS_LABEL = {
+  connecting: 'Connecting to relay…',
+  waiting_for_laptop: 'Waiting for desktop…',
+  handshaking: 'Verifying pairing secret…',
+  paired: 'Paired.',
+  expired: 'Pairing timed out.',
+  error: 'Pairing failed.',
+};
+
 export default function Pair({ onBack, onPaired }) {
   const [permission, requestPermission] = useCameraPermissions();
-  const [scanned, setScanned] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState(null);
+  const [error, setError] = useState(null);
+  const activeCancelRef = useRef(null);
+
+  useEffect(() => () => activeCancelRef.current?.(), []);
 
   const handleScan = ({ data }) => {
-    if (scanned) return;
-    setScanned(true);
-    onPaired?.(data);
+    if (busy) return;
+    const payload = parseQrPayload(data);
+    if (!payload) {
+      setError('Not a Tempest pairing QR.');
+      return;
+    }
+    setError(null);
+    setBusy(true);
+    setStatus('connecting');
+
+    const run = runPhonePairing(payload, {
+      onStatus: setStatus,
+    });
+    activeCancelRef.current = run.cancel;
+
+    run.promise
+      .then((r) => {
+        onPaired?.({
+          name: r.name,
+          endpoint: payload.relay_url,
+          pubkey: r.pubkey,
+          fingerprint: r.fingerprint,
+        });
+      })
+      .catch((e) => {
+        setError(e.message || 'Pairing failed.');
+        setBusy(false);
+        setStatus(null);
+      });
+  };
+
+  const cancelActive = () => {
+    activeCancelRef.current?.();
+    activeCancelRef.current = null;
+    setBusy(false);
+    setStatus(null);
   };
 
   return (
@@ -21,7 +69,10 @@ export default function Pair({ onBack, onPaired }) {
       <StatusBar style="light" />
 
       <View style={styles.header}>
-        <Pressable onPress={onBack} hitSlop={12}>
+        <Pressable
+          onPress={() => { cancelActive(); onBack?.(); }}
+          hitSlop={12}
+        >
           <Text style={styles.back}>←</Text>
         </Pressable>
         <Text style={styles.title}>Pair Tempest</Text>
@@ -34,7 +85,7 @@ export default function Pair({ onBack, onPaired }) {
             style={StyleSheet.absoluteFill}
             facing="back"
             barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-            onBarcodeScanned={scanned ? undefined : handleScan}
+            onBarcodeScanned={busy ? undefined : handleScan}
           />
         ) : (
           <View style={styles.permBlock}>
@@ -52,7 +103,25 @@ export default function Pair({ onBack, onPaired }) {
         )}
 
         <View pointerEvents="none" style={styles.frame} />
+
+        {busy && (
+          <View style={styles.overlay}>
+            <ActivityIndicator size="small" color="#f5f5f7" />
+            <Text style={styles.overlayText}>
+              {STATUS_LABEL[status] ?? 'Working…'}
+            </Text>
+            <Pressable style={styles.overlayCancel} onPress={cancelActive}>
+              <Text style={styles.overlayCancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
+
+      {error && (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
 
       <View style={styles.timeline}>
         {STEPS.map((step, i) => (
@@ -110,10 +179,45 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.6)',
   },
 
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(10,10,10,0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingHorizontal: 24,
+  },
+  overlayText: {
+    color: '#f5f5f7',
+    fontSize: 14,
+    fontFamily: geist.regular,
+    textAlign: 'center',
+  },
+  overlayCancel: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.24)',
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 18,
+  },
+  overlayCancelText: { color: '#f5f5f7', fontSize: 13, fontFamily: geist.semibold },
+
   permBlock: { padding: 24, alignItems: 'center', gap: 16 },
   permText: { color: '#b8b8c0', fontSize: 14, fontFamily: geist.regular, textAlign: 'center', lineHeight: 20 },
   permBtn: { backgroundColor: '#ffffff', borderRadius: 8, paddingVertical: 12, paddingHorizontal: 20 },
   permBtnText: { color: '#0c0d10', fontSize: 14, fontFamily: geist.semibold, letterSpacing: 0.2 },
+
+  errorBanner: {
+    marginHorizontal: 20,
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(217,112,112,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(217,112,112,0.35)',
+  },
+  errorText: { color: '#f0b0b0', fontSize: 13, fontFamily: geist.regular },
 
   timeline: { paddingHorizontal: 28, paddingTop: 40 },
   step: { flexDirection: 'row', alignItems: 'stretch' },

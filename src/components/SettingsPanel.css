@@ -1574,6 +1574,20 @@
   color: var(--tempest-accent-red, #d97070);
 }
 
+.sp-mobile-qr-status {
+  font-size: 11px;
+  color: var(--tempest-fg-muted, var(--tempest-fg-subtle));
+  text-align: center;
+}
+
+.sp-mobile-qr-error {
+  font-size: 11px;
+  color: var(--tempest-accent-red, #d97070);
+  text-align: center;
+  max-width: 240px;
+  word-break: break-word;
+}
+
 .sp-mobile-qr-actions {
   display: flex;
   gap: 8px;

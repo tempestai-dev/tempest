@@ -1,17 +1,17 @@
 import { useSyncExternalStore } from "react";
 
-// Mobile pairing store. Phase 0 is UI-first: the "paired phones" list is
-// seeded here and mutated locally so the Settings → Mobile pane has real
-// data to render before the relay + libsodium handshake land in Phase 1.
-//
-// Persistence is intentionally lightweight — localStorage keyed by name —
-// so we don't have to touch runtimeState for a scaffold that Phase 1 will
-// replace with real handshake-completed records.
+// Mobile pairing store. Phase 1 populates real records after a
+// libsodium-authenticated handshake through the CF Worker relay.
+// Session-scoped for free tier: pairings persist across renders in the
+// current process, and localStorage keeps them across app relaunches on
+// the same device — but a paired phone can't reconnect once the laptop's
+// ephemeral keypair (held only in memory by MobileSection) is gone.
 
 export interface PairedPhone {
   id: string;
   name: string;
-  fingerprint: string; // SSH-style short id shown next to the name
+  pubkey: string;      // base64 X25519 pubkey the phone sent during pairing
+  fingerprint: string; // SSH-style short id derived from pubkey
   pairedAt: number;
   lastSeenAt: number | null;
 }
@@ -68,17 +68,20 @@ export function forgetPairedPhone(id: string): void {
   emit();
 }
 
-// Phase 0 helper: simulate a successful pair. Phase 1 replaces the caller
-// with the real handshake-completion path, but the record shape stays.
-export function addPairedPhone(input: { name: string; fingerprint: string }): void {
+export function addPairedPhone(input: {
+  name: string;
+  pubkey: string;
+  fingerprint: string;
+}): void {
   const now = Date.now();
   _state = {
     ..._state,
     paired: [
-      ...(_state.paired),
+      ..._state.paired,
       {
         id: `${now.toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
         name: input.name,
+        pubkey: input.pubkey,
         fingerprint: input.fingerprint,
         pairedAt: now,
         lastSeenAt: now,

@@ -12,6 +12,7 @@ mod canvas_mcp;
 mod claude_bridge;
 mod node_ingest;
 mod notes;
+mod pairing_relay;
 mod quota;
 mod secrets;
 mod service_proxy;
@@ -4187,6 +4188,9 @@ pub fn run() {
             let routes: service_proxy::Routes = Default::default();
             let proxy_up = service_proxy::start(routes.clone());
             app.manage(ServiceRoutes(routes, proxy_up));
+            // Phone pairing: local WS router + cloudflared quick tunnel.
+            // Lazy-started by the first `start_pairing_relay` invoke.
+            app.manage(pairing_relay::PairingRelayState::new());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -4323,6 +4327,8 @@ pub fn run() {
             node_ingest::extract_file_text,
             node_ingest::scrape_url,
             node_ingest::fetch_media_info,
+            pairing_relay::start_pairing_relay,
+            pairing_relay::stop_pairing_relay,
             open_devtools,
             get_hostname,
         ])
@@ -4352,6 +4358,12 @@ pub fn run() {
 
                 // Kill any in-flight Claude Code chat-backend turns.
                 claude_bridge::kill_all(app_handle);
+
+                // Kill the cloudflared quick tunnel (if any) so it doesn't
+                // outlive the app. shutdown() awaits a Mutex, so block on the
+                // async runtime.
+                let pr = app_handle.state::<pairing_relay::PairingRelayState>();
+                tauri::async_runtime::block_on(pr.shutdown());
 
                 // Tear down every live PTY session so agent subprocesses (e.g.
                 // Notepad spawned via `Start-Process`) never outlive the app.

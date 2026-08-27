@@ -64,7 +64,11 @@ warpllm = "0.2"
 keyring = "2"
 # warpllm ships no runtime — chat_completions is async, so we need a full
 # tokio to drive it from the Tauri command.
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "process"] }
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
+# `?session=…&role=…` parsing on WS upgrade requests. Small, no extra deps.
+percent-encoding = "2"
 # File node text extraction — one crate per format so PDF/DOCX/XLSX all round-trip
 # to plain text through a single `extract_file_text` command. Text/code files
 # fall through to `std::fs::read_to_string`.
