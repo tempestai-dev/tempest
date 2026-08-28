@@ -57,6 +57,7 @@ export const runPhonePairing = (payload, { onStatus, ttlMs = 60_000 } = {}) => {
   let ws = null;
   let ttlTimer = null;
   let retryTimer = null;
+  let pingTimer = null;
   let settled = false;
   let cancelled = false;
   const startedAt = Date.now();
@@ -65,6 +66,7 @@ export const runPhonePairing = (payload, { onStatus, ttlMs = 60_000 } = {}) => {
     cancelled = true;
     if (ttlTimer) { clearTimeout(ttlTimer); ttlTimer = null; }
     if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+    if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
     if (ws) { try { ws.close(); } catch {} ws = null; }
   };
 
@@ -107,7 +109,16 @@ export const runPhonePairing = (payload, { onStatus, ttlMs = 60_000 } = {}) => {
         }));
       };
 
-      ws.onopen = () => { opened = true; console.log('[pairing] ws open'); };
+      ws.onopen = () => {
+        opened = true;
+        console.log('[pairing] ws open');
+        // CF quick tunnels drop idle client sockets in ~100s. During the
+        // "waiting for laptop" window nothing else is sent — keep the pipe
+        // warm with the router's `__ping` intercept.
+        pingTimer = setInterval(() => {
+          try { ws?.send('__ping'); } catch {}
+        }, 25_000);
+      };
 
       ws.onerror = (e) => {
         console.log('[pairing] ws error opened=' + opened, e?.message || e);
@@ -122,8 +133,10 @@ export const runPhonePairing = (payload, { onStatus, ttlMs = 60_000 } = {}) => {
       };
 
       ws.onmessage = (ev) => {
+        const raw = typeof ev.data === 'string' ? ev.data : String(ev.data);
+        if (raw === '__pong') return;
         let frame;
-        try { frame = JSON.parse(typeof ev.data === 'string' ? ev.data : String(ev.data)); }
+        try { frame = JSON.parse(raw); }
         catch { console.log('[pairing] bad frame', ev.data); return; }
         console.log('[pairing] frame', frame.__relay || frame.t);
 

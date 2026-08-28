@@ -3,9 +3,12 @@
 // projections — never the raw stores.
 
 import type {
-  SessionSummary, ProjectSummary, BranchSummary, SessionStatus, QueueItem,
+  SessionSummary, ProjectSummary, BranchSummary, SessionStatus, QueueItem, RecentSummary,
 } from "@tempest/core";
 import { getAllSessions, getSession } from "../../store/sessions";
+import { getOpenProjects } from "../../store/openProjects";
+import { getProjectWorktreeMeta } from "../../store/worktrees";
+import { getRecents } from "../../store/recents";
 import { dbLoad } from "../db";
 import { getWorkState, getAttention } from "../../store/workState";
 import { getQueue } from "../../store/messageQueue";
@@ -40,6 +43,7 @@ export async function projectListSnapshot(): Promise<{
   sessions: SessionSummary[];
   projects: ProjectSummary[];
   branches: BranchSummary[];
+  recents: RecentSummary[];
 }> {
   const sessions: SessionSummary[] = [];
   for (const s of getAllSessions()) {
@@ -47,18 +51,31 @@ export async function projectListSnapshot(): Promise<{
     if (sum) sessions.push(sum);
   }
 
-  // Project + branch metadata comes from the SQLite snapshot the sessions
-  // store already loaded. Cheap enough to re-read at list time; can memoize
-  // if it ever shows up on a profile.
+  // Project order = the desktop sidebar's order (openProjects Map insertion order).
+  // Branches still come from the DB snapshot — mobile doesn't reorder them.
+  const projects = projectListOrdered();
   const snap = await dbLoad();
-  const projects: ProjectSummary[] = snap.projects.map((p) => ({
-    id: p.id, name: p.name, path: p.path,
-  }));
   const branches: BranchSummary[] = snap.branches.map((b) => ({
     id: b.id, projectId: b.projectId, path: b.path, name: b.name,
   }));
+  const recents: RecentSummary[] = getRecents().map((r) => ({
+    path: r.path, name: r.name, lastOpened: r.lastOpened,
+  }));
 
-  return { sessions, projects, branches };
+  return { sessions, projects, branches, recents };
+}
+
+export function projectListOrdered(): ProjectSummary[] {
+  return getOpenProjects().map((p) => {
+    const meta = getProjectWorktreeMeta(p.id);
+    return {
+      id: p.id,
+      name: p.name,
+      path: p.path,
+      worktrees: meta.worktrees,
+      isGit: meta.isGit,
+    };
+  });
 }
 
 export function projectQueue(sessionId: string): QueueItem[] {

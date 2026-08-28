@@ -6,7 +6,6 @@
   "workspaces": [
     "web",
     "docs",
-    "apps/mobile",
     "apps/relay",
     "packages/core",
     "packages/crypto",

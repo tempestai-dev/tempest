@@ -6,13 +6,51 @@ import { startRpcClient } from '../lib/rpc';
 
 const geist = { regular: 'Geist_400Regular', medium: 'Geist_500Medium', semibold: 'Geist_600SemiBold' };
 
-const STATE_LABEL = { connecting: 'Connecting…', open: 'Live', closed: 'Reconnecting…' };
+const STATE_LABEL = { connecting: 'Connecting', open: 'Live', closed: 'Reconnecting' };
 const STATE_COLOR = { connecting: '#e0c46c', open: '#7be495', closed: '#e07b7b' };
+
+const STATUS_COLOR = {
+  working: '#7be495',
+  waiting: '#e0c46c',
+  done: '#8a8a90',
+  idle: '#5a5a60',
+};
+
+const shortPath = (p) => {
+  if (!p) return '';
+  const parts = p.replace(/\\/g, '/').split('/').filter(Boolean);
+  if (parts.length <= 3) return p;
+  return '…/' + parts.slice(-3).join('/');
+};
+
+const timeAgo = (iso) => {
+  if (!iso) return '';
+  const then = new Date(iso).getTime();
+  if (!then) return '';
+  const s = Math.max(0, Math.round((Date.now() - then) / 1000));
+  if (s < 60) return 'just now';
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.round(h / 24);
+  if (d < 30) return `${d}d`;
+  return `${Math.round(d / 30)}mo`;
+};
+
+// Root pseudo-row label. Matches the desktop sidebar for git projects; for
+// non-git projects that still have root sessions we fall back to "root".
+const ROOT_KEY = '__root__';
+const basename = (p) => (p || '').replace(/\\/g, '/').split('/').filter(Boolean).pop() || (p || '');
 
 export default function Connected({ pairing, onUnpair, onBack }) {
   const [connState, setConnState] = useState('connecting');
   const [snapshot, setSnapshot] = useState(null);
   const [error, setError] = useState(null);
+  // Collapsed sets are on by-id for projects and by "projectId::branchKey" for
+  // branches. Everything else defaults to expanded — sidebar parity.
+  const [collapsedProjects, setCollapsedProjects] = useState(() => new Set());
+  const [collapsedBranches, setCollapsedBranches] = useState(() => new Set());
   const clientRef = useRef(null);
 
   useEffect(() => {
@@ -37,7 +75,15 @@ export default function Connected({ pairing, onUnpair, onBack }) {
     if (!client) return;
 
     client.request('session.list', {})
-      .then((r) => { if (!cancelled) setSnapshot(r); })
+      .then((r) => {
+        if (cancelled) return;
+        setSnapshot({
+          sessions: r?.sessions || [],
+          projects: r?.projects || [],
+          branches: r?.branches || [],
+          recents:  r?.recents  || [],
+        });
+      })
       .catch((e) => { if (!cancelled) setError(e.message); });
 
     const offUpdated = client.on('session.updated', (s) => {
@@ -53,51 +99,143 @@ export default function Connected({ pairing, onUnpair, onBack }) {
     const offRemoved = client.on('session.removed', ({ id }) => {
       setSnapshot((prev) => prev ? { ...prev, sessions: prev.sessions.filter((x) => x.id !== id) } : prev);
     });
+    const offProjects = client.on('projects.changed', ({ projects }) => {
+      setSnapshot((prev) => prev ? { ...prev, projects } : prev);
+    });
 
     return () => {
       cancelled = true;
       offUpdated?.();
       offRemoved?.();
+      offProjects?.();
     };
   }, [connState]);
 
   const counts = useMemo(() => {
-    if (!snapshot) return { active: 0, waiting: 0, closed: 0, total: 0 };
-    let active = 0, waiting = 0, closed = 0;
+    if (!snapshot) return { active: 0, waiting: 0, total: 0 };
+    let active = 0, waiting = 0;
     for (const s of snapshot.sessions) {
-      if (s.closed) closed++;
-      else if (s.status === 'waiting') waiting++;
+      if (s.closed) continue;
+      if (s.status === 'waiting') waiting++;
       else if (s.status === 'working') active++;
     }
-    return { active, waiting, closed, total: snapshot.sessions.length };
+    return { active, waiting, total: snapshot.sessions.length };
   }, [snapshot]);
 
+  // branchId → branch path, so a session's branchId maps to a worktree.
+  const branchPathById = useMemo(() => {
+    const m = new Map();
+    if (!snapshot) return m;
+    for (const b of snapshot.branches || []) m.set(b.id, b.path);
+    return m;
+  }, [snapshot]);
+
+  // Group: project → [{ key, label, isRoot, sessions }]. Rows come from the
+  // desktop's disk scan (project.worktrees) so every worktree shows even
+  // without sessions, and match the desktop sidebar order. Sessions land in
+  // the worktree whose path equals their branch's path; the rest fall under
+  // a "main"/"root" pseudo-row keyed by ROOT_KEY.
   const byProject = useMemo(() => {
     if (!snapshot) return [];
-    const projMap = new Map(snapshot.projects.map((p) => [p.id, p]));
-    const buckets = new Map();
-    for (const s of snapshot.sessions) {
-      let bucket = buckets.get(s.projectId);
-      if (!bucket) {
-        bucket = { project: projMap.get(s.projectId) || { id: s.projectId, name: 'Unknown', path: '' }, sessions: [] };
-        buckets.set(s.projectId, bucket);
+    const projects = snapshot.projects || [];
+    const out = [];
+
+    for (const project of projects) {
+      const worktrees = project.worktrees || [];
+      const isGit = !!project.isGit;
+      const groups = new Map();
+
+      // Seed every disk-scanned worktree as an empty bucket (order preserved).
+      for (const wt of worktrees) {
+        groups.set(wt.path, { key: wt.path, label: wt.name, isRoot: false, sessions: [] });
       }
-      bucket.sessions.push(s);
+
+      // Place sessions.
+      for (const s of (snapshot.sessions || [])) {
+        if (s.projectId !== project.id) continue;
+        const branchPath = s.branchId ? branchPathById.get(s.branchId) : undefined;
+        let key;
+        if (branchPath && groups.has(branchPath)) {
+          key = branchPath;
+        } else if (branchPath) {
+          // Session's branch doesn't match any known worktree — synthesize a
+          // row so it's still visible under its branch name, not folded into root.
+          key = branchPath;
+          if (!groups.has(key)) {
+            groups.set(key, { key, label: basename(branchPath), isRoot: false, sessions: [] });
+          }
+        } else {
+          key = ROOT_KEY;
+          if (!groups.has(key)) {
+            groups.set(key, { key, label: isGit ? 'main' : 'root', isRoot: true, sessions: [] });
+          }
+        }
+        groups.get(key).sessions.push(s);
+      }
+
+      // Make sure the root row exists for git projects even without sessions —
+      // matches the desktop "main" pseudo-row.
+      if (isGit && !groups.has(ROOT_KEY)) {
+        groups.set(ROOT_KEY, { key: ROOT_KEY, label: 'main', isRoot: true, sessions: [] });
+      }
+
+      const ordered = [];
+      const root = groups.get(ROOT_KEY);
+      if (root) ordered.push(root);
+      for (const wt of worktrees) {
+        const g = groups.get(wt.path);
+        if (g) ordered.push(g);
+      }
+      // Any synthesised branch rows (branch path with no matching worktree)
+      // land at the end, alphabetically — rare, but keeps them visible.
+      for (const g of groups.values()) {
+        if (g === root) continue;
+        if (worktrees.some((w) => w.path === g.key)) continue;
+        ordered.push(g);
+      }
+      for (const g of ordered) g.sessions.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+      if (ordered.length === 0) continue;
+      out.push({ project, groups: ordered });
     }
-    for (const b of buckets.values()) {
-      b.sessions.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+    // Sessions whose projectId isn't in snapshot.projects (rare) — surface
+    // them under a synthetic project so they don't vanish.
+    const knownIds = new Set(projects.map((p) => p.id));
+    const orphans = (snapshot.sessions || []).filter((s) => !knownIds.has(s.projectId));
+    if (orphans.length > 0) {
+      const g = { key: ROOT_KEY, label: 'main', isRoot: true, sessions: orphans.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt)) };
+      out.push({ project: { id: '__orphans__', name: 'Unknown', path: '', worktrees: [], isGit: false }, groups: [g] });
     }
-    return [...buckets.values()].sort((a, b) => a.project.name.localeCompare(b.project.name));
+
+    return out;
+  }, [snapshot, branchPathById]);
+
+  const openPaths = useMemo(() => {
+    const s = new Set();
+    for (const p of snapshot?.projects || []) s.add(p.path);
+    return s;
   }, [snapshot]);
 
+  const recents = useMemo(() => {
+    return (snapshot?.recents || []).filter((r) => !openPaths.has(r.path));
+  }, [snapshot, openPaths]);
+
+  const toggleProject = (id) => setCollapsedProjects((prev) => {
+    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
+  });
+  const toggleBranch = (key) => setCollapsedBranches((prev) => {
+    const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n;
+  });
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#0a0a0a' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#09090b' }}>
       <StatusBar style="light" />
 
       <View style={styles.topbar}>
         {onBack ? (
           <Pressable onPress={onBack} hitSlop={12}>
-            <Text style={styles.back}>← Desktops</Text>
+            <Text style={styles.back}>‹ Desktops</Text>
           </Pressable>
         ) : <View />}
         <View style={styles.connBadge}>
@@ -107,14 +245,20 @@ export default function Connected({ pairing, onUnpair, onBack }) {
       </View>
 
       <View style={styles.header}>
-        <Text style={styles.hostName}>{pairing?.name || 'Tempest desktop'}</Text>
-        <Text style={styles.fp}>{pairing?.fingerprint}</Text>
-      </View>
-
-      <View style={styles.countsRow}>
-        <Count value={counts.active} label="Active" color="#7be495" />
-        <Count value={counts.waiting} label="Needs approval" color="#e0c46c" />
-        <Count value={counts.total} label="Total" color="#8a8a90" />
+        <Text style={styles.hostName} numberOfLines={1}>{pairing?.name || 'Tempest desktop'}</Text>
+        <View style={styles.metaRow}>
+          <Text style={styles.fpText}>{pairing?.fingerprint}</Text>
+          <Text style={styles.metaDot}>·</Text>
+          <Text style={styles.metaCount}>{counts.total} sessions</Text>
+          {counts.active > 0 && <>
+            <Text style={styles.metaDot}>·</Text>
+            <Text style={[styles.metaCount, { color: '#7be495' }]}>{counts.active} active</Text>
+          </>}
+          {counts.waiting > 0 && <>
+            <Text style={styles.metaDot}>·</Text>
+            <Text style={[styles.metaCount, { color: '#e0c46c' }]}>{counts.waiting} approval</Text>
+          </>}
+        </View>
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.list}>
@@ -129,17 +273,76 @@ export default function Connected({ pairing, onUnpair, onBack }) {
           </View>
         )}
 
-        {byProject.map(({ project, sessions }) => (
-          <View key={project.id} style={styles.projectBlock}>
-            <Text style={styles.projectName}>{project.name}</Text>
-            {sessions.map((s) => <SessionRow key={s.id} session={s} />)}
-          </View>
-        ))}
+        {byProject.map(({ project, groups }) => {
+          const projectCollapsed = collapsedProjects.has(project.id);
+          const projectSessionCount = groups.reduce((n, g) => n + g.sessions.length, 0);
+          return (
+            <View key={project.id} style={styles.projectCard}>
+              <Pressable
+                style={styles.projectHead}
+                onPress={() => toggleProject(project.id)}
+                hitSlop={4}
+              >
+                <Chevron open={!projectCollapsed} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.projectName} numberOfLines={1}>{project.name}</Text>
+                  {project.path ? (
+                    <Text style={styles.projectPath} numberOfLines={1}>{shortPath(project.path)}</Text>
+                  ) : null}
+                </View>
+                <View style={styles.countPill}>
+                  <Text style={styles.countPillText}>{projectSessionCount}</Text>
+                </View>
+              </Pressable>
+
+              {!projectCollapsed && groups.map((g) => {
+                const branchKey = `${project.id}::${g.key}`;
+                const branchCollapsed = collapsedBranches.has(branchKey);
+                return (
+                  <View key={g.key} style={styles.branchBlock}>
+                    <Pressable
+                      style={styles.branchHead}
+                      onPress={() => toggleBranch(branchKey)}
+                      hitSlop={4}
+                    >
+                      <Chevron open={!branchCollapsed} size="small" />
+                      <Text style={styles.branchGlyph}>⑂</Text>
+                      <Text style={styles.branchLabel} numberOfLines={1}>{g.label}</Text>
+                      <Text style={styles.branchCount}>{g.sessions.length}</Text>
+                    </Pressable>
+                    {!branchCollapsed && (
+                      <View style={styles.sessionList}>
+                        {g.sessions.map((s) => (
+                          <SessionRow key={s.id} session={s} />
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          );
+        })}
 
         {snapshot && snapshot.sessions.length === 0 && (
           <View style={styles.empty}>
             <Text style={styles.emptyText}>No sessions yet.</Text>
             <Text style={styles.emptySub}>Start one on your desktop to see it here.</Text>
+          </View>
+        )}
+
+        {recents.length > 0 && (
+          <View style={styles.recentSection}>
+            <Text style={styles.recentSectionLabel}>Recent</Text>
+            {recents.slice(0, 8).map((r) => (
+              <View key={r.path} style={styles.recentRow}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.recentName} numberOfLines={1}>{r.name}</Text>
+                  <Text style={styles.recentPath} numberOfLines={1}>{shortPath(r.path)}</Text>
+                </View>
+                <Text style={styles.recentTime}>{timeAgo(r.lastOpened)}</Text>
+              </View>
+            ))}
           </View>
         )}
       </ScrollView>
@@ -153,103 +356,169 @@ export default function Connected({ pairing, onUnpair, onBack }) {
   );
 }
 
-function Count({ value, label, color }) {
+function Chevron({ open, size = 'normal' }) {
+  const s = size === 'small' ? 13 : 15;
   return (
-    <View style={styles.count}>
-      <Text style={[styles.countValue, { color }]}>{value}</Text>
-      <Text style={styles.countLabel}>{label}</Text>
+    <View style={{ width: s + 6, alignItems: 'center', justifyContent: 'center' }}>
+      <Text
+        style={{
+          color: '#a1a1aa',
+          fontSize: s,
+          fontFamily: geist.regular,
+          transform: [{ rotate: open ? '90deg' : '0deg' }],
+        }}
+      >
+        ›
+      </Text>
     </View>
   );
 }
 
 function SessionRow({ session }) {
-  const statusColor = session.closed ? '#4a4a50'
-    : session.status === 'waiting' ? '#e0c46c'
-    : session.status === 'working' ? '#7be495'
-    : session.status === 'done' ? '#8a8a90'
-    : '#4a4a50';
+  const kind = session.closed ? 'closed' : (session.status || 'idle');
+  const dotColor = session.closed ? '#3a3a40' : STATUS_COLOR[kind === 'closed' ? 'done' : kind];
   return (
-    <View style={[styles.row, session.closed && styles.rowClosed]}>
-      <View style={[styles.rowDot, { backgroundColor: statusColor }]} />
-      <View style={{ flex: 1 }}>
-        <Text style={styles.rowName}>
-          {session.name}
-          {session.agent ? <Text style={styles.rowAgent}> · {session.agent}</Text> : null}
-        </Text>
-        <Text style={styles.rowSub}>
-          {session.closed ? 'Closed' : session.status}
-          {session.queueLength > 0 ? ` · ${session.queueLength} queued` : ''}
-          {session.needsPermission ? ' · approval pending' : ''}
-        </Text>
-      </View>
+    <View style={[styles.sessionRow, session.closed && { opacity: 0.5 }]}>
+      <View style={[styles.sessionDot, { backgroundColor: dotColor }]} />
+      <Text style={styles.sessionName} numberOfLines={1}>
+        {session.name}
+      </Text>
+      {session.agent ? (
+        <Text style={styles.sessionAgent} numberOfLines={1}>{session.agent}</Text>
+      ) : null}
+      {session.queueLength > 0 ? (
+        <Text style={styles.sessionMeta}>{session.queueLength}q</Text>
+      ) : null}
+      {session.needsPermission ? (
+        <View style={styles.approvalDot} />
+      ) : null}
     </View>
   );
 }
 
+// shadcn-dark palette
+// bg #09090b · card #0f0f11 · border #27272a · fg #fafafa · muted-fg #a1a1aa · dim #71717a
 const styles = StyleSheet.create({
   topbar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4,
+    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8,
   },
-  back: { color: '#b8b8c0', fontSize: 15, fontFamily: geist.regular },
+  back: { color: '#e4e4e7', fontSize: 17, fontFamily: geist.regular },
   connBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingVertical: 4, paddingHorizontal: 10,
-    borderRadius: 999, backgroundColor: '#161618',
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    paddingVertical: 7, paddingHorizontal: 13,
+    borderRadius: 999, backgroundColor: '#18181b',
+    borderWidth: 1, borderColor: '#27272a',
   },
-  connDot: { width: 6, height: 6, borderRadius: 3 },
-  connText: { color: '#b8b8c0', fontSize: 11, fontFamily: geist.medium, letterSpacing: 0.4 },
+  connDot: { width: 7, height: 7, borderRadius: 3.5 },
+  connText: { color: '#e4e4e7', fontSize: 13, fontFamily: geist.medium, letterSpacing: 0.3 },
 
-  header: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 },
-  hostName: { color: '#f5f5f7', fontSize: 22, fontFamily: geist.semibold, letterSpacing: -0.4 },
-  fp: { color: '#6b6b70', fontSize: 12, fontFamily: geist.regular, letterSpacing: 0.4, marginTop: 2 },
+  header: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 20 },
+  hostName: { color: '#fafafa', fontSize: 26, fontFamily: geist.semibold, letterSpacing: -0.5 },
+  metaRow: {
+    flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',
+    marginTop: 10, gap: 8,
+  },
+  fpText: { color: '#71717a', fontSize: 13, fontFamily: geist.medium, letterSpacing: 0.4 },
+  metaDot: { color: '#3f3f46', fontSize: 13 },
+  metaCount: { color: '#a1a1aa', fontSize: 13, fontFamily: geist.regular, letterSpacing: 0.1 },
 
-  countsRow: {
-    flexDirection: 'row', gap: 10,
-    paddingHorizontal: 20, paddingVertical: 12,
-  },
-  count: {
-    flex: 1, backgroundColor: '#111114', borderRadius: 10,
-    paddingVertical: 12, paddingHorizontal: 12,
-  },
-  countValue: { fontSize: 22, fontFamily: geist.semibold, letterSpacing: -0.4 },
-  countLabel: { color: '#6b6b70', fontSize: 11, fontFamily: geist.regular, marginTop: 2, letterSpacing: 0.4 },
+  list: { paddingBottom: 32, paddingHorizontal: 16, gap: 12 },
 
-  list: { paddingHorizontal: 20, paddingBottom: 32 },
-  projectBlock: { marginTop: 20 },
-  projectName: {
-    color: '#8a8a90', fontSize: 11, fontFamily: geist.medium,
-    letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8,
+  projectCard: {
+    backgroundColor: '#0f0f11',
+    borderWidth: 1, borderColor: '#27272a',
+    borderRadius: 14,
+    paddingVertical: 6, paddingHorizontal: 6,
   },
-  row: {
+  projectHead: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingVertical: 14, paddingHorizontal: 10,
+  },
+  projectName: { color: '#fafafa', fontSize: 18, fontFamily: geist.semibold, letterSpacing: -0.3 },
+  projectPath: { color: '#71717a', fontSize: 14, fontFamily: geist.regular, marginTop: 3, letterSpacing: 0.1 },
+  countPill: {
+    minWidth: 28, paddingHorizontal: 9, paddingVertical: 3,
+    borderRadius: 999, backgroundColor: '#18181b',
+    borderWidth: 1, borderColor: '#27272a',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  countPillText: {
+    color: '#a1a1aa', fontSize: 12, fontFamily: geist.medium, letterSpacing: 0.3,
+  },
+
+  branchBlock: {
+    marginTop: 4, paddingLeft: 14, paddingTop: 6,
+    borderTopWidth: 1, borderTopColor: '#1c1c1f',
+  },
+  branchHead: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingVertical: 14, paddingHorizontal: 8,
+  },
+  branchGlyph: { color: '#8ab4f8', fontSize: 15, fontFamily: geist.regular },
+  branchLabel: {
+    color: '#e4e4e7', fontSize: 17, fontFamily: geist.medium, letterSpacing: 0,
+    lineHeight: 22, flex: 1,
+  },
+  branchCount: { color: '#71717a', fontSize: 14, fontFamily: geist.medium, letterSpacing: 0.2 },
+
+  sessionList: { paddingLeft: 30, paddingBottom: 8, gap: 4 },
+  sessionRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingVertical: 12, paddingHorizontal: 12,
-    borderRadius: 8, backgroundColor: '#111114', marginBottom: 6,
+    paddingVertical: 14, paddingHorizontal: 10,
+    borderRadius: 8,
   },
-  rowClosed: { opacity: 0.55 },
-  rowDot: { width: 8, height: 8, borderRadius: 4 },
-  rowName: { color: '#f5f5f7', fontSize: 14, fontFamily: geist.medium },
-  rowAgent: { color: '#8a8a90', fontSize: 13, fontFamily: geist.regular },
-  rowSub: { color: '#6b6b70', fontSize: 11, fontFamily: geist.regular, marginTop: 2, letterSpacing: 0.2 },
+  sessionDot: { width: 8, height: 8, borderRadius: 4 },
+  sessionName: {
+    color: '#fafafa', fontSize: 16, fontFamily: geist.regular, letterSpacing: 0,
+    lineHeight: 22, flexShrink: 1,
+  },
+  sessionAgent: {
+    color: '#8ab4f8', fontSize: 12, fontFamily: geist.medium, letterSpacing: 0.3,
+    marginLeft: 'auto',
+  },
+  sessionMeta: {
+    color: '#a1a1aa', fontSize: 12, fontFamily: geist.medium, letterSpacing: 0.2,
+  },
+  approvalDot: {
+    width: 8, height: 8, borderRadius: 4, backgroundColor: '#e0c46c',
+  },
 
-  loading: { alignItems: 'center', paddingTop: 40, gap: 10 },
-  loadingText: { color: '#6b6b70', fontSize: 12, fontFamily: geist.regular },
+  recentSection: {
+    marginTop: 20, marginHorizontal: 16, paddingTop: 20,
+    borderTopWidth: 1, borderTopColor: '#1c1c1f',
+  },
+  recentSectionLabel: {
+    color: '#71717a', fontSize: 12, fontFamily: geist.medium,
+    letterSpacing: 1.6, textTransform: 'uppercase', marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  recentRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    paddingVertical: 12, paddingHorizontal: 6,
+  },
+  recentName: { color: '#e4e4e7', fontSize: 15, fontFamily: geist.regular },
+  recentPath: { color: '#71717a', fontSize: 12, fontFamily: geist.regular, marginTop: 3 },
+  recentTime: { color: '#71717a', fontSize: 12, fontFamily: geist.regular },
 
-  empty: { alignItems: 'center', paddingTop: 60, gap: 6 },
-  emptyText: { color: '#b8b8c0', fontSize: 15, fontFamily: geist.medium },
-  emptySub: { color: '#6b6b70', fontSize: 12, fontFamily: geist.regular },
+  loading: { alignItems: 'center', paddingTop: 48, gap: 12 },
+  loadingText: { color: '#a1a1aa', fontSize: 14, fontFamily: geist.regular },
+
+  empty: { alignItems: 'center', paddingTop: 72, gap: 8 },
+  emptyText: { color: '#e4e4e7', fontSize: 17, fontFamily: geist.medium },
+  emptySub: { color: '#a1a1aa', fontSize: 14, fontFamily: geist.regular },
 
   errorBanner: {
-    marginTop: 16, padding: 12, borderRadius: 8,
-    backgroundColor: 'rgba(217,112,112,0.14)',
-    borderWidth: 1, borderColor: 'rgba(217,112,112,0.35)',
+    marginHorizontal: 16, marginBottom: 12, padding: 14, borderRadius: 10,
+    backgroundColor: 'rgba(217,112,112,0.12)',
+    borderWidth: 1, borderColor: 'rgba(217,112,112,0.3)',
   },
-  errorText: { color: '#f0b0b0', fontSize: 13, fontFamily: geist.regular },
+  errorText: { color: '#f0b0b0', fontSize: 14, fontFamily: geist.regular },
 
-  footer: { paddingHorizontal: 20, paddingBottom: 16 },
+  footer: { paddingHorizontal: 20, paddingBottom: 20, paddingTop: 12 },
   unpairBtn: {
-    borderWidth: 1, borderColor: '#2a2a30', borderRadius: 8,
-    paddingVertical: 16, alignItems: 'center',
+    borderWidth: 1, borderColor: '#27272a', borderRadius: 12,
+    paddingVertical: 16, alignItems: 'center', backgroundColor: '#0f0f11',
   },
-  unpairText: { color: '#f5f5f7', fontSize: 14, fontFamily: geist.medium, letterSpacing: 0.2 },
+  unpairText: { color: '#e4e4e7', fontSize: 15, fontFamily: geist.medium, letterSpacing: 0.2 },
 });

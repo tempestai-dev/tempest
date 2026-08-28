@@ -4,8 +4,10 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { RpcPeer, wsChannel } from "@tempest/transport";
-import { projectListSnapshot, projectSession, projectQueue } from "./projectors";
+import { projectListSnapshot, projectSession, projectQueue, projectListOrdered } from "./projectors";
 import { subscribeSessionLifecycle, markSessionClosed } from "../../store/sessions";
+import { subscribeProjects } from "../../store/openProjects";
+import { subscribeWorktrees } from "../../store/worktrees";
 import {
   subscribeAllQueueChanges,
   enqueue, removeFromQueue, clearQueue, reorderQueue,
@@ -103,11 +105,19 @@ export function attachBridge(ws: WebSocket, sessionKey: Uint8Array): AttachedBri
     dirty.add(sessionId);
     scheduleFlush();
   });
+  const unProjects = subscribeProjects(() => {
+    peer.emit("projects.changed", { projects: projectListOrdered() });
+  });
+  // Fire the same event when disk-scanned worktrees or the isGit hint change.
+  // Same shape, same wire event — mobile refreshes the whole project list.
+  const unWorktrees = subscribeWorktrees(() => {
+    peer.emit("projects.changed", { projects: projectListOrdered() });
+  });
 
   return {
     peer,
     close() {
-      unLifecycle(); unWork(); unQueue();
+      unLifecycle(); unWork(); unQueue(); unProjects(); unWorktrees();
       peer.close();
     },
   };

@@ -1,18 +1,11 @@
-// @tempest/core — wire types + protocol envelope shared between desktop
-// (loopback dial) and mobile (over the cloudflared tunnel).
-//
-// This is the ONE definition of what a mobile companion sees. The desktop's
-// internal stores (WorktreeSession, DbProject, agent hooks 3-state) project
-// into these summaries at the RPC boundary — never the other way around.
-
-// ── Domain summaries (sent over the wire) ─────────────────────────────────
+// Vendored from packages/core (detached from workspace so mobile stays a
+// standalone Expo app). If the desktop protocol changes, re-copy this file.
 
 export type SessionStatus = "idle" | "working" | "waiting" | "done";
 
 export interface SessionSummary {
   id: string;
   name: string;
-  /** CLI command e.g. "claude"; undefined = plain terminal. */
   agent?: string;
   projectId: string;
   branchId?: string;
@@ -20,11 +13,8 @@ export interface SessionSummary {
   closed: boolean;
   placement: "tab" | "canvas";
   createdAt: string;
-  /** Derived from agent-hooks / PTY heuristics on desktop. */
   status: SessionStatus;
-  /** Count of items currently in the session's queue. */
   queueLength: number;
-  /** True if a tool call is pending approval on this session. */
   needsPermission: boolean;
 }
 
@@ -37,9 +27,7 @@ export interface ProjectSummary {
   id: string;
   name: string;
   path: string;
-  /** Disk-scanned worktrees (.tempest/*), in the desktop sidebar's order. */
   worktrees: WorktreeSummary[];
-  /** True if the project path is a git repo (drives the "main" root row). */
   isGit: boolean;
 }
 
@@ -56,10 +44,8 @@ export interface QueueItem {
 }
 
 export interface RecentSummary {
-  /** Filesystem path — stable identity across sessions. */
   path: string;
   name: string;
-  /** ISO timestamp of the last open. */
   lastOpened: string;
 }
 
@@ -70,14 +56,6 @@ export interface PermissionRequest {
   detail: string;
   createdAt: string;
 }
-
-// ── RPC envelope ──────────────────────────────────────────────────────────
-//
-// Every frame on the wire (after E2EE decrypt) is one of:
-//   { id, method, params }        — request
-//   { id, result }                — response OK
-//   { id, error: { code, msg } }  — response error
-//   { event, payload }            — server-push (no id, fire-and-forget)
 
 export interface RpcRequest<M extends RpcMethod = RpcMethod> {
   id: string;
@@ -105,8 +83,6 @@ export interface RpcEvent<E extends ServerEvent = ServerEvent> {
 }
 
 export type WireFrame = RpcRequest | RpcResponse | RpcEvent;
-
-// ── Method registry ───────────────────────────────────────────────────────
 
 export interface RpcParams {
   "session.list":       Record<string, never>;
@@ -157,23 +133,17 @@ export interface RpcResult {
 
 export type RpcMethod = keyof RpcParams & keyof RpcResult;
 
-// ── Server-push events ────────────────────────────────────────────────────
-
 export interface ServerEventPayload {
   "session.updated":    SessionSummary;
   "session.removed":    { id: string };
   "queue.changed":      { sessionId: string; queue: QueueItem[] };
   "permission.pending": PermissionRequest;
   "permission.resolved": { sessionId: string };
-  /** Full ordered project list — fired on any sidebar reorder / add / remove. */
   "projects.changed":   { projects: ProjectSummary[] };
-  /** Phase 3+: terminal stream chunk. */
   "agent.output":       { sessionId: string; chunk: string };
 }
 
 export type ServerEvent = keyof ServerEventPayload;
-
-// ── Type guards ───────────────────────────────────────────────────────────
 
 export function isRequest(f: WireFrame): f is RpcRequest {
   return "method" in f && "id" in f;

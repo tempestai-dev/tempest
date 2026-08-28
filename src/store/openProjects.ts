@@ -12,6 +12,12 @@ export interface StoredProject {
 // Hydrated once at startup; reads are synchronous, writes flush to SQLite.
 const _projects = new Map<string, StoredProject>();
 
+const _listeners = new Set<() => void>();
+export function subscribeProjects(fn: () => void): () => void {
+  _listeners.add(fn);
+  return () => { _listeners.delete(fn); };
+}
+
 const logErr = (op: string) => (e: unknown) => console.error(`[openProjects] ${op} failed:`, e);
 
 function toDb(p: StoredProject): DbProject {
@@ -54,4 +60,5 @@ export function saveOpenProjects(projects: StoredProject[]): void {
     _projects.set(p.id, p);
     dbUpsertProject(toDb(p)).catch(logErr("upsert project"));
   }
+  for (const fn of _listeners) { try { fn(); } catch (e) { console.error("[openProjects] listener", e); } }
 }

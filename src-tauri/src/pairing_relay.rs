@@ -225,6 +225,15 @@ async fn handle_socket(
         };
         match msg {
             Message::Text(ref t) => {
+                // App-level keepalive. RN's WebSocket doesn't expose native
+                // ping frames, and CF quick tunnels drop idle client sockets
+                // in ~100s. Phone sends `__ping` every ~25s; we bounce
+                // `__pong` and skip forwarding so the desktop never sees it.
+                if t == "__ping" {
+                    let mut w = write.lock().await;
+                    let _ = w.send(Message::Text("__pong".into())).await;
+                    continue;
+                }
                 eprintln!("[pairing_relay] forward role={role}→{peer_role} text_bytes={}", t.len());
                 let peer_now = resolve_peer_if_current(&inner, &session_id, &role, peer_role, &write).await;
                 if let Some(peer) = peer_now {

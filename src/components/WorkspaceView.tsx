@@ -7,6 +7,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { createWorktree, gitInit } from "../lib/worktree";
 import { addRecent, getRecents, removeRecent } from "../store/recents";
 import { getOpenProjects, saveOpenProjects } from "../store/openProjects";
+import { setProjectWorktreeMeta } from "../store/worktrees";
 import { track } from "../lib/telemetry";
 import { getSession, getBranchSessions, getRootSessionsForProject, getAllSessions, getBranchPath, getProjectPath, saveSession, setSessionConversationId, markSessionClosed, removeBranchByPath, removeSession, pruneSessions } from "../store/sessions";
 import { getRuntimeState, setRuntimeState } from "../lib/runtimeState";
@@ -183,6 +184,20 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const [pendingProjectId, setPendingProjectId] = useState<string | null>(null);
   // Project IDs confirmed to be git repos (detected via get_git_branch on open/restore).
   const [gitProjectIds, setGitProjectIds] = useState<Set<string>>(new Set());
+
+  // Mirror disk-scanned worktrees + git hint into the store the mobile bridge
+  // reads. One effect covers restoreAll's per-project setProjects call, the
+  // add-project scan, and any later setProjects mutation that reorders/adds
+  // worktrees — no need to hook every call site.
+  useEffect(() => {
+    for (const p of projects) {
+      setProjectWorktreeMeta(
+        p.id,
+        p.worktrees.map((w) => ({ path: w.path, name: w.name })),
+        gitProjectIds.has(p.id),
+      );
+    }
+  }, [projects, gitProjectIds]);
 
   // (sessionChannels and outputCaptures replaced by SessionManager — it owns all
   // Channel subscriptions, per-session ring buffers, and capture callbacks.)
