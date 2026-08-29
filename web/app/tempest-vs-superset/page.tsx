@@ -2,19 +2,20 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { GitBranch, Coins, Box } from "lucide-react";
 import { Container } from "@/components/layout/container";
+import { SITE_URL } from '@/lib/constants/site'
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://www.tempestai.dev"),
+  metadataBase: new URL(SITE_URL),
   title: "Tempest vs Superset — Local Multi-Agent Development, Token-Efficient",
   description:
     "Superset is macOS-only and ELv2-licensed. Tempest is Apache 2.0, runs on Windows today, with a shared knowledge graph cutting token usage by up to 64%.",
-  alternates: { canonical: "https://www.tempestai.dev/tempest-vs-superset" },
+  alternates: { canonical: `${SITE_URL}/tempest-vs-superset` },
   openGraph: {
     title: "Tempest vs Superset — Local Multi-Agent Development, Token-Efficient",
     description:
       "Superset is macOS-only and ELv2-licensed. Tempest is Apache 2.0, runs on Windows today, with a shared knowledge graph cutting token usage by up to 64%.",
     type: "website",
-    url: "https://www.tempestai.dev/tempest-vs-superset",
+    url: `${SITE_URL}/tempest-vs-superset`,
     images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Tempest vs Superset" }],
   },
   twitter: {
@@ -95,13 +96,13 @@ export default function TempestVsSupersetPage() {
             '@type': 'Article',
             headline: 'Tempest vs Superset — Local Multi-Agent Development, Token-Efficient',
             description: 'Superset is macOS-only and ELv2-licensed. Tempest is Apache 2.0, runs on Windows today, with a shared knowledge graph cutting token usage by up to 64%.',
-            url: 'https://www.tempestai.dev/tempest-vs-superset',
-            author: { '@type': 'Organization', name: 'Tempest', url: 'https://www.tempestai.dev' },
+            url: `${SITE_URL}/tempest-vs-superset`,
+            author: { '@type': 'Organization', name: 'Tempest', url: SITE_URL },
             publisher: {
-              '@type': 'Organization', name: 'Tempest', url: 'https://www.tempestai.dev',
-              logo: { '@type': 'ImageObject', url: 'https://www.tempestai.dev/og-image.png', width: 1280, height: 640 },
+              '@type': 'Organization', name: 'Tempest', url: SITE_URL,
+              logo: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
             },
-            image: { '@type': 'ImageObject', url: 'https://www.tempestai.dev/og-image.png', width: 1280, height: 640 },
+            image: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
           }),
         }}
       />
@@ -112,8 +113,8 @@ export default function TempestVsSupersetPage() {
             '@context': 'https://schema.org',
             '@type': 'BreadcrumbList',
             itemListElement: [
-              { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.tempestai.dev' },
-              { '@type': 'ListItem', position: 2, name: 'Tempest vs Superset', item: 'https://www.tempestai.dev/tempest-vs-superset' },
+              { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+              { '@type': 'ListItem', position: 2, name: 'Tempest vs Superset', item: `${SITE_URL}/tempest-vs-superset` },
             ],
           }),
         }}

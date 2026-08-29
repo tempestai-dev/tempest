@@ -2,19 +2,20 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Coins, GitBranch, Lock } from "lucide-react";
 import { Container } from "@/components/layout/container";
+import { SITE_URL } from '@/lib/constants/site'
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://www.tempestai.dev"),
+  metadataBase: new URL(SITE_URL),
   title: "Tempest vs AgentsRoom — Free Open-Source Multi-Agent Development",
   description:
     "Both support Windows and parallel agents. Tempest adds Apache 2.0, no project limits, and a shared knowledge graph that cuts token usage by up to 64%.",
-  alternates: { canonical: "https://www.tempestai.dev/tempest-vs-agentsroom" },
+  alternates: { canonical: `${SITE_URL}/tempest-vs-agentsroom` },
   openGraph: {
     title: "Tempest vs AgentsRoom — Free Open-Source Multi-Agent Development",
     description:
       "Both support Windows and parallel agents. Tempest adds Apache 2.0, no project limits, and a shared knowledge graph that cuts token usage by up to 64%.",
     type: "website",
-    url: "https://www.tempestai.dev/tempest-vs-agentsroom",
+    url: `${SITE_URL}/tempest-vs-agentsroom`,
     images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Tempest vs AgentsRoom" }],
   },
   twitter: {
@@ -99,13 +100,13 @@ export default function TempestVsAgentsRoomPage() {
             '@type': 'Article',
             headline: 'Tempest vs AgentsRoom — Free Open-Source Multi-Agent Development',
             description: 'Both support Windows and parallel agents. Tempest adds Apache 2.0, no project limits, and a shared knowledge graph that cuts token usage by up to 64%.',
-            url: 'https://www.tempestai.dev/tempest-vs-agentsroom',
-            author: { '@type': 'Organization', name: 'Tempest', url: 'https://www.tempestai.dev' },
+            url: `${SITE_URL}/tempest-vs-agentsroom`,
+            author: { '@type': 'Organization', name: 'Tempest', url: SITE_URL },
             publisher: {
-              '@type': 'Organization', name: 'Tempest', url: 'https://www.tempestai.dev',
-              logo: { '@type': 'ImageObject', url: 'https://www.tempestai.dev/og-image.png', width: 1280, height: 640 },
+              '@type': 'Organization', name: 'Tempest', url: SITE_URL,
+              logo: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
             },
-            image: { '@type': 'ImageObject', url: 'https://www.tempestai.dev/og-image.png', width: 1280, height: 640 },
+            image: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
           }),
         }}
       />
@@ -116,8 +117,8 @@ export default function TempestVsAgentsRoomPage() {
             '@context': 'https://schema.org',
             '@type': 'BreadcrumbList',
             itemListElement: [
-              { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.tempestai.dev' },
-              { '@type': 'ListItem', position: 2, name: 'Tempest vs AgentsRoom', item: 'https://www.tempestai.dev/tempest-vs-agentsroom' },
+              { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+              { '@type': 'ListItem', position: 2, name: 'Tempest vs AgentsRoom', item: `${SITE_URL}/tempest-vs-agentsroom` },
             ],
           }),
         }}

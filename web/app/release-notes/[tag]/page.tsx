@@ -7,6 +7,7 @@ import { ArrowLeft, ArrowRight, Download } from 'lucide-react'
 import type { ComponentPropsWithoutRef } from 'react'
 import { formatDate } from '@/lib/format-date'
 import remarkGfm from 'remark-gfm'
+import { SITE_URL } from '@/lib/constants/site'
 
 export async function generateMetadata({
   params,
@@ -19,12 +20,12 @@ export async function generateMetadata({
   return {
     title,
     description,
-    alternates: { canonical: `https://www.tempestai.dev/release-notes/${encodeURIComponent(tag)}` },
+    alternates: { canonical: `${SITE_URL}/release-notes/${encodeURIComponent(tag)}` },
     openGraph: {
       title,
       description,
       type: 'article',
-      url: `https://www.tempestai.dev/release-notes/${encodeURIComponent(tag)}`,
+      url: `${SITE_URL}/release-notes/${encodeURIComponent(tag)}`,
       images: [{ url: '/og-image.png', width: 1280, height: 640, alt: title }],
     },
     twitter: {
@@ -219,13 +220,13 @@ export default async function ReleaseNotesPostPage({
             headline: pageTitle,
             description: `What's new in Tempest ${release.tag_name}. Full changelog, downloads, and release details.`,
             datePublished: release.published_at,
-            image: { '@type': 'ImageObject', url: 'https://www.tempestai.dev/og-image.png', width: 1280, height: 640 },
-            author: { '@type': 'Organization', name: 'Tempest', url: 'https://www.tempestai.dev' },
+            image: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
+            author: { '@type': 'Organization', name: 'Tempest', url: SITE_URL },
             publisher: {
-              '@type': 'Organization', name: 'Tempest', url: 'https://www.tempestai.dev',
-              logo: { '@type': 'ImageObject', url: 'https://www.tempestai.dev/og-image.png', width: 1280, height: 640 },
+              '@type': 'Organization', name: 'Tempest', url: SITE_URL,
+              logo: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
             },
-            mainEntityOfPage: `https://www.tempestai.dev/release-notes/${encodeURIComponent(release.tag_name)}`,
+            mainEntityOfPage: `${SITE_URL}/release-notes/${encodeURIComponent(release.tag_name)}`,
           }),
         }}
       />
@@ -236,13 +237,13 @@ export default async function ReleaseNotesPostPage({
             '@context': 'https://schema.org',
             '@type': 'BreadcrumbList',
             itemListElement: [
-              { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.tempestai.dev' },
-              { '@type': 'ListItem', position: 2, name: 'Release Notes', item: 'https://www.tempestai.dev/release-notes' },
+              { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+              { '@type': 'ListItem', position: 2, name: 'Release Notes', item: `${SITE_URL}/release-notes` },
               {
                 '@type': 'ListItem',
                 position: 3,
                 name: `Tempest ${release.tag_name}`,
-                item: `https://www.tempestai.dev/release-notes/${encodeURIComponent(release.tag_name)}`,
+                item: `${SITE_URL}/release-notes/${encodeURIComponent(release.tag_name)}`,
               },
             ],
           }),

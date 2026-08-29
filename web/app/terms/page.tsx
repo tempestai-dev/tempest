@@ -1,15 +1,16 @@
 import type { Metadata } from "next"
 import { Container } from "@/components/layout/container"
+import { SITE_URL } from '@/lib/constants/site'
 
 export const metadata: Metadata = {
   title: "Terms of Service — Tempest",
   description: "Terms of service for tempestai.dev and the Tempest desktop application. The app is Apache 2.0 open source.",
-  alternates: { canonical: "https://www.tempestai.dev/terms" },
+  alternates: { canonical: `${SITE_URL}/terms` },
   openGraph: {
     title: "Terms of Service — Tempest",
     description: "Terms of service for tempestai.dev and the Tempest desktop application.",
     type: "website",
-    url: "https://www.tempestai.dev/terms",
+    url: `${SITE_URL}/terms`,
     images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Tempest Terms of Service" }],
   },
 }

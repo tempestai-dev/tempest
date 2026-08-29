@@ -1,18 +1,19 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { Container } from "@/components/layout/container"
+import { SITE_URL } from '@/lib/constants/site'
 
 export const metadata: Metadata = {
   title: "Run Claude Code in Parallel — Multiple Sessions, Zero Conflicts",
   description:
     "Tempest lets you run multiple Claude Code sessions simultaneously, each isolated in its own git worktree. Token Intelligence cuts token costs by up to 64% across sessions.",
-  alternates: { canonical: "https://www.tempestai.dev/claude-code" },
+  alternates: { canonical: `${SITE_URL}/claude-code` },
   openGraph: {
     title: "Run Claude Code in Parallel — Multiple Sessions, Zero Conflicts",
     description:
       "Tempest lets you run multiple Claude Code sessions simultaneously, each isolated in its own git worktree. Token Intelligence cuts token costs by up to 64% across sessions.",
     type: "website",
-    url: "https://www.tempestai.dev/claude-code",
+    url: `${SITE_URL}/claude-code`,
     images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Run Claude Code in Parallel — Tempest" }],
   },
   twitter: {
@@ -36,15 +37,15 @@ export default function ClaudeCodePage() {
             headline: "Run Claude Code in Parallel — Multiple Sessions, Zero Conflicts",
             description:
               "Tempest lets you run multiple Claude Code sessions simultaneously, each isolated in its own git worktree. Token Intelligence cuts token costs by up to 64% across sessions.",
-            url: "https://www.tempestai.dev/claude-code",
-            author: { "@type": "Organization", name: "Tempest", url: "https://www.tempestai.dev" },
+            url: `${SITE_URL}/claude-code`,
+            author: { "@type": "Organization", name: "Tempest", url: SITE_URL },
             publisher: {
               "@type": "Organization",
               name: "Tempest",
-              url: "https://www.tempestai.dev",
-              logo: { "@type": "ImageObject", url: "https://www.tempestai.dev/og-image.png", width: 1280, height: 640 },
+              url: SITE_URL,
+              logo: { "@type": "ImageObject", url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
             },
-            image: { "@type": "ImageObject", url: "https://www.tempestai.dev/og-image.png", width: 1280, height: 640 },
+            image: { "@type": "ImageObject", url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
           }),
         }}
       />
@@ -55,8 +56,8 @@ export default function ClaudeCodePage() {
             "@context": "https://schema.org",
             "@type": "BreadcrumbList",
             itemListElement: [
-              { "@type": "ListItem", position: 1, name: "Home", item: "https://www.tempestai.dev" },
-              { "@type": "ListItem", position: 2, name: "Claude Code", item: "https://www.tempestai.dev/claude-code" },
+              { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
+              { "@type": "ListItem", position: 2, name: "Claude Code", item: `${SITE_URL}/claude-code` },
             ],
           }),
         }}

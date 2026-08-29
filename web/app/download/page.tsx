@@ -2,16 +2,17 @@ import type { Metadata } from "next"
 import { Container } from "@/components/layout/container"
 import { DownloadContent } from "@/components/download-content"
 import { formatDate } from "@/lib/format-date"
+import { SITE_URL } from '@/lib/constants/site'
 
 export const metadata: Metadata = {
   title: "Download Tempest — Free & Open Source",
   description: "Download Tempest for Windows, macOS, or Linux. Free, open source, no account required.",
-  alternates: { canonical: "https://www.tempestai.dev/download" },
+  alternates: { canonical: `${SITE_URL}/download` },
   openGraph: {
     title: "Download Tempest — Free, Open Source",
     description: "Download Tempest for Windows, macOS, or Linux. Free, open source, no account required.",
     type: "website",
-    url: "https://www.tempestai.dev/download",
+    url: `${SITE_URL}/download`,
     images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Download Tempest" }],
   },
   twitter: {
@@ -89,7 +90,7 @@ export default async function DownloadPage() {
             '@type': 'WebPage',
             name: 'Download Tempest — Free & Open Source',
             description: 'Download Tempest for Windows, macOS, or Linux. Free, open source, no account required.',
-            url: 'https://www.tempestai.dev/download',
+            url: `${SITE_URL}/download`,
           }),
         }}
       />
@@ -100,8 +101,8 @@ export default async function DownloadPage() {
             '@context': 'https://schema.org',
             '@type': 'BreadcrumbList',
             itemListElement: [
-              { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.tempestai.dev' },
-              { '@type': 'ListItem', position: 2, name: 'Download', item: 'https://www.tempestai.dev/download' },
+              { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+              { '@type': 'ListItem', position: 2, name: 'Download', item: `${SITE_URL}/download` },
             ],
           }),
         }}

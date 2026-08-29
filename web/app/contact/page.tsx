@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { Container } from "@/components/layout/container"
+import { SITE_URL } from '@/lib/constants/site'
 
 const SUPPORT_EMAIL = "gsvprharsha@tempestai.dev"
 const SECURITY_EMAIL = "gsvprharsha@tempestai.dev"
@@ -10,13 +11,13 @@ export const metadata: Metadata = {
   title: "Contact Tempest — Support, Bugs & Security",
   description:
     "How to reach the Tempest team: GitHub Issues for bugs and feature requests, email for support, and a dedicated address for coordinated security disclosure.",
-  alternates: { canonical: "https://www.tempestai.dev/contact" },
+  alternates: { canonical: `${SITE_URL}/contact` },
   openGraph: {
     title: "Contact Tempest — Support, Bugs & Security",
     description:
       "How to reach the Tempest team: GitHub Issues for bugs and feature requests, email for support, and a dedicated address for coordinated security disclosure.",
     type: "website",
-    url: "https://www.tempestai.dev/contact",
+    url: `${SITE_URL}/contact`,
     images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Contact Tempest" }],
   },
   twitter: {
@@ -38,10 +39,10 @@ export default function ContactPage() {
             "@context": "https://schema.org",
             "@type": "ContactPage",
             name: "Contact Tempest",
-            url: "https://www.tempestai.dev/contact",
+            url: `${SITE_URL}/contact`,
             description:
               "How to reach the Tempest team for support, bug reports, feature requests, and security disclosure.",
-            mainEntity: { "@id": "https://www.tempestai.dev/#organization" },
+            mainEntity: { "@id": `${SITE_URL}/#organization` },
           }),
         }}
       />

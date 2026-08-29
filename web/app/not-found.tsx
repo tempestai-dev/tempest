@@ -1,13 +1,14 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { Container } from "@/components/layout/container"
+import { SITE_URL } from '@/lib/constants/site'
 
 export const metadata: Metadata = {
   title: "Page not found — Tempest",
   description:
     "The page you requested does not exist. Follow the links to the sitemap, llms.txt, docs, or homepage to find what you were looking for.",
   robots: { index: false, follow: true },
-  alternates: { canonical: "https://www.tempestai.dev/404" },
+  alternates: { canonical: `${SITE_URL}/404` },
 }
 
 export default function NotFound() {

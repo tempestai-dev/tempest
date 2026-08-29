@@ -2,21 +2,22 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { GitBranch, Coins, Layers } from "lucide-react";
 import { Container } from "@/components/layout/container";
+import { SITE_URL } from '@/lib/constants/site'
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://www.tempestai.dev"),
+  metadataBase: new URL(SITE_URL),
   title: "Tempest vs Conductor — Token-Efficient Multi-Agent Development",
   description:
     "Tempest indexes your repository once and shares it across every agent. Result: up to 64% fewer tokens, 58% fewer tool calls, full git worktree isolation.",
   alternates: {
-    canonical: "https://www.tempestai.dev/tempest-vs-conductor",
+    canonical: `${SITE_URL}/tempest-vs-conductor`,
   },
   openGraph: {
     title: "Tempest vs Conductor — Token-Efficient Multi-Agent Development",
     description:
       "Tempest indexes your repository once and shares it across every agent. Result: up to 64% fewer tokens, 58% fewer tool calls, full git worktree isolation.",
     type: "website",
-    url: "https://www.tempestai.dev/tempest-vs-conductor",
+    url: `${SITE_URL}/tempest-vs-conductor`,
     images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Tempest vs Conductor" }],
   },
   twitter: {
@@ -105,13 +106,13 @@ export default function TempestVsConductorPage() {
             '@type': 'Article',
             headline: 'Tempest vs Conductor — Token-Efficient Multi-Agent Development',
             description: 'Tempest indexes your repository once and shares it across every agent. Result: up to 64% fewer tokens, 58% fewer tool calls, full git worktree isolation.',
-            url: 'https://www.tempestai.dev/tempest-vs-conductor',
-            author: { '@type': 'Organization', name: 'Tempest', url: 'https://www.tempestai.dev' },
+            url: `${SITE_URL}/tempest-vs-conductor`,
+            author: { '@type': 'Organization', name: 'Tempest', url: SITE_URL },
             publisher: {
-              '@type': 'Organization', name: 'Tempest', url: 'https://www.tempestai.dev',
-              logo: { '@type': 'ImageObject', url: 'https://www.tempestai.dev/og-image.png', width: 1280, height: 640 },
+              '@type': 'Organization', name: 'Tempest', url: SITE_URL,
+              logo: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
             },
-            image: { '@type': 'ImageObject', url: 'https://www.tempestai.dev/og-image.png', width: 1280, height: 640 },
+            image: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
           }),
         }}
       />
@@ -122,8 +123,8 @@ export default function TempestVsConductorPage() {
             '@context': 'https://schema.org',
             '@type': 'BreadcrumbList',
             itemListElement: [
-              { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.tempestai.dev' },
-              { '@type': 'ListItem', position: 2, name: 'Tempest vs Conductor', item: 'https://www.tempestai.dev/tempest-vs-conductor' },
+              { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+              { '@type': 'ListItem', position: 2, name: 'Tempest vs Conductor', item: `${SITE_URL}/tempest-vs-conductor` },
             ],
           }),
         }}

@@ -1,18 +1,19 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { Container } from "@/components/layout/container"
+import { SITE_URL } from '@/lib/constants/site'
 
 export const metadata: Metadata = {
   title: "Compare AI Agent Runners — Tempest vs Conductor, Superset, Emdash, AgentsRoom, Paseo",
   description:
     "Side-by-side comparison of Tempest with every major AI agent runner. Isolation model, token costs, license, platform support, and pricing — all in one place.",
-  alternates: { canonical: "https://www.tempestai.dev/compare" },
+  alternates: { canonical: `${SITE_URL}/compare` },
   openGraph: {
     title: "Compare AI Agent Runners — Tempest vs Alternatives",
     description:
       "Side-by-side comparison of Tempest with every major AI agent runner. Isolation model, token costs, license, platform support, and pricing — all in one place.",
     type: "website",
-    url: "https://www.tempestai.dev/compare",
+    url: `${SITE_URL}/compare`,
     images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Compare AI Agent Runners" }],
   },
   twitter: {
@@ -155,7 +156,7 @@ export default function ComparePage() {
             name: "Compare AI Agent Runners — Tempest vs Alternatives",
             description:
               "Side-by-side comparison of Tempest with every major AI agent runner. Isolation model, token costs, license, platform support, and pricing — all in one place.",
-            url: "https://www.tempestai.dev/compare",
+            url: `${SITE_URL}/compare`,
           }),
         }}
       />
@@ -166,8 +167,8 @@ export default function ComparePage() {
             "@context": "https://schema.org",
             "@type": "BreadcrumbList",
             itemListElement: [
-              { "@type": "ListItem", position: 1, name: "Home", item: "https://www.tempestai.dev" },
-              { "@type": "ListItem", position: 2, name: "Compare", item: "https://www.tempestai.dev/compare" },
+              { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
+              { "@type": "ListItem", position: 2, name: "Compare", item: `${SITE_URL}/compare` },
             ],
           }),
         }}

@@ -10,6 +10,7 @@ import { CoreCapabilitiesSection } from "@/components/sections/landing/core-capa
 import { WhoItsForSection } from "@/components/sections/landing/who-its-for-section";
 import { BlogSection } from "@/components/sections/landing/blog-section";
 import { CtaSection } from "@/components/sections/landing/cta-section";
+import { SITE_URL } from '@/lib/constants/site'
 
 const structuredDataSchema = {
   "@context": "https://schema.org",
@@ -22,15 +23,15 @@ const structuredDataSchema = {
       applicationCategory: "DeveloperApplication",
       operatingSystem: ["Windows", "macOS", "Linux"],
       offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
-      downloadUrl: "https://www.tempestai.dev/download",
+      downloadUrl: `${SITE_URL}/download`,
       license: "https://www.apache.org/licenses/LICENSE-2.0",
       softwareVersion: "0.1.8",
-      url: "https://www.tempestai.dev",
+      url: SITE_URL,
     },
     {
       "@type": "WebSite",
       name: "Tempest",
-      url: "https://www.tempestai.dev",
+      url: SITE_URL,
     },
   ],
 };

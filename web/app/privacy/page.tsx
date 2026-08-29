@@ -1,16 +1,17 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { Container } from "@/components/layout/container"
+import { SITE_URL } from '@/lib/constants/site'
 
 export const metadata: Metadata = {
   title: "Privacy Policy — Tempest",
   description: "Tempest is local-first. Your code never leaves your machine. This privacy policy covers the opt-in telemetry the desktop app can send and what we collect on the website.",
-  alternates: { canonical: "https://www.tempestai.dev/privacy" },
+  alternates: { canonical: `${SITE_URL}/privacy` },
   openGraph: {
     title: "Privacy Policy — Tempest",
     description: "Tempest is local-first. Your code never leaves your machine.",
     type: "website",
-    url: "https://www.tempestai.dev/privacy",
+    url: `${SITE_URL}/privacy`,
     images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Tempest Privacy Policy" }],
   },
 }

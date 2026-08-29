@@ -3,16 +3,17 @@ import { Container } from '@/components/layout/container'
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { formatDate } from '@/lib/format-date'
+import { SITE_URL } from '@/lib/constants/site'
 
 export const metadata: Metadata = {
   title: 'Tempest Release Notes — AI Agent Runner Changelog',
   description: 'Every version, every improvement. Full changelog and release history for Tempest.',
-  alternates: { canonical: 'https://www.tempestai.dev/release-notes' },
+  alternates: { canonical: `${SITE_URL}/release-notes` },
   openGraph: {
     title: 'Tempest Release Notes — AI Agent Runner Changelog',
     description: 'Every version, every improvement. Full changelog and release history for Tempest.',
     type: 'website',
-    url: 'https://www.tempestai.dev/release-notes',
+    url: `${SITE_URL}/release-notes`,
     images: [{ url: '/og-image.png', width: 1280, height: 640, alt: 'Tempest Release Notes' }],
   },
   twitter: {

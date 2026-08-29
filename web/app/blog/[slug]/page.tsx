@@ -11,6 +11,7 @@ import { Container } from '@/components/layout/container'
 import { formatDate } from '@/lib/format-date'
 import { getAllPosts, getPostBySlug, getPostContent } from '@/lib/mdx'
 import type { BlogPost } from '@/lib/mdx'
+import { SITE_URL } from '@/lib/constants/site'
 
 export async function generateStaticParams() {
   return getAllPosts().map((post) => ({ slug: post.slug }))
@@ -34,17 +35,17 @@ export async function generateMetadata({
   if (!post) return {}
   const cover = getCoverPathForMeta(slug)
   const ogImage = cover
-    ? { url: `https://www.tempestai.dev${cover}`, alt: post.title }
+    ? { url: `${SITE_URL}${cover}`, alt: post.title }
     : { url: '/og-image.png', width: 1280, height: 640, alt: post.title }
   return {
     title: `${post.title} — Tempest`,
     description: post.description,
-    alternates: { canonical: `https://www.tempestai.dev/blog/${slug}` },
+    alternates: { canonical: `${SITE_URL}/blog/${slug}` },
     openGraph: {
       title: post.title,
       description: post.description,
       type: 'article',
-      url: `https://www.tempestai.dev/blog/${slug}`,
+      url: `${SITE_URL}/blog/${slug}`,
       publishedTime: post.date,
       authors: [post.author],
       tags: post.tags,
@@ -54,7 +55,7 @@ export async function generateMetadata({
       card: 'summary_large_image',
       title: post.title,
       description: post.description,
-      images: [cover ? `https://www.tempestai.dev${cover}` : 'https://www.tempestai.dev/og-image.png'],
+      images: [cover ? `${SITE_URL}${cover}` : `${SITE_URL}/og-image.png`],
     },
   }
 }
@@ -142,12 +143,12 @@ export default async function BlogPostPage({
             description: post.description,
             datePublished: post.date,
             dateModified: post.date,
-            mainEntityOfPage: `https://www.tempestai.dev/blog/${slug}`,
-            image: { '@type': 'ImageObject', url: coverPath ? `https://www.tempestai.dev${coverPath}` : 'https://www.tempestai.dev/og-image.png', width: 1280, height: 640 },
-            author: { '@type': 'Organization', name: 'Tempest', url: 'https://www.tempestai.dev' },
+            mainEntityOfPage: `${SITE_URL}/blog/${slug}`,
+            image: { '@type': 'ImageObject', url: coverPath ? `${SITE_URL}${coverPath}` : `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
+            author: { '@type': 'Organization', name: 'Tempest', url: SITE_URL },
             publisher: {
-              '@type': 'Organization', name: 'Tempest', url: 'https://www.tempestai.dev',
-              logo: { '@type': 'ImageObject', url: 'https://www.tempestai.dev/og-image.png', width: 1280, height: 640 },
+              '@type': 'Organization', name: 'Tempest', url: SITE_URL,
+              logo: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
             },
           }),
         }}
@@ -159,13 +160,13 @@ export default async function BlogPostPage({
             '@context': 'https://schema.org',
             '@type': 'BreadcrumbList',
             itemListElement: [
-              { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.tempestai.dev' },
-              { '@type': 'ListItem', position: 2, name: 'Blog', item: 'https://www.tempestai.dev/blog' },
+              { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+              { '@type': 'ListItem', position: 2, name: 'Blog', item: `${SITE_URL}/blog` },
               {
                 '@type': 'ListItem',
                 position: 3,
                 name: post.title,
-                item: `https://www.tempestai.dev/blog/${slug}`,
+                item: `${SITE_URL}/blog/${slug}`,
               },
             ],
           }),

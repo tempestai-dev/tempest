@@ -1,18 +1,19 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { Container } from "@/components/layout/container"
+import { SITE_URL } from '@/lib/constants/site'
 
 export const metadata: Metadata = {
   title: "Parallel AI Agents — Run Multiple Coding Agents Without Conflicts",
   description:
     "Run Claude Code, Aider, Cline, and more in parallel — each on its own git worktree, never colliding. Up to 64% fewer tokens with shared context. Free, open source.",
-  alternates: { canonical: "https://www.tempestai.dev/parallel-ai-agents" },
+  alternates: { canonical: `${SITE_URL}/parallel-ai-agents` },
   openGraph: {
     title: "Parallel AI Agents — Run Multiple Coding Agents Without Conflicts",
     description:
       "Run Claude Code, Aider, Cline, and more in parallel — each on its own git worktree, never colliding. Up to 64% fewer tokens with shared context.",
     type: "website",
-    url: "https://www.tempestai.dev/parallel-ai-agents",
+    url: `${SITE_URL}/parallel-ai-agents`,
     images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Parallel AI Agents — Tempest" }],
   },
   twitter: {
@@ -36,15 +37,15 @@ export default function ParallelAIAgentsPage() {
             headline: "Parallel AI Agents — Run Multiple Coding Agents Without Conflicts",
             description:
               "Run Claude Code, Aider, Cline, and more in parallel — each on its own git worktree, never colliding. Up to 64% fewer tokens with shared context. Free, open source.",
-            url: "https://www.tempestai.dev/parallel-ai-agents",
-            author: { "@type": "Organization", name: "Tempest", url: "https://www.tempestai.dev" },
+            url: `${SITE_URL}/parallel-ai-agents`,
+            author: { "@type": "Organization", name: "Tempest", url: SITE_URL },
             publisher: {
               "@type": "Organization",
               name: "Tempest",
-              url: "https://www.tempestai.dev",
-              logo: { "@type": "ImageObject", url: "https://www.tempestai.dev/og-image.png", width: 1280, height: 640 },
+              url: SITE_URL,
+              logo: { "@type": "ImageObject", url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
             },
-            image: { "@type": "ImageObject", url: "https://www.tempestai.dev/og-image.png", width: 1280, height: 640 },
+            image: { "@type": "ImageObject", url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
           }),
         }}
       />
@@ -55,8 +56,8 @@ export default function ParallelAIAgentsPage() {
             "@context": "https://schema.org",
             "@type": "BreadcrumbList",
             itemListElement: [
-              { "@type": "ListItem", position: 1, name: "Home", item: "https://www.tempestai.dev" },
-              { "@type": "ListItem", position: 2, name: "Parallel AI Agents", item: "https://www.tempestai.dev/parallel-ai-agents" },
+              { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
+              { "@type": "ListItem", position: 2, name: "Parallel AI Agents", item: `${SITE_URL}/parallel-ai-agents` },
             ],
           }),
         }}

@@ -1,18 +1,19 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { Container } from "@/components/layout/container"
+import { SITE_URL } from '@/lib/constants/site'
 
 export const metadata: Metadata = {
   title: "About Tempest — Open-Source AI Agent Runner",
   description:
     "Tempest is an open-source desktop app for running AI coding agents in parallel. Built with Tauri and React, Apache 2.0, local-first by design.",
-  alternates: { canonical: "https://www.tempestai.dev/about" },
+  alternates: { canonical: `${SITE_URL}/about` },
   openGraph: {
     title: "About Tempest — Open-Source AI Agent Runner",
     description:
       "Tempest is an open-source desktop app for running AI coding agents in parallel. Built with Tauri and React, Apache 2.0, local-first by design.",
     type: "website",
-    url: "https://www.tempestai.dev/about",
+    url: `${SITE_URL}/about`,
     images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "About Tempest" }],
   },
   twitter: {
@@ -34,10 +35,10 @@ export default function AboutPage() {
             "@context": "https://schema.org",
             "@type": "AboutPage",
             name: "About Tempest",
-            url: "https://www.tempestai.dev/about",
+            url: `${SITE_URL}/about`,
             description:
               "Tempest is an open-source desktop app for running AI coding agents in parallel. Built with Tauri and React, Apache 2.0, local-first by design.",
-            mainEntity: { "@id": "https://www.tempestai.dev/#organization" },
+            mainEntity: { "@id": `${SITE_URL}/#organization` },
           }),
         }}
       />

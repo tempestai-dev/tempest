@@ -7,16 +7,17 @@ import { CookieBanner } from "@/components/cookie-banner";
 import { ProgressiveBlur } from "@/components/global/progressive-blur";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
+import { SITE_URL } from '@/lib/constants/site'
 
 const organizationSchema = {
   "@context": "https://schema.org",
   "@type": "Organization",
-  "@id": "https://www.tempestai.dev/#organization",
+  "@id": `${SITE_URL}/#organization`,
   name: "Tempest",
-  url: "https://www.tempestai.dev",
+  url: SITE_URL,
   logo: {
     "@type": "ImageObject",
-    url: "https://www.tempestai.dev/og-image.png",
+    url: `${SITE_URL}/og-image.png`,
     width: 1280,
     height: 640,
   },
@@ -26,7 +27,7 @@ const organizationSchema = {
       "@type": "ContactPoint",
       contactType: "customer support",
       email: "gsvprharsha@tempestai.dev",
-      url: "https://www.tempestai.dev/contact",
+      url: `${SITE_URL}/contact`,
       availableLanguage: ["English"],
       areaServed: "Worldwide",
     },
@@ -60,7 +61,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://www.tempestai.dev"),
+  metadataBase: new URL(SITE_URL),
   title: "Tempest — Run Claude Code, Aider & AI Agents in Parallel",
   description:
     "Run AI coding agents in parallel — each isolated, none colliding. Claude Code, Aider, OpenCode, and more, all from one interface, each on its own branch.",
@@ -68,17 +69,17 @@ export const metadata: Metadata = {
     icon: "/favicon.ico",
   },
   alternates: {
-    canonical: "https://www.tempestai.dev",
+    canonical: SITE_URL,
   },
   other: {
-    "llms-txt": "https://www.tempestai.dev/llms.txt",
+    "llms-txt": `${SITE_URL}/llms.txt`,
   },
   openGraph: {
     title: "Tempest — Run Claude Code, Aider & AI Agents in Parallel",
     description:
       "Run AI coding agents in parallel — each isolated, none colliding. Claude Code, Aider, OpenCode, and more, all from one interface, each on its own branch.",
     type: "website",
-    url: "https://www.tempestai.dev",
+    url: SITE_URL,
     images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Tempest — Run Claude Code, Aider & AI Agents in Parallel" }],
   },
   twitter: {

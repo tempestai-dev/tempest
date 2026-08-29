@@ -1,8 +1,9 @@
 import type { MetadataRoute } from 'next'
 import { getAllPosts } from '@/lib/mdx'
+import { SITE_URL } from '@/lib/constants/site'
 
 // canonical base URL for all sitemap entries
-const BASE = 'https://www.tempestai.dev'
+const BASE = SITE_URL
 
 async function getReleaseTagsWithDates(): Promise<{ tag: string; date: string }[]> {
   try {

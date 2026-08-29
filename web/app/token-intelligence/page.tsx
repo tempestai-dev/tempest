@@ -1,18 +1,19 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { Container } from "@/components/layout/container"
+import { SITE_URL } from '@/lib/constants/site'
 
 export const metadata: Metadata = {
   title: "Token Intelligence — Cut AI Agent Token Costs by Up to 64%",
   description:
     "Tempest builds a local code-knowledge graph shared across all parallel agent sessions. Agents query the graph instead of re-reading files — up to 64% fewer tokens, 58% fewer tool calls.",
-  alternates: { canonical: "https://www.tempestai.dev/token-intelligence" },
+  alternates: { canonical: `${SITE_URL}/token-intelligence` },
   openGraph: {
     title: "Token Intelligence — Cut AI Agent Token Costs by Up to 64%",
     description:
       "Tempest builds a local code-knowledge graph shared across all parallel agent sessions. Agents query the graph instead of re-reading files — up to 64% fewer tokens, 58% fewer tool calls.",
     type: "website",
-    url: "https://www.tempestai.dev/token-intelligence",
+    url: `${SITE_URL}/token-intelligence`,
     images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Token Intelligence — Tempest" }],
   },
   twitter: {
@@ -36,15 +37,15 @@ export default function TokenIntelligencePage() {
             headline: "Token Intelligence — Cut AI Agent Token Costs by Up to 64%",
             description:
               "Tempest builds a local code-knowledge graph shared across all parallel agent sessions. Agents query the graph instead of re-reading files — up to 64% fewer tokens, 58% fewer tool calls.",
-            url: "https://www.tempestai.dev/token-intelligence",
-            author: { "@type": "Organization", name: "Tempest", url: "https://www.tempestai.dev" },
+            url: `${SITE_URL}/token-intelligence`,
+            author: { "@type": "Organization", name: "Tempest", url: SITE_URL },
             publisher: {
               "@type": "Organization",
               name: "Tempest",
-              url: "https://www.tempestai.dev",
-              logo: { "@type": "ImageObject", url: "https://www.tempestai.dev/og-image.png", width: 1280, height: 640 },
+              url: SITE_URL,
+              logo: { "@type": "ImageObject", url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
             },
-            image: { "@type": "ImageObject", url: "https://www.tempestai.dev/og-image.png", width: 1280, height: 640 },
+            image: { "@type": "ImageObject", url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
           }),
         }}
       />
@@ -55,8 +56,8 @@ export default function TokenIntelligencePage() {
             "@context": "https://schema.org",
             "@type": "BreadcrumbList",
             itemListElement: [
-              { "@type": "ListItem", position: 1, name: "Home", item: "https://www.tempestai.dev" },
-              { "@type": "ListItem", position: 2, name: "Token Intelligence", item: "https://www.tempestai.dev/token-intelligence" },
+              { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
+              { "@type": "ListItem", position: 2, name: "Token Intelligence", item: `${SITE_URL}/token-intelligence` },
             ],
           }),
         }}

@@ -1,18 +1,19 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { Container } from "@/components/layout/container"
+import { SITE_URL } from '@/lib/constants/site'
 
 export const metadata: Metadata = {
   title: "How Tempest Works — Git Worktrees, Token Intelligence, Parallel Agents",
   description:
     "Tempest uses git worktrees for agent isolation and a local code-knowledge graph (Token Intelligence) to share context across sessions. Here is how it all fits together.",
-  alternates: { canonical: "https://www.tempestai.dev/how-it-works" },
+  alternates: { canonical: `${SITE_URL}/how-it-works` },
   openGraph: {
     title: "How Tempest Works — Git Worktrees, Token Intelligence, Parallel Agents",
     description:
       "Tempest uses git worktrees for agent isolation and a local code-knowledge graph (Token Intelligence) to share context across sessions.",
     type: "website",
-    url: "https://www.tempestai.dev/how-it-works",
+    url: `${SITE_URL}/how-it-works`,
     images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "How Tempest Works" }],
   },
   twitter: {
@@ -69,7 +70,7 @@ export default function HowItWorksPage() {
             name: "How Tempest Works — Git Worktrees, Token Intelligence, Parallel Agents",
             description:
               "Tempest uses git worktrees for agent isolation and a local code-knowledge graph (Token Intelligence) to share context across sessions. Here is how it all fits together.",
-            url: "https://www.tempestai.dev/how-it-works",
+            url: `${SITE_URL}/how-it-works`,
             step: steps.map((s) => ({
               "@type": "HowToStep",
               name: s.title,
@@ -85,8 +86,8 @@ export default function HowItWorksPage() {
             "@context": "https://schema.org",
             "@type": "BreadcrumbList",
             itemListElement: [
-              { "@type": "ListItem", position: 1, name: "Home", item: "https://www.tempestai.dev" },
-              { "@type": "ListItem", position: 2, name: "How It Works", item: "https://www.tempestai.dev/how-it-works" },
+              { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
+              { "@type": "ListItem", position: 2, name: "How It Works", item: `${SITE_URL}/how-it-works` },
             ],
           }),
         }}

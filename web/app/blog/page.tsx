@@ -7,6 +7,7 @@ import { Container } from '@/components/layout/container'
 import { formatDate } from '@/lib/format-date'
 import { getAllPosts } from '@/lib/mdx'
 import type { BlogPost } from '@/lib/mdx'
+import { SITE_URL } from '@/lib/constants/site'
 
 function getCoverPath(slug: string): string | null {
   const dir = path.join(process.cwd(), 'public', 'blog-pics', slug)
@@ -20,13 +21,13 @@ export const metadata: Metadata = {
   title: 'AI Agent Engineering Blog — Tempest',
   description:
     'Writing about parallel AI agents, token efficiency, open-source tooling, and how we build Tempest.',
-  alternates: { canonical: 'https://www.tempestai.dev/blog' },
+  alternates: { canonical: `${SITE_URL}/blog` },
   openGraph: {
     title: 'AI Agent Engineering Blog — Tempest',
     description:
       'Writing about parallel AI agents, token efficiency, open-source tooling, and how we build Tempest.',
     type: 'website',
-    url: 'https://www.tempestai.dev/blog',
+    url: `${SITE_URL}/blog`,
     images: [{ url: '/og-image.png', width: 1280, height: 640, alt: 'Tempest Blog' }],
   },
   twitter: {

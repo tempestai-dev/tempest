@@ -2,19 +2,20 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Coins, HardDrive, GitBranch } from "lucide-react";
 import { Container } from "@/components/layout/container";
+import { SITE_URL } from '@/lib/constants/site'
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://www.tempestai.dev"),
+  metadataBase: new URL(SITE_URL),
   title: "Tempest vs Emdash — Shared Knowledge Graph for Parallel AI Agents",
   description:
     "Both local-first, free, open source. Tempest's shared knowledge graph cuts token usage by up to 64% across parallel sessions. Emdash leads on integrations.",
-  alternates: { canonical: "https://www.tempestai.dev/tempest-vs-emdash" },
+  alternates: { canonical: `${SITE_URL}/tempest-vs-emdash` },
   openGraph: {
     title: "Tempest vs Emdash — Shared Knowledge Graph for Parallel AI Agents",
     description:
       "Both local-first, free, open source. Tempest's shared knowledge graph cuts token usage by up to 64% across parallel sessions. Emdash leads on integrations.",
     type: "website",
-    url: "https://www.tempestai.dev/tempest-vs-emdash",
+    url: `${SITE_URL}/tempest-vs-emdash`,
     images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Tempest vs Emdash" }],
   },
   twitter: {
@@ -102,13 +103,13 @@ export default function TempestVsEmdashPage() {
             '@type': 'Article',
             headline: 'Tempest vs Emdash — Shared Knowledge Graph for Parallel AI Agents',
             description: "Both local-first, free, open source. Tempest's shared knowledge graph cuts token usage by up to 64% across parallel sessions. Emdash leads on integrations.",
-            url: 'https://www.tempestai.dev/tempest-vs-emdash',
-            author: { '@type': 'Organization', name: 'Tempest', url: 'https://www.tempestai.dev' },
+            url: `${SITE_URL}/tempest-vs-emdash`,
+            author: { '@type': 'Organization', name: 'Tempest', url: SITE_URL },
             publisher: {
-              '@type': 'Organization', name: 'Tempest', url: 'https://www.tempestai.dev',
-              logo: { '@type': 'ImageObject', url: 'https://www.tempestai.dev/og-image.png', width: 1280, height: 640 },
+              '@type': 'Organization', name: 'Tempest', url: SITE_URL,
+              logo: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
             },
-            image: { '@type': 'ImageObject', url: 'https://www.tempestai.dev/og-image.png', width: 1280, height: 640 },
+            image: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
           }),
         }}
       />
@@ -119,8 +120,8 @@ export default function TempestVsEmdashPage() {
             '@context': 'https://schema.org',
             '@type': 'BreadcrumbList',
             itemListElement: [
-              { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.tempestai.dev' },
-              { '@type': 'ListItem', position: 2, name: 'Tempest vs Emdash', item: 'https://www.tempestai.dev/tempest-vs-emdash' },
+              { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+              { '@type': 'ListItem', position: 2, name: 'Tempest vs Emdash', item: `${SITE_URL}/tempest-vs-emdash` },
             ],
           }),
         }}

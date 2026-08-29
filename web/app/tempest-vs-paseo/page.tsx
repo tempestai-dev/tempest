@@ -2,19 +2,20 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Coins, Monitor, GitBranch } from "lucide-react";
 import { Container } from "@/components/layout/container";
+import { SITE_URL } from '@/lib/constants/site'
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://www.tempestai.dev"),
+  metadataBase: new URL(SITE_URL),
   title: "Tempest vs Paseo — Local-First Token-Efficient Multi-Agent Development",
   description:
     "Paseo covers every device. Tempest cuts token cost — Windows-native, daemon-free, with a shared knowledge graph reducing usage by up to 64%.",
-  alternates: { canonical: "https://www.tempestai.dev/tempest-vs-paseo" },
+  alternates: { canonical: `${SITE_URL}/tempest-vs-paseo` },
   openGraph: {
     title: "Tempest vs Paseo — Local-First Token-Efficient Multi-Agent Development",
     description:
       "Paseo covers every device. Tempest cuts token cost — Windows-native, daemon-free, with a shared knowledge graph reducing usage by up to 64%.",
     type: "website",
-    url: "https://www.tempestai.dev/tempest-vs-paseo",
+    url: `${SITE_URL}/tempest-vs-paseo`,
     images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Tempest vs Paseo" }],
   },
   twitter: {
@@ -102,13 +103,13 @@ export default function TempestVsPaseoPage() {
             '@type': 'Article',
             headline: 'Tempest vs Paseo — Local-First Token-Efficient Multi-Agent Development',
             description: 'Paseo covers every device. Tempest cuts token cost — Windows-native, daemon-free, with a shared knowledge graph reducing usage by up to 64%.',
-            url: 'https://www.tempestai.dev/tempest-vs-paseo',
-            author: { '@type': 'Organization', name: 'Tempest', url: 'https://www.tempestai.dev' },
+            url: `${SITE_URL}/tempest-vs-paseo`,
+            author: { '@type': 'Organization', name: 'Tempest', url: SITE_URL },
             publisher: {
-              '@type': 'Organization', name: 'Tempest', url: 'https://www.tempestai.dev',
-              logo: { '@type': 'ImageObject', url: 'https://www.tempestai.dev/og-image.png', width: 1280, height: 640 },
+              '@type': 'Organization', name: 'Tempest', url: SITE_URL,
+              logo: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
             },
-            image: { '@type': 'ImageObject', url: 'https://www.tempestai.dev/og-image.png', width: 1280, height: 640 },
+            image: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
           }),
         }}
       />
@@ -119,8 +120,8 @@ export default function TempestVsPaseoPage() {
             '@context': 'https://schema.org',
             '@type': 'BreadcrumbList',
             itemListElement: [
-              { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.tempestai.dev' },
-              { '@type': 'ListItem', position: 2, name: 'Tempest vs Paseo', item: 'https://www.tempestai.dev/tempest-vs-paseo' },
+              { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+              { '@type': 'ListItem', position: 2, name: 'Tempest vs Paseo', item: `${SITE_URL}/tempest-vs-paseo` },
             ],
           }),
         }}
