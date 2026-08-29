@@ -95,9 +95,18 @@ export function startRpcClient({ relayUrl, sessionId, sessionKeyB64, onState }) 
     reconnectTimer = setTimeout(dial, delay);
   };
 
+  // 30 s covers a slow write_to_pty on a laggy machine plus a heavy burst of
+  // agent.output crossing on the same socket; anything longer means the reply
+  // is genuinely lost, so reject instead of wedging the caller.
+  const REQUEST_TIMEOUT_MS = 30_000;
   const request = (method, params) => {
     if (!peer) return Promise.reject(new Error('rpc_not_connected'));
-    return peer.request(method, params);
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`rpc_timeout:${method}`)), REQUEST_TIMEOUT_MS);
+    });
+    return Promise.race([peer.request(method, params), timeout])
+      .finally(() => clearTimeout(timer));
   };
 
   const on = (event, handler) => {

@@ -66,6 +66,7 @@ import { UpdateNotice } from "./UpdateNotice";
 import { useAvailableUpdate, dismissUpdate, startUpdateChecks, installUpdate, openReleaseNotes } from "../store/updates";
 import { startModelManifestFetch } from "../lib/remoteConfig";
 import { startAgentHooks } from "../store/agentHooks";
+import { setWorkspaceApi } from "../lib/mobileBridge/workspaceApi";
 import { AtlasIndexModal } from "./AtlasIndexModal";
 import { KnowledgeBasePage } from "./KnowledgeBasePage";
 import { TasksPage } from "./TasksPage";
@@ -206,6 +207,43 @@ export function WorkspaceView({ zen, name, path }: Props) {
   // Prevents duplicate spawns when the restore loop calls openSession for the
   // same path back-to-back before any state update has flushed (stale closure).
   const spawningPaths = useRef<Set<string>>(new Set());
+
+  // Latest-value refs so the mobile bridge (module-scoped, no React context)
+  // can drive session lifecycle without a stale closure. Written every render;
+  // published once in a mount effect below.
+  const openSessionRef = useRef<typeof openSession | null>(null);
+  const closeSessionRef = useRef<typeof closeSession | null>(null);
+  openSessionRef.current = openSession;
+  closeSessionRef.current = closeSession;
+  useEffect(() => {
+    setWorkspaceApi({
+      async openSession({ projectId, branchId, agent, name }) {
+        const cwd = branchId ? getBranchPath(branchId) : getProjectPath(projectId);
+        if (!cwd) throw new Error("unknown_project_or_branch");
+        const cfg = agent ? AGENT_CONFIGS.find((a) => a.hint === agent) : null;
+        const displayName = name ?? (cfg ? cfg.name : (agent ?? "Terminal"));
+        const sessionId = crypto.randomUUID();
+        await openSessionRef.current!(
+          displayName, cwd, projectId, agent, undefined,
+          undefined, undefined, !branchId, false, false, sessionId,
+        );
+        return { id: sessionId };
+      },
+      closeSession(id) { closeSessionRef.current!(id); },
+      async hopSession(id) {
+        const s = getSession(id);
+        if (!s) throw new Error(`unknown_session:${id}`);
+        const cwd = s.branchId ? getBranchPath(s.branchId) : getProjectPath(s.projectId);
+        if (!cwd) throw new Error("unknown_project_or_branch");
+        await openSessionRef.current!(
+          s.name, cwd, s.projectId, s.agent, undefined,
+          undefined, s.agent ? s.conversationId : undefined,
+          !s.branchId, s.noGit, false, s.id, s.parentSessionId,
+        );
+      },
+    });
+    return () => setWorkspaceApi(null);
+  }, []);
 
   // Always-current keyboard shortcut handler (avoids stale closure on the listener).
   const shortcutHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});

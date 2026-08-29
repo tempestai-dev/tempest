@@ -100,6 +100,8 @@ export interface RpcParams {
   "agent.send":         { sessionId: string; text: string };
   "agent.interrupt":    { sessionId: string };
   "agent.stop":         { sessionId: string };
+  "agent.subscribe":    { sessionId: string };
+  "agent.unsubscribe":  { sessionId: string };
 
   "permission.list":    Record<string, never>;
   "permission.decide":  { sessionId: string; decision: "approve" | "deny" };
@@ -126,6 +128,8 @@ export interface RpcResult {
   "agent.send":         void;
   "agent.interrupt":    void;
   "agent.stop":         void;
+  "agent.subscribe":    { replay: string[] };
+  "agent.unsubscribe":  void;
 
   "permission.list":    PermissionRequest[];
   "permission.decide":  void;
@@ -149,7 +153,9 @@ export function isRequest(f: WireFrame): f is RpcRequest {
   return "method" in f && "id" in f;
 }
 export function isResponse(f: WireFrame): f is RpcResponse {
-  return "id" in f && ("result" in f || "error" in f);
+  // Void-result replies serialize as { id } — JSON.stringify drops `result: undefined`.
+  // So the guard has to accept "id present, method absent" (event has no id).
+  return "id" in f && !("method" in f);
 }
 export function isEvent(f: WireFrame): f is RpcEvent {
   return "event" in f && !("id" in (f as object));

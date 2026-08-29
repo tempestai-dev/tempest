@@ -3,6 +3,7 @@ import { View, Text, Pressable, ScrollView, ActivityIndicator, StyleSheet } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { startRpcClient } from '../lib/rpc';
+import SessionScreen from './SessionScreen';
 
 const geist = { regular: 'Geist_400Regular', medium: 'Geist_500Medium', semibold: 'Geist_600SemiBold' };
 
@@ -51,6 +52,7 @@ export default function Connected({ pairing, onUnpair, onBack }) {
   // branches. Everything else defaults to expanded — sidebar parity.
   const [collapsedProjects, setCollapsedProjects] = useState(() => new Set());
   const [collapsedBranches, setCollapsedBranches] = useState(() => new Set());
+  const [selectedSessionId, setSelectedSessionId] = useState(null);
   const clientRef = useRef(null);
 
   useEffect(() => {
@@ -87,6 +89,7 @@ export default function Connected({ pairing, onUnpair, onBack }) {
       .catch((e) => { if (!cancelled) setError(e.message); });
 
     const offUpdated = client.on('session.updated', (s) => {
+      console.log(`[Connected] session.updated id=${s.id.slice(0, 8)} status=${s.status} closed=${s.closed}`);
       setSnapshot((prev) => {
         if (!prev) return prev;
         const i = prev.sessions.findIndex((x) => x.id === s.id);
@@ -228,6 +231,22 @@ export default function Connected({ pairing, onUnpair, onBack }) {
     const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n;
   });
 
+  // A row was tapped — hand control to SessionScreen, sharing the live client.
+  // If the session vanishes (removed / snapshot missing), fall back to the list.
+  const selectedSession = selectedSessionId
+    ? (snapshot?.sessions || []).find((s) => s.id === selectedSessionId) || null
+    : null;
+  if (selectedSession) {
+    return (
+      <SessionScreen
+        client={clientRef.current}
+        session={selectedSession}
+        connState={connState}
+        onBack={() => setSelectedSessionId(null)}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#09090b' }}>
       <StatusBar style="light" />
@@ -313,7 +332,7 @@ export default function Connected({ pairing, onUnpair, onBack }) {
                     {!branchCollapsed && (
                       <View style={styles.sessionList}>
                         {g.sessions.map((s) => (
-                          <SessionRow key={s.id} session={s} />
+                          <SessionRow key={s.id} session={s} onPress={() => setSelectedSessionId(s.id)} />
                         ))}
                       </View>
                     )}
@@ -374,11 +393,16 @@ function Chevron({ open, size = 'normal' }) {
   );
 }
 
-function SessionRow({ session }) {
+function SessionRow({ session, onPress }) {
   const kind = session.closed ? 'closed' : (session.status || 'idle');
   const dotColor = session.closed ? '#3a3a40' : STATUS_COLOR[kind === 'closed' ? 'done' : kind];
   return (
-    <View style={[styles.sessionRow, session.closed && { opacity: 0.5 }]}>
+    <Pressable
+      style={({ pressed }) => [styles.sessionRow, session.closed && { opacity: 0.5 }, pressed && { backgroundColor: '#18181b' }]}
+      onPress={session.closed ? undefined : onPress}
+      disabled={session.closed}
+      hitSlop={4}
+    >
       <View style={[styles.sessionDot, { backgroundColor: dotColor }]} />
       <Text style={styles.sessionName} numberOfLines={1}>
         {session.name}
@@ -392,7 +416,7 @@ function SessionRow({ session }) {
       {session.needsPermission ? (
         <View style={styles.approvalDot} />
       ) : null}
-    </View>
+    </Pressable>
   );
 }
 
