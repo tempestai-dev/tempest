@@ -105,6 +105,8 @@ export interface RpcParams {
 
   "permission.list":    Record<string, never>;
   "permission.decide":  { sessionId: string; decision: "approve" | "deny" };
+
+  "protocol.hello":     { mobile: number; minCompatibleDesktop: number };
 }
 
 export interface RpcResult {
@@ -133,6 +135,8 @@ export interface RpcResult {
 
   "permission.list":    PermissionRequest[];
   "permission.decide":  void;
+
+  "protocol.hello":     { desktop: number; minCompatibleMobile: number };
 }
 
 export type RpcMethod = keyof RpcParams & keyof RpcResult;

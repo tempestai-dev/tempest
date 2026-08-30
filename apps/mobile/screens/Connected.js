@@ -1,9 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, Pressable, ScrollView, ActivityIndicator, StyleSheet, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { startRpcClient } from '../lib/rpc';
 import SessionScreen from './SessionScreen';
+
+// Bump for any BREAKING wire change (removed method, changed field semantics,
+// new framing). MIN_COMPATIBLE_DESKTOP_VERSION is the oldest desktop this
+// mobile build can safely talk to — bump it to force users to update Tempest
+// on the laptop. The desktop enforces the mirror pair; either side rejects
+// on mismatch and this screen renders instead of loading the session list.
+const MOBILE_PROTOCOL_VERSION = 1;
+const MIN_COMPATIBLE_DESKTOP_VERSION = 1;
 
 const geist = { regular: 'Geist_400Regular', medium: 'Geist_500Medium', semibold: 'Geist_600SemiBold' };
 
@@ -56,6 +64,10 @@ export default function Connected({ pairing, onUnpair, onBack }) {
   // Session id currently being reopened via session.hop — shows a spinner on
   // the tapped row so the user gets feedback while the desktop respawns PTY.
   const [reopeningId, setReopeningId] = useState(null);
+  // Populated when the protocol.hello check fails after connect. Shape:
+  // { side: 'desktop'|'mobile', have: number, need: number }. When set, the
+  // whole screen renders the block overlay instead of the session list.
+  const [versionBlock, setVersionBlock] = useState(null);
   const clientRef = useRef(null);
 
   useEffect(() => {
@@ -79,17 +91,44 @@ export default function Connected({ pairing, onUnpair, onBack }) {
     const client = clientRef.current;
     if (!client) return;
 
-    client.request('session.list', {})
+    // Gate the rest of the wire on a passing protocol handshake. On mismatch
+    // the desktop rejects with a structured error we translate into a
+    // block screen. A generic error is treated as a version pass — the
+    // subsequent session.list will surface any real network problem.
+    const checkVersion = client.request('protocol.hello', {
+      mobile: MOBILE_PROTOCOL_VERSION,
+      minCompatibleDesktop: MIN_COMPATIBLE_DESKTOP_VERSION,
+    })
       .then((r) => {
-        if (cancelled) return;
-        setSnapshot({
-          sessions: r?.sessions || [],
-          projects: r?.projects || [],
-          branches: r?.branches || [],
-          recents:  r?.recents  || [],
-        });
+        if (r?.desktop != null && r.desktop < MIN_COMPATIBLE_DESKTOP_VERSION) {
+          return { side: 'desktop', have: r.desktop, need: MIN_COMPATIBLE_DESKTOP_VERSION };
+        }
+        if (r?.minCompatibleMobile != null && MOBILE_PROTOCOL_VERSION < r.minCompatibleMobile) {
+          return { side: 'mobile', have: MOBILE_PROTOCOL_VERSION, need: r.minCompatibleMobile };
+        }
+        return null;
       })
-      .catch((e) => { if (!cancelled) setError(e.message); });
+      .catch((e) => {
+        const m = String(e?.message || '').match(/(desktop|mobile)_too_old:(\d+)<(\d+)/);
+        return m ? { side: m[1], have: Number(m[2]), need: Number(m[3]) } : null;
+      });
+
+    checkVersion.then((block) => {
+      if (cancelled) return;
+      setVersionBlock(block);
+      if (block) return; // don't subscribe on a mismatch
+      client.request('session.list', {})
+        .then((r) => {
+          if (cancelled) return;
+          setSnapshot({
+            sessions: r?.sessions || [],
+            projects: r?.projects || [],
+            branches: r?.branches || [],
+            recents:  r?.recents  || [],
+          });
+        })
+        .catch((e) => { if (!cancelled) setError(e.message); });
+    });
 
     // Refetch the whole snapshot when an update references a project or branch
     // we don't know about yet — the desktop may have added a new project or
@@ -288,6 +327,17 @@ export default function Connected({ pairing, onUnpair, onBack }) {
     );
   }
 
+  if (versionBlock) {
+    return (
+      <ProtocolBlockScreen
+        block={versionBlock}
+        pairingName={pairing?.name}
+        onUnpair={onUnpair}
+        onBack={onBack}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#09090b' }}>
       <StatusBar style="light" />
@@ -472,6 +522,67 @@ function SessionRow({ session, reopening, onPress }) {
     </Pressable>
   );
 }
+
+// Rendered when the protocol handshake fails. Side is 'desktop' (Tempest on
+// the laptop is behind) or 'mobile' (this app is behind). GitHub Releases is
+// the shipping channel for the desktop app; the mobile update path is
+// TestFlight/App Store depending on the build the user has installed — we
+// keep the copy generic ("Update Tempest Mobile") so it works in both.
+function ProtocolBlockScreen({ block, pairingName, onUnpair, onBack }) {
+  const desktopBehind = block.side === 'desktop';
+  const title = desktopBehind ? 'Update Tempest' : 'Update Tempest Mobile';
+  const body = desktopBehind
+    ? `The desktop at ${pairingName || 'this pairing'} is running protocol v${block.have}; this app needs v${block.need}. Update Tempest on the laptop, then re-pair.`
+    : `This app is running protocol v${block.have}; the desktop needs v${block.need}. Update Tempest Mobile from the App Store, then re-pair.`;
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#09090b' }}>
+      <StatusBar style="light" />
+      <View style={styles.topbar}>
+        {onBack ? (
+          <Pressable onPress={onBack} hitSlop={12}>
+            <Text style={styles.back}>‹ Desktops</Text>
+          </Pressable>
+        ) : <View />}
+        <View />
+      </View>
+      <View style={blockStyles.body}>
+        <Text style={blockStyles.title}>{title}</Text>
+        <Text style={blockStyles.copy}>{body}</Text>
+        {desktopBehind ? (
+          <Pressable
+            style={blockStyles.linkBtn}
+            onPress={() => Linking.openURL('https://github.com/tempestai-dev/tempest/releases')}
+          >
+            <Text style={blockStyles.linkBtnText}>Open GitHub Releases</Text>
+          </Pressable>
+        ) : null}
+        {onUnpair ? (
+          <Pressable style={blockStyles.forgetBtn} onPress={onUnpair}>
+            <Text style={blockStyles.forgetBtnText}>Forget this desktop</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const blockStyles = StyleSheet.create({
+  body: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 32, gap: 16,
+  },
+  title: { color: '#fafafa', fontSize: 24, fontFamily: geist.semibold, textAlign: 'center' },
+  copy:  { color: '#a1a1aa', fontSize: 15, fontFamily: geist.regular, textAlign: 'center', lineHeight: 22 },
+  linkBtn: {
+    marginTop: 8, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 10,
+    backgroundColor: '#ffffff',
+  },
+  linkBtnText: { color: '#0c0d10', fontSize: 15, fontFamily: geist.semibold },
+  forgetBtn: {
+    marginTop: 4, paddingVertical: 10, paddingHorizontal: 16,
+  },
+  forgetBtnText: { color: '#71717a', fontSize: 13, fontFamily: geist.medium },
+});
 
 // shadcn-dark palette
 // bg #09090b · card #0f0f11 · border #27272a · fg #fafafa · muted-fg #a1a1aa · dim #71717a

@@ -2,6 +2,13 @@
 // handlers land here in Phase 2 — writes (session.open/close/hop, queue.*,
 // agent.*, permission.decide) join in Task #9, push events in Task #10.
 
+// Bump DESKTOP_PROTOCOL_VERSION for any BREAKING wire change (removed method,
+// changed field semantics, new framing). Bump MIN_COMPATIBLE_MOBILE_VERSION
+// when a mobile client below that number can no longer function safely.
+// Mobile app lags via App Store review, so a bump here forces users to update.
+export const DESKTOP_PROTOCOL_VERSION = 1;
+export const MIN_COMPATIBLE_MOBILE_VERSION = 1;
+
 import { invoke } from "@tauri-apps/api/core";
 import { RpcPeer, wsChannel } from "@tempest/transport";
 import { projectListSnapshot, projectSession, projectQueue, projectListOrdered } from "./projectors";
@@ -29,6 +36,19 @@ export interface AttachedBridge {
 export function attachBridge(ws: WebSocket, sessionKey: Uint8Array): AttachedBridge {
   const channel = wsChannel(ws);
   const peer = new RpcPeer(channel, sessionKey);
+
+  // First RPC after connect. Rejects the handshake if either side is below
+  // the other's minimum — the mobile client renders a ProtocolBlock screen
+  // on the error, so an incompatible pair fails loudly instead of drifting.
+  peer.handle("protocol.hello", async ({ mobile, minCompatibleDesktop }) => {
+    if (DESKTOP_PROTOCOL_VERSION < minCompatibleDesktop) {
+      throw new Error(`desktop_too_old:${DESKTOP_PROTOCOL_VERSION}<${minCompatibleDesktop}`);
+    }
+    if (mobile < MIN_COMPATIBLE_MOBILE_VERSION) {
+      throw new Error(`mobile_too_old:${mobile}<${MIN_COMPATIBLE_MOBILE_VERSION}`);
+    }
+    return { desktop: DESKTOP_PROTOCOL_VERSION, minCompatibleMobile: MIN_COMPATIBLE_MOBILE_VERSION };
+  });
 
   peer.handle("session.list", async () => projectListSnapshot());
 

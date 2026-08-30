@@ -1,15 +1,24 @@
 {
   "expo": {
-    "name": "tempest-mobile",
+    "name": "Tempest",
     "slug": "tempest-mobile",
-    "version": "1.0.0",
+    "scheme": "tempest",
+    "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.tempestai.mobile",
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocalNetworkUsageDescription": "Tempest connects to your paired laptop over your local Wi-Fi to drive your agents."
+      }
     },
     "android": {
+      "package": "com.tempestai.mobile",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -28,6 +37,11 @@
           "cameraPermission": "Tempest uses the camera to scan the pairing QR shown by your desktop."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "REPLACE_ME_ON_FIRST_EAS_BUILD"
+      }
+    }
   }
 }
