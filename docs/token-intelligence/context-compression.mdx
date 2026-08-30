@@ -1,0 +1,106 @@
+---
+title: Context Compression
+description: Optional, off-by-default compression that holds bulky chat context out of the window and retrieves it on demand
+icon: "archive"
+---
+
+# Context Compression
+
+A long chat re-sends its whole history and every wired-in node on **every** message.
+Nothing about that is wasteful on turn three; by turn thirty it is the single biggest
+line on the bill, and the oldest history starts falling out of the window before the
+work is finished.
+
+Context compression is Tempest's answer, and it is **off by default** — you turn it on
+in **Settings → Token Intelligence → Compress chat context**.
+
+## What it actually does
+
+It does not summarize your conversation, and it does not throw anything away. It
+replaces bulky content with an **addressable stub** — a short preview plus the exact
+tool call that fetches the original, verbatim:
+
+| What gets held out | How the model gets it back |
+| --- | --- |
+| A wired-in node's body over ~2,000 chars | `read_canvas_node` with the node's title |
+| Chat turns older than the last 6 | `read_thread_history` with the turn numbers |
+| Code structure on an indexed project | The Atlas `atlas_*` graph tools |
+
+So the content stops being *resident* — it stops being re-paid for on every message —
+but it never stops being *reachable*. The model pulls back only what the turn in front
+of it actually needs.
+
+A stub looks roughly like this:
+
+```
+[compressed — 48,120 chars held out of context, retrievable in full]
+Source: /project/docs/design.pdf
+
+Opening lines:
+# Payments redesign
+## Goals
+…
+
+Full body: call `read_canvas_node` with title "design.pdf".
+```
+
+And the elided history becomes a numbered index:
+
+```
+## Earlier in this thread (compressed)
+The first 14 turns of this conversation are held out of context as one-line
+summaries. They are NOT lost — to read any of them verbatim, call
+`read_thread_history` with the turn numbers below.
+
+- #1 user: set up the auth redirect flow with PKCE…
+- #2 assistant: here's the flow — the callback handler needs…
+```
+
+## Why retrieval instead of summarization
+
+Summarizing older context costs an extra model call on every overflow, and whatever the
+summarizer drops is gone for good. Retrieval costs nothing up front, is fully
+deterministic, and the original bytes stay on disk. When the model needs turn #3 in
+full, it asks for turn #3 and gets turn #3 — not somebody's paraphrase of it.
+
+This is the same trade Tempest already makes with the [Canvas map](/chat/overview) and
+with [Atlas](/token-intelligence/overview) itself: ship metadata and a way to ask,
+rather than shipping everything and hoping it fits.
+
+## Better with Token Intelligence on
+
+Compression works on its own — canvas nodes and chat history are retrievable either
+way. But with **Token Intelligence enabled and the project indexed**, questions about
+your codebase route to the Atlas graph instead of re-reading files: where a symbol is
+defined, what calls it, what its type hierarchy looks like. That is far cheaper than
+pulling a file back into the window, and it is where most of the saving on a code-heavy
+chat comes from.
+
+## Where it applies
+
+<Warning>
+Compression applies only to **BYOK chat nodes** — chats you drive with your own API key
+in a project. It is deliberately skipped elsewhere:
+
+- **CLI agents** (Claude Code, Codex, Gemini) manage their own context and their own
+  compaction. Tempest never assembles their window, so there is nothing here to compress.
+- **The Warp backend** ships without tools, so a stub there would point at a call the
+  model cannot make. Content would be stranded rather than deferred.
+- **Agent seed prompts** — the context handed to a CLI agent when you launch it from a
+  chat — go out uncompressed for the same reason.
+</Warning>
+
+## Tuning
+
+The thresholds live in `src/lib/contextCompression.ts` as `COMPRESSION_BUDGET`:
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `lineageChars` | `2000` | A wired-in node's body is stubbed past this size |
+| `stubHeadChars` | `400` | How much of the opening is kept inside a stub |
+| `recentTurns` | `6` | Turns always sent verbatim, never indexed |
+| `turnGistChars` | `120` | Cap on each one-line entry in the history index |
+
+They are tuned so an ordinary back-and-forth never compresses at all — compression that
+fired on turn three would only add tool round-trips for no saving. On a long thread the
+index's fixed header amortizes away and roughly 70% of the elided bulk is shed.

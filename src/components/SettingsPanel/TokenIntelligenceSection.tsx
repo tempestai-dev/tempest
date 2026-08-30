@@ -203,6 +203,34 @@ export function TokenIntelligenceSection() {
           </div>
         </>
       )}
+
+      <div className="sp-section-subheading">Context compression</div>
+      <p className="sp-section-desc">
+        Long chats re-send their whole history and every wired-in node on each message.
+        With compression on, bulky content is held out of context and replaced by a
+        pointer the model follows only when it actually needs it — nothing is summarized
+        away or lost.
+      </p>
+      <div className="sp-rows">
+        <div className="sp-toggle-row" onClick={() => updateSetting("contextCompression", !s.contextCompression)}>
+          <div className="sp-toggle-text">
+            <span className="sp-toggle-label">Compress chat context</span>
+            <span className="sp-toggle-desc">
+              {s.atlasEnabled
+                ? "Off by default. Code lookups route through the Atlas graph on indexed projects."
+                : "Off by default. Turn on Token Intelligence above to also route code lookups through the Atlas graph."}
+            </span>
+          </div>
+          <button
+            className={`sp-toggle${s.contextCompression ? " sp-toggle--on" : ""}`}
+            onClick={(e) => { e.stopPropagation(); updateSetting("contextCompression", !s.contextCompression); }}
+            role="switch"
+            aria-checked={s.contextCompression}
+          >
+            <span className="sp-toggle-thumb" />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

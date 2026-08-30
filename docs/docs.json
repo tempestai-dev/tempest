@@ -73,7 +73,7 @@
       },
       {
         "group": "Token Intelligence",
-        "pages": ["token-intelligence/overview", "token-intelligence/mcp"]
+        "pages": ["token-intelligence/overview", "token-intelligence/mcp", "token-intelligence/context-compression"]
       },
       {
         "group": "Knowledge Base",

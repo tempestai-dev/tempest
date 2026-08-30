@@ -20,6 +20,9 @@ import { streamClaudeCode, type ClaudeCodeStream } from "../../../lib/claudeCode
 import { streamWarp } from "../../../lib/warp";
 import { useSettings } from "../../../store/appSettings";
 import { createChatTools } from "../../../lib/chatTools";
+import {
+  compressLineageContent, compressHistory, compressionSystemNote, toHistoryTurns,
+} from "../../../lib/contextCompression";
 import { ThreadNodeContext } from "../ThreadNodeContext";
 import { Markdown } from "../../Markdown";
 import { ToolCallCard } from "../../ChatPane/ToolCallCard";
@@ -65,7 +68,14 @@ function messagePreview(nodeId: string): string {
 // The wired-in node(s) are this chat's parent(s) — their content is inherited context, the
 // prior line of work this chat branches from (Slashspace's branching-conversations model).
 // This is distinct from the ambient canvas map, which is passive reference.
-function buildLineageContext(sourceIds: string[]): string {
+// `compress` is opt-in per call site, never a global default: the CLI-agent seed
+// path (buildAgentSeedContext) has no `read_canvas_node` tool, so a stub there
+// would be unrecoverable rather than merely deferred. Only the BYOK chat path,
+// which ships the retrieval tools, passes it — see ChatNode.send.
+function buildLineageContext(
+  sourceIds: string[],
+  opts: { compress?: boolean; atlasIndexed?: boolean } = {},
+): string {
   const blocks: string[] = [];
   for (const nid of sourceIds) {
     const node = getThreadNode(nid);
@@ -123,10 +133,26 @@ function buildLineageContext(sourceIds: string[]): string {
       content = `[image attached${data.alt ? "" : ", no caption"}]${bits ? `\n${bits}` : ""}`;
     }
 
+    // Over-budget bodies are held out and replaced by a stub naming their own
+    // `read_canvas_node` call; under-budget bodies pass through untouched.
+    let compressed = false;
+    if (opts.compress && content) {
+      const r = compressLineageContent({
+        kind: node.kind,
+        title,
+        content,
+        path: data.path,
+        indexed: (opts.atlasIndexed ?? false) && node.kind === "file",
+      });
+      content = r.content;
+      compressed = r.compressed;
+    }
+
     const branch = node.branchId ? ` branch="${node.branchId}"` : "";
+    const flag = compressed ? ' compressed="true"' : "";
     blocks.push(
       content
-        ? `<parent kind="${node.kind}" title="${title}"${branch}>\n${content}\n</parent>`
+        ? `<parent kind="${node.kind}" title="${title}"${branch}${flag}>\n${content}\n</parent>`
         : `<parent kind="${node.kind}" title="${title}"${branch} />`,
     );
   }
@@ -359,10 +385,23 @@ export function ChatNode({ id, data }: { id: string; data?: { collapsed?: boolea
 
     cancelRef.current?.cancel();
 
-    const history = prior.map((m) => ({
-      role: m.role,
-      content: m.parts.filter((p): p is TextPart => p.type === "text").map((p) => p.content).join(""),
-    }));
+    // Context compression. Off by
+    // default: `allTurns` goes out whole, exactly as before. On, only the recent
+    // window is sent verbatim; the older turns become a numbered index in the
+    // system prompt that `read_thread_history` can resolve back to the original
+    // text, so nothing is actually lost.
+    //
+    // Gated on the exact condition that wires the retrieval tools below — BYOK
+    // backend AND a project path. Compression trades resident context for retrieval
+    // calls, so stubbing without the tools to follow the pointers would strand
+    // content rather than defer it. (The CLI backend never sees `history`/`system`
+    // at all; it resumes its own session.)
+    const compressing = settings.contextCompression && backend === "api" && !!projectPath;
+    const allTurns = toHistoryTurns(prior);
+    const compacted = compressing
+      ? compressHistory(allTurns)
+      : { turns: allTurns, index: "", elidedCount: 0, savedChars: 0 };
+    const history = compacted.turns;
 
     // Wired chat sources may never have mounted, so their message mirror is empty.
     // Load their histories (into the mirror buildConnectedContext reads) before
@@ -376,7 +415,10 @@ export function ChatNode({ id, data }: { id: string; data?: { collapsed?: boolea
       }),
     );
 
-    const lineage = buildLineageContext(sourceIdsRef.current);
+    const lineage = buildLineageContext(sourceIdsRef.current, {
+      compress: compressing,
+      atlasIndexed: atlasIndexed ?? false,
+    });
     const canvasMap = buildCanvasGraph(threadId, id);
     // Vision handoff: any wired-in image node ships its bytes as a real image
     // part on the outgoing user message (see lib/chat.ts). Only BYOK backend —
@@ -389,12 +431,24 @@ export function ChatNode({ id, data }: { id: string; data?: { collapsed?: boolea
       const d = getNodeData<{ dataUrl?: string }>(nid);
       if (d.dataUrl) imageParts.push({ image: d.dataUrl });
     }
-    // Inherited lineage first (the thread this chat continues), then the ambient map (reference).
-    const system = [BASE_SYSTEM, lineage, canvasMap].filter(Boolean).join("\n\n");
+    // Inherited lineage first (the thread this chat continues), then the ambient map
+    // (reference), then — when compressing — the index of held-out turns and the
+    // steer that tells the model to go fetch a stub instead of guessing from it.
+    const compressionNote = compressing ? compressionSystemNote(atlasIndexed ?? false) : "";
+    const system = [BASE_SYSTEM, lineage, canvasMap, compacted.index, compressionNote]
+      .filter(Boolean).join("\n\n");
     // BYOK chat wires our own tools. The CLI harness brings Claude Code's native
     // tools (and reaches the canvas via the tempest-canvas MCP), so no double set.
     const tools = backend === "api" && projectPath
-      ? await createChatTools({ projectPath, atlasIndexed: atlasIndexed ?? false, threadId, selfNodeId: id })
+      ? await createChatTools({
+          projectPath,
+          atlasIndexed: atlasIndexed ?? false,
+          threadId,
+          selfNodeId: id,
+          // Pass the same snapshot the index was numbered from, and only when turns
+          // were actually elided — otherwise the tool has nothing to serve.
+          ...(compacted.elidedCount > 0 ? { historyTurns: allTurns } : {}),
+        })
       : undefined;
 
     assistantPartsRef.current = [];
@@ -527,7 +581,7 @@ export function ChatNode({ id, data }: { id: string; data?: { collapsed?: boolea
         onEvent,
       });
     }
-  }, [isLoading, backend, cliAgent, provider, model, projectPath, projectId, atlasIndexed, id, threadId, persistChat]);
+  }, [isLoading, backend, cliAgent, provider, model, projectPath, projectId, atlasIndexed, id, threadId, persistChat, settings.contextCompression]);
 
   // Resolve a Claude Code permission prompt: tell the sidecar, freeze the card.
   // Update the streaming buffer too so the next token snapshot keeps the decision.

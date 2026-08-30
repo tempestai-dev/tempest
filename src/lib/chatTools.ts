@@ -6,6 +6,7 @@ import { getBranch } from "../store/sessions";
 import { sessionManager } from "../store/sessionManager";
 import { loadNodeMessages } from "../store/threadMessages";
 import type { TextPart } from "../types/chat";
+import type { HistoryTurn } from "./contextCompression";
 
 export interface CommitInfo {
   hash: string;
@@ -30,8 +31,16 @@ export async function createChatTools(opts: {
   atlasIndexed: boolean;
   threadId?: string;
   selfNodeId?: string;
+  /**
+   * Context compression (issue #94): the caller's own turns, in the same order and
+   * numbering the compressed index advertises. Passed as a snapshot rather than read
+   * from the store so the "#4" in the system prompt and the "#4" this tool returns
+   * are guaranteed to be the same turn. Omitted when compression is off — then
+   * nothing is elided and the tool would be dead weight in the tool list.
+   */
+  historyTurns?: HistoryTurn[];
 }) {
-  const { projectPath, atlasIndexed, threadId, selfNodeId } = opts;
+  const { projectPath, atlasIndexed, threadId, selfNodeId, historyTurns } = opts;
 
   const cap = (s: string) => (s.length > 16000 ? s.slice(0, 16000) + "\n…(truncated)" : s);
   const nodeTitle = (id: string, kind: string) => getNodeData<{ title?: string }>(id).title ?? kind;
@@ -237,7 +246,47 @@ export async function createChatTools(opts: {
       }
     : {};
 
-  if (!atlasIndexed) return { ...baseTools, ...canvasTools };
+  // History retrieval: compression keeps only the recent window verbatim and lists
+  // the older turns as a numbered index. This is how the model gets any of them back
+  // in full — the reason compression can drop content without losing fidelity.
+  const MAX_TURNS_PER_CALL = 12;
+  const historyTools = historyTurns && historyTurns.length > 0
+    ? {
+        read_thread_history: tool({
+          description:
+            "Read earlier turns of THIS conversation verbatim. Context compression replaced the " +
+            'oldest turns with one-line summaries under "Earlier in this thread" — call this with ' +
+            "their numbers to get the original text back. Turn numbers are 1-based and match that list. " +
+            "Use it whenever an earlier decision, constraint or detail matters and the summary is too thin.",
+          inputSchema: z.object({
+            from: z.number().int().min(1).describe("First turn number to read (1-based)"),
+            to: z.number().int().min(1).optional()
+              .describe("Last turn number, inclusive. Omit to read only `from`."),
+          }),
+          execute: async ({ from, to }) => {
+            const last = historyTurns.length;
+            if (from > last) {
+              return { error: `No turn #${from}; this conversation has ${last} earlier turn(s).` };
+            }
+            const start = Math.max(1, from);
+            const end = Math.min(Math.max(to ?? from, start), last);
+            // Cap the span so a single call can't pull the whole transcript back in
+            // and undo the compression this tool exists to make safe.
+            const stop = Math.min(end, start + MAX_TURNS_PER_CALL - 1);
+            const turns = historyTurns.slice(start - 1, stop).map((t, i) => ({
+              turn: start + i,
+              role: t.role,
+              content: cap(t.content),
+            }));
+            return stop < end
+              ? { turns, truncated: `Returned ${start}–${stop}; ask again for ${stop + 1}–${end}.` }
+              : { turns };
+          },
+        }),
+      }
+    : {};
+
+  if (!atlasIndexed) return { ...baseTools, ...canvasTools, ...historyTools };
 
   try {
     const toolsJson = await invoke<string>("atlas_mcp_tools", { projectPath });
@@ -271,9 +320,9 @@ export async function createChatTools(opts: {
       ])
     );
 
-    return { ...baseTools, ...canvasTools, ...atlasTools };
+    return { ...baseTools, ...canvasTools, ...historyTools, ...atlasTools };
   } catch {
-    return { ...baseTools, ...canvasTools };
+    return { ...baseTools, ...canvasTools, ...historyTools };
   }
 }
 
@@ -316,6 +365,8 @@ export function argsPreview(toolName: string, args: unknown): string {
       return String(a.agent ?? "");
     case "read_canvas_node":
       return String(a.title ?? "");
+    case "read_thread_history":
+      return a.to && a.to !== a.from ? `turns ${a.from}–${a.to}` : `turn ${a.from}`;
     default: {
       if (toolName.startsWith("atlas_")) {
         return String(a.query ?? "").slice(0, 40) || toolName.replace("atlas_", "");
@@ -341,6 +392,7 @@ export function resultSummary(result: unknown): string {
       return text.slice(0, 120) + (text.length > 120 ? "…" : "");
     }
   }
+  if ("turns" in r && Array.isArray(r.turns)) return `${r.turns.length} turn${r.turns.length === 1 ? "" : "s"}`;
   if ("entries" in r && Array.isArray(r.entries)) return `${r.entries.length} entries`;
   if ("commits" in r && Array.isArray(r.commits)) return `${r.commits.length} commits`;
   if ("matches" in r && Array.isArray(r.matches)) return `${r.matches.length} matches`;

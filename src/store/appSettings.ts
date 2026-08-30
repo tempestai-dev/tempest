@@ -16,6 +16,12 @@ export interface AppSettings {
   // embedding model. When on, Tempest passes --semantic to Atlas so it embeds
   // symbols and serves hybrid retrieval; off keeps Atlas FTS-only, no download.
   atlasSemantic: boolean;
+  // Optional context compression (issue #94). Off by default. When on, bulky
+  // lineage bodies and older chat turns are held out of the outgoing context and
+  // replaced by stubs that name their own retrieval call — the model pulls back
+  // only what a turn needs (read_canvas_node / read_thread_history, and the Atlas
+  // graph for indexed code). Nothing is summarized away; see lib/contextCompression.
+  contextCompression: boolean;
   isolateAgents: boolean;
   autoApprove: boolean;
   // Install lifecycle hooks into supported agents' configs for precise
@@ -50,6 +56,7 @@ export const SETTINGS_DEFAULTS: AppSettings = {
   atlasEnabled: false,
   atlasAutoIndex: false,
   atlasSemantic: false,
+  contextCompression: false,
   isolateAgents: true,
   autoApprove: true,
   preciseAgentStatus: true,
