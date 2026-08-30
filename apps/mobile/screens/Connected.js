@@ -53,6 +53,9 @@ export default function Connected({ pairing, onUnpair, onBack }) {
   const [collapsedProjects, setCollapsedProjects] = useState(() => new Set());
   const [collapsedBranches, setCollapsedBranches] = useState(() => new Set());
   const [selectedSessionId, setSelectedSessionId] = useState(null);
+  // Session id currently being reopened via session.hop — shows a spinner on
+  // the tapped row so the user gets feedback while the desktop respawns PTY.
+  const [reopeningId, setReopeningId] = useState(null);
   const clientRef = useRef(null);
 
   useEffect(() => {
@@ -88,10 +91,31 @@ export default function Connected({ pairing, onUnpair, onBack }) {
       })
       .catch((e) => { if (!cancelled) setError(e.message); });
 
+    // Refetch the whole snapshot when an update references a project or branch
+    // we don't know about yet — the desktop may have added a new project or
+    // worktree since we paired, and without this the row would land under a
+    // synthetic "Unknown" bucket.
+    const refetch = () => {
+      client.request('session.list', {})
+        .then((r) => {
+          if (cancelled) return;
+          setSnapshot({
+            sessions: r?.sessions || [],
+            projects: r?.projects || [],
+            branches: r?.branches || [],
+            recents:  r?.recents  || [],
+          });
+        })
+        .catch(() => {});
+    };
+
     const offUpdated = client.on('session.updated', (s) => {
       console.log(`[Connected] session.updated id=${s.id.slice(0, 8)} status=${s.status} closed=${s.closed}`);
       setSnapshot((prev) => {
-        if (!prev) return prev;
+        if (!prev) { refetch(); return prev; }
+        const knownProject = prev.projects.some((p) => p.id === s.projectId);
+        const knownBranch  = !s.branchId || prev.branches.some((b) => b.id === s.branchId);
+        if (!knownProject || !knownBranch) { refetch(); }
         const i = prev.sessions.findIndex((x) => x.id === s.id);
         const sessions = i >= 0
           ? Object.assign([...prev.sessions], { [i]: s })
@@ -231,6 +255,23 @@ export default function Connected({ pairing, onUnpair, onBack }) {
     const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n;
   });
 
+  // Tapping a closed (ghost) session reopens it on the desktop via session.hop
+  // — same id, same conversation resumed — then enters SessionScreen once the
+  // reply lands. Live sessions skip straight to the SessionScreen.
+  const handleTapSession = async (s) => {
+    if (!s.closed) { setSelectedSessionId(s.id); return; }
+    if (reopeningId) return;
+    setReopeningId(s.id);
+    try {
+      await clientRef.current?.request('session.hop', { id: s.id });
+      setSelectedSessionId(s.id);
+    } catch (e) {
+      setError(`Couldn't reopen ${s.name}: ${e?.message || e}`);
+    } finally {
+      setReopeningId(null);
+    }
+  };
+
   // A row was tapped — hand control to SessionScreen, sharing the live client.
   // If the session vanishes (removed / snapshot missing), fall back to the list.
   const selectedSession = selectedSessionId
@@ -332,7 +373,12 @@ export default function Connected({ pairing, onUnpair, onBack }) {
                     {!branchCollapsed && (
                       <View style={styles.sessionList}>
                         {g.sessions.map((s) => (
-                          <SessionRow key={s.id} session={s} onPress={() => setSelectedSessionId(s.id)} />
+                          <SessionRow
+                            key={s.id}
+                            session={s}
+                            reopening={reopeningId === s.id}
+                            onPress={() => handleTapSession(s)}
+                          />
                         ))}
                       </View>
                     )}
@@ -393,14 +439,18 @@ function Chevron({ open, size = 'normal' }) {
   );
 }
 
-function SessionRow({ session, onPress }) {
+function SessionRow({ session, reopening, onPress }) {
   const kind = session.closed ? 'closed' : (session.status || 'idle');
   const dotColor = session.closed ? '#3a3a40' : STATUS_COLOR[kind === 'closed' ? 'done' : kind];
   return (
     <Pressable
-      style={({ pressed }) => [styles.sessionRow, session.closed && { opacity: 0.5 }, pressed && { backgroundColor: '#18181b' }]}
-      onPress={session.closed ? undefined : onPress}
-      disabled={session.closed}
+      style={({ pressed }) => [
+        styles.sessionRow,
+        session.closed && !reopening && { opacity: 0.55 },
+        pressed && { backgroundColor: '#18181b' },
+      ]}
+      onPress={onPress}
+      disabled={reopening}
       hitSlop={4}
     >
       <View style={[styles.sessionDot, { backgroundColor: dotColor }]} />
@@ -415,6 +465,9 @@ function SessionRow({ session, onPress }) {
       ) : null}
       {session.needsPermission ? (
         <View style={styles.approvalDot} />
+      ) : null}
+      {reopening ? (
+        <ActivityIndicator size="small" color="#a1a1aa" style={{ marginLeft: 6 }} />
       ) : null}
     </Pressable>
   );

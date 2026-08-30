@@ -61,28 +61,36 @@ export function attachBridge(ws: WebSocket, sessionKey: Uint8Array): AttachedBri
   peer.handle("session.open", async (input) => getWorkspaceApi().openSession(input));
   peer.handle("session.hop", async ({ id }) => { await getWorkspaceApi().hopSession(id); });
 
-  // agent.send mirrors the desktop QueuePanel Send button: enqueue, then if
-  // the session is idle, pop the head and write it to the PTY so the drain
-  // starts now instead of waiting for the next work-done. If the session is
-  // still working, we just enqueue — the existing dequeue hook picks it up.
-  const writePtyLine = (sessionId: string, text: string) => {
-    const bytes = Array.from(new TextEncoder().encode(text + "\r"));
-    return invoke("write_to_pty", { sessionId, data: bytes });
+  // agent.send mirrors the desktop QueuePanel Send button. Reply is
+  // fire-and-forget: enqueue synchronously, kick the drain in the background
+  // if the session is idle, and return immediately. The actual PTY write and
+  // its follow-up UI signal reach the phone via the existing push channels
+  // (queue.changed → session.updated, then agent.output). Awaiting the write
+  // here is what wedged the RPC on a lost/slow tunnel reply and tripped the
+  // 30s client timeout.
+  const kickDrain = (sessionId: string) => {
+    if (getWorkState(sessionId) === "working") return;
+    const item = dequeue(sessionId);
+    if (!item) return;
+    const bytes = Array.from(new TextEncoder().encode(item.text + "\r"));
+    invoke("write_to_pty", { sessionId, data: bytes })
+      .catch((e) => console.error(`[bridge] agent.send write_to_pty failed sid=${sessionId.slice(0, 8)}`, e));
+    try { sessionManager.markUserInput(sessionId); }
+    catch (e) { console.error(`[bridge] agent.send markUserInput failed sid=${sessionId.slice(0, 8)}`, e); }
   };
   peer.handle("agent.send", async ({ sessionId, text }) => {
     enqueue(sessionId, text);
-    if (getWorkState(sessionId) !== "working") {
-      const item = dequeue(sessionId);
-      if (item) {
-        await writePtyLine(sessionId, item.text).catch(() => {});
-        sessionManager.markUserInput(sessionId);
-      }
-    }
+    // queueMicrotask so the queue.changed emit for the enqueue lands on the
+    // phone before any status flip from the dequeue below.
+    queueMicrotask(() => kickDrain(sessionId));
   });
   // Interrupt = Ctrl-C into the PTY. Session stays alive; the agent cancels
   // its current generation. Queue is left intact so the next drain resumes it.
+  // Fire-and-forget for the same reason as agent.send — a lost tunnel reply
+  // must never wedge the mobile Interrupt button.
   peer.handle("agent.interrupt", async ({ sessionId }) => {
-    await invoke("write_to_pty", { sessionId, data: [0x03] }).catch(() => {});
+    invoke("write_to_pty", { sessionId, data: [0x03] })
+      .catch((e) => console.error(`[bridge] agent.interrupt failed sid=${sessionId.slice(0, 8)}`, e));
   });
   // Stop = hard tear-down; same code path as session.close.
   peer.handle("agent.stop", async ({ sessionId }) => {

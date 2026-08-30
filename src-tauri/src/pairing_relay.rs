@@ -1,23 +1,27 @@
-//! Local WebSocket router + cloudflared quick-tunnel launcher for pairing a
-//! phone with the desktop.
+//! Local WebSocket router for pairing a phone with the desktop.
 //!
-//! Design is intentionally simple: compute lives on the user's laptop, and
-//! traffic to it reaches the phone over a Cloudflare quick tunnel
-//! (`cloudflared tunnel --url …`). No hosted relay is involved on this path.
+//! Two transports live behind the same in-process router. The switch is
+//! `TEMPEST_MOBILE_TRANSPORT=lan|tunnel`, defaulting to `lan`.
 //!
-//! Wire model:
-//!   phone / laptop → `wss://<random>.trycloudflare.com/ws?session=<id>&role=<r>`
-//!                  → cloudflared → `ws://127.0.0.1:<port>/ws?…` → this router.
+//! - **LAN (default):** router binds `0.0.0.0:<port>`; the phone dials
+//!   `ws://<laptop-lan-ip>:<port>/ws` over the same Wi-Fi. No cloudflared,
+//!   no third party in the wire path. Trades reach for a path we own end
+//!   to end — the initial release target.
+//! - **Tunnel:** router binds `127.0.0.1:<port>`; cloudflared is spawned as
+//!   a sidecar and the phone dials `wss://<random>.trycloudflare.com/ws`.
+//!   Kept in-tree for the eventual off-network story.
+//!
+//! In both modes the laptop dials the router via loopback
+//! (`ws://127.0.0.1:<port>/ws`).
 //!
 //! The router is E2EE-blind: it holds at most one laptop + one phone socket
 //! per session and forwards every frame between them verbatim. Framing +
 //! auth live in the JS handshake above (`src/lib/pairing/`).
 //!
-//! Lifecycle: `start_pairing_relay` is idempotent. First call binds a
-//! localhost TCP port, spawns the accept loop, launches cloudflared, and
-//! waits for cloudflared to print its assigned `https://<name>.trycloudflare.com`
-//! URL. Subsequent calls return the cached tunnel URL. Everything is torn
-//! down on `RunEvent::Exit`.
+//! Lifecycle: `start_pairing_relay` is idempotent. First call picks the
+//! transport, binds a TCP port, spawns the accept loop, and (tunnel mode
+//! only) launches cloudflared. Subsequent calls return the cached URL.
+//! Everything is torn down on `RunEvent::Exit`.
 
 use futures_util::{SinkExt, StreamExt};
 use std::collections::HashMap;
@@ -39,10 +43,24 @@ const CLOUDFLARED_READY_TIMEOUT_SECS: u64 = 45;
 
 #[derive(Clone, serde::Serialize)]
 pub struct TunnelInfo {
-    /// Full `wss://<random>.trycloudflare.com/ws` URL to embed in the QR.
+    /// URL to embed in the QR. `ws://<lan-ip>:<port>/ws` in LAN mode,
+    /// `wss://<name>.trycloudflare.com/ws` in tunnel mode.
     pub wss_url: String,
     /// Local port the router is bound to. Diagnostic only.
     pub local_port: u16,
+    /// Which transport served this URL; the UI uses it to render the right
+    /// hint text (same-Wi-Fi note vs tunnel status).
+    pub transport: &'static str,
+}
+
+#[derive(Copy, Clone, PartialEq)]
+enum Transport { Lan, Tunnel }
+
+fn selected_transport() -> Transport {
+    match std::env::var("TEMPEST_MOBILE_TRANSPORT").ok().as_deref() {
+        Some("tunnel") => Transport::Tunnel,
+        _              => Transport::Lan,
+    }
 }
 
 pub struct PairingRelayState {
@@ -300,9 +318,9 @@ async fn handle_socket(
     }
 }
 
-async fn start_router(inner: Arc<Mutex<Inner>>) -> Result<u16, String> {
-    let listener = TcpListener::bind("127.0.0.1:0").await
-        .map_err(|e| format!("bind localhost: {e}"))?;
+async fn start_router(inner: Arc<Mutex<Inner>>, bind_addr: &str) -> Result<u16, String> {
+    let listener = TcpListener::bind(bind_addr).await
+        .map_err(|e| format!("bind {bind_addr}: {e}"))?;
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
 
     tokio::spawn(async move {
@@ -460,6 +478,23 @@ fn extract_trycloudflare_url(s: &str) -> Option<String> {
     None
 }
 
+/// Pick the outbound-interface IPv4/IPv6 by connecting a UDP socket at a
+/// well-known address — no packet is actually sent, the kernel just resolves
+/// the routing decision so `local_addr` returns the interface that would
+/// carry the traffic. Standard cross-platform trick.
+fn lan_ip() -> Result<std::net::IpAddr, String> {
+    let s = std::net::UdpSocket::bind("0.0.0.0:0")
+        .map_err(|e| format!("bind udp probe: {e}"))?;
+    s.connect("8.8.8.8:80")
+        .map_err(|e| format!("route probe (are you offline?): {e}"))?;
+    s.local_addr().map(|a| a.ip()).map_err(|e| e.to_string())
+}
+
+fn format_lan_ws_url(ip: std::net::IpAddr, port: u16) -> String {
+    // SocketAddr's Display wraps IPv6 in brackets for us.
+    format!("ws://{}/ws", std::net::SocketAddr::new(ip, port))
+}
+
 #[tauri::command]
 pub async fn start_pairing_relay(
     app: AppHandle,
@@ -473,14 +508,29 @@ pub async fn start_pairing_relay(
         if let Some(t) = &g.tunnel { return Ok(t.clone()); }
     }
 
-    let port = start_router(inner.clone()).await?;
-    let (child, https_url) = spawn_cloudflared(&app, port).await?;
-    let wss_url = https_url.replacen("https://", "wss://", 1) + "/ws";
-
-    let info = TunnelInfo { wss_url, local_port: port };
+    let info = match selected_transport() {
+        Transport::Lan => {
+            // Bind on all interfaces so the phone can dial in over Wi-Fi.
+            // Laptop still dials via loopback (see MobileSection.tsx).
+            let port = start_router(inner.clone(), "0.0.0.0:0").await?;
+            let ip = lan_ip()?;
+            TunnelInfo {
+                wss_url: format_lan_ws_url(ip, port),
+                local_port: port,
+                transport: "lan",
+            }
+        }
+        Transport::Tunnel => {
+            let port = start_router(inner.clone(), "127.0.0.1:0").await?;
+            let (child, https_url) = spawn_cloudflared(&app, port).await?;
+            let wss_url = https_url.replacen("https://", "wss://", 1) + "/ws";
+            let mut g = inner.lock().await;
+            g.cloudflared = Some(child);
+            TunnelInfo { wss_url, local_port: port, transport: "tunnel" }
+        }
+    };
 
     let mut g = inner.lock().await;
-    g.cloudflared = Some(child);
     g.tunnel = Some(info.clone());
     Ok(info)
 }

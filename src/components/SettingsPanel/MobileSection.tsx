@@ -28,6 +28,7 @@ interface QrPayload {
 interface TunnelInfo {
   wss_url: string;
   local_port: number;
+  transport: "lan" | "tunnel";
 }
 
 interface LivePairing {
@@ -74,11 +75,12 @@ function relativePairedAt(ts: number): string {
   return `${Math.floor(d / 86_400_000)}d ago`;
 }
 
-type UiStatus = PairStatus | "opening_tunnel";
+type UiStatus = PairStatus | "opening_tunnel" | "preparing_lan";
 
 function statusLabel(s: UiStatus): string {
   switch (s) {
     case "opening_tunnel": return "Opening tunnel…";
+    case "preparing_lan": return "Preparing pairing…";
     case "connecting": return "Connecting to relay…";
     case "waiting_for_phone": return "Waiting for phone to scan…";
     case "phone_connected": return "Phone connected — verifying…";
@@ -92,6 +94,7 @@ function statusLabel(s: UiStatus): string {
 export function MobileSection() {
   const { deviceName, paired } = useMobileState();
   const [live, setLive] = useState<LivePairing | null>(null);
+  const [tunnel, setTunnelInfo] = useState<TunnelInfo | null>(null);
   const [generatedAt, setGeneratedAt] = useState<number | null>(null);
   const [now, setNow] = useState<number>(() => Date.now());
   const [svg, setSvg] = useState<string>("");
@@ -148,6 +151,9 @@ export function MobileSection() {
   const generate = async () => {
     cleanupLive();
     setErrorMsg(null);
+    // We don't know the transport until the invoke returns; the tunnel label
+    // is the more informative one to show speculatively (LAN prep is fast
+    // enough that the label flickers past either way).
     setStatus("opening_tunnel");
 
     let tunnel: TunnelInfo;
@@ -155,7 +161,7 @@ export function MobileSection() {
       tunnel = await invoke<TunnelInfo>("start_pairing_relay");
     } catch (e) {
       const msg = typeof e === "string" ? e : (e as Error)?.message || String(e);
-      setErrorMsg(`Tunnel failed: ${msg}`);
+      setErrorMsg(msg);
       setStatus("error");
       return;
     }
@@ -163,6 +169,7 @@ export function MobileSection() {
     const name = (deviceName || "").trim() || "Tempest desktop";
     const l = newLivePairing(name, tunnel.wss_url);
     setLive(l);
+    setTunnelInfo(tunnel);
     setGeneratedAt(Date.now());
     setNow(Date.now());
     setStatus("connecting");
@@ -199,6 +206,7 @@ export function MobileSection() {
         // Give the "Paired." label a beat, then close the panel.
         setTimeout(() => {
           setLive(null);
+          setTunnelInfo(null);
           setGeneratedAt(null);
           setStatus(null);
         }, 800);
@@ -211,6 +219,7 @@ export function MobileSection() {
   const cancel = () => {
     cleanupLive();
     setLive(null);
+    setTunnelInfo(null);
     setGeneratedAt(null);
     setStatus(null);
     setErrorMsg(null);
@@ -271,6 +280,11 @@ export function MobileSection() {
               )}
               {status && (
                 <span className="sp-mobile-qr-status">{statusLabel(status)}</span>
+              )}
+              {tunnel?.transport === "lan" && (
+                <span className="sp-mobile-qr-status">
+                  Phone must be on the same Wi-Fi as this laptop. LAN: {tunnel.wss_url.replace(/^ws:\/\//, "").replace(/\/ws$/, "")}
+                </span>
               )}
               {errorMsg && (
                 <span className="sp-mobile-qr-error">Error: {errorMsg}</span>
