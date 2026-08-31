@@ -68,6 +68,7 @@ import { startModelManifestFetch } from "../lib/remoteConfig";
 import { startAgentHooks } from "../store/agentHooks";
 import { setWorkspaceApi } from "../lib/mobileBridge/workspaceApi";
 import { AtlasIndexModal } from "./AtlasIndexModal";
+import { CloneRepoModal } from "./CloneRepoModal";
 import { KnowledgeBasePage } from "./KnowledgeBasePage";
 import { TasksPage } from "./TasksPage";
 import { AutomationsPage } from "./Automations/AutomationsPage";
@@ -144,6 +145,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
   const [gitRevision, setGitRevision] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [cloneModalOpen, setCloneModalOpen] = useState(false);
   const [projectSettingsPanelId, setProjectSettingsPanelId] = useState<string | null>(null);
   const [compactOpen, setCompactOpen] = useState(false);
   const [settingsInitialSection, setSettingsInitialSection] = useState<string>("appearance");
@@ -1922,6 +1924,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
   // to the latest closure, so callers see fresh state without new refs.
   const goToStable = useEvent(goTo);
   const addWorkspaceStable = useEvent(addWorkspace);
+  const onCloneRepoStable = useEvent(() => setCloneModalOpen(true));
   const openSessionMenuStable = useEvent(openSessionMenu);
   const openBranchSessionMenuStable = useEvent(openBranchSessionMenu);
   const openCtxMenuStable = useEvent(openCtxMenu);
@@ -1976,6 +1979,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
           setSettingsOpen={setSettingsOpen}
           goTo={goToStable}
           addWorkspace={addWorkspaceStable}
+          onCloneRepo={onCloneRepoStable}
           openSessionMenu={openSessionMenuStable}
           openBranchSessionMenu={openBranchSessionMenuStable}
           openCtxMenu={openCtxMenuStable}
@@ -2578,6 +2582,12 @@ export function WorkspaceView({ zen, name, path }: Props) {
       )}
 
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} initialSection={settingsInitialSection as any} />}
+      {cloneModalOpen && (
+        <CloneRepoModal
+          onClose={() => setCloneModalOpen(false)}
+          onCloned={(path) => { setCloneModalOpen(false); void openProjectByPath(path); }}
+        />
+      )}
       {projectSettingsPanelId && (() => {
         const p = projects.find((pr) => pr.id === projectSettingsPanelId);
         return p ? <ProjectSettingsPanel projectId={p.id} projectPath={p.path} projectName={p.name} onClose={() => setProjectSettingsPanelId(null)} /> : null;
@@ -2644,6 +2654,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
           onToggleRightSidebar={() => setRightSidebarOpen((o) => !o)}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenProject={addWorkspace}
+          onCloneRepo={() => setCloneModalOpen(true)}
           onNewWorkspace={() => {
             const projId = activeSession?.projectId ?? (projects[0]?.id ?? null);
             openSessionMenu({ currentTarget: document.body } as unknown as React.MouseEvent<HTMLElement>, projId, "below");
