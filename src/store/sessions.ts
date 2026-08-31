@@ -262,6 +262,17 @@ export function setSessionConversationId(id: string, conversationId: string): vo
   persistSession(s);
 }
 
+// Rename a session in place. No-op if the session isn't persisted (e.g. a
+// diff/preview tab that lives in the tabs store instead) — the tab layer
+// handles its own rename.
+export function setSessionName(id: string, name: string): void {
+  const s = _sessions.get(id);
+  if (!s) return;
+  s.name = name;
+  persistSession(s);
+  emitLifecycle({ kind: "updated", id });
+}
+
 export function markSessionClosed(id: string): void {
   const s = _sessions.get(id);
   if (!s || s.closed === true) return;

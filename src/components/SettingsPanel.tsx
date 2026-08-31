@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { X, Palette, Keyboard, Info, GitCommitHorizontal, Terminal as TerminalIcon, GitBranch, BookOpen, Cpu, Shield, KeyRound, Bot, FlaskConical, Smartphone } from "lucide-react";
 import { Tooltip } from "./Tooltip";
 import { useTheme } from "../themes/ThemeContext";
+import { useSettings } from "../store/appSettings";
 import { AppearanceSection } from "./SettingsPanel/AppearanceSection";
 import { TerminalSection } from "./SettingsPanel/TerminalSection";
 import { GitSection } from "./SettingsPanel/GitSection";
@@ -31,6 +32,13 @@ interface SettingsPanelProps {
 export function SettingsPanel({ onClose, onAttributionToggle, initialSection }: SettingsPanelProps) {
   const [activeSection, setActiveSection] = useState<Section>(initialSection ?? "appearance");
   const { theme, themes, setTheme } = useTheme();
+  const { experimentalMobile } = useSettings();
+
+  // If the user turns off the Mobile experiment while sitting on the Mobile
+  // tab, snap back to a section that still exists.
+  useEffect(() => {
+    if (!experimentalMobile && activeSection === "mobile") setActiveSection("appearance");
+  }, [experimentalMobile, activeSection]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -91,13 +99,15 @@ export function SettingsPanel({ onClose, onAttributionToggle, initialSection }: 
               <Shield size={14} />
               Security
             </button>
-            <button
-              className={`sp-nav-item${activeSection === "mobile" ? " sp-nav-item--active" : ""}`}
-              onClick={() => setActiveSection("mobile")}
-            >
-              <Smartphone size={14} />
-              Mobile
-            </button>
+            {experimentalMobile && (
+              <button
+                className={`sp-nav-item${activeSection === "mobile" ? " sp-nav-item--active" : ""}`}
+                onClick={() => setActiveSection("mobile")}
+              >
+                <Smartphone size={14} />
+                Mobile
+              </button>
+            )}
             <button
               className={`sp-nav-item${activeSection === "agents" ? " sp-nav-item--active" : ""}`}
               onClick={() => setActiveSection("agents")}
@@ -158,7 +168,7 @@ export function SettingsPanel({ onClose, onAttributionToggle, initialSection }: 
             {activeSection === "git" && <GitSection />}
             {activeSection === "intelligence" && <TokenIntelligenceSection />}
             {activeSection === "security" && <SecuritySection />}
-            {activeSection === "mobile" && <MobileSection />}
+            {activeSection === "mobile" && experimentalMobile && <MobileSection />}
             {activeSection === "agents" && <AgentsSection />}
             {activeSection === "apikeys" && <ApiKeysSection />}
             {activeSection === "prompts" && <PromptsSection />}

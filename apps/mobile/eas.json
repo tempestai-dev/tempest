@@ -11,6 +11,9 @@
     },
     "preview": {
       "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
       "ios": {
         "simulator": false,
         "resourceClass": "m-medium"

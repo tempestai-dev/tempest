@@ -11,6 +11,27 @@ export function ExperimentalSection() {
       </div>
 
       <div className="sp-rows">
+        <div className="sp-toggle-row" onClick={() => updateSetting("experimentalMobile", !s.experimentalMobile)}>
+          <div className="sp-toggle-text">
+            <span className="sp-toggle-label">Mobile companion app</span>
+            <span className="sp-toggle-desc">
+              Reveals Settings → Mobile so you can pair the Tempest mobile app
+              and drive sessions from your phone. LAN-only for now (phone must
+              be on the same Wi-Fi as this laptop); pairing and transport may
+              still be rough. Off hides the Mobile section; already-paired
+              phones are kept and reappear when re-enabled.
+            </span>
+          </div>
+          <button
+            className={`sp-toggle${s.experimentalMobile ? " sp-toggle--on" : ""}`}
+            onClick={(e) => { e.stopPropagation(); updateSetting("experimentalMobile", !s.experimentalMobile); }}
+            role="switch"
+            aria-checked={s.experimentalMobile}
+          >
+            <span className="sp-toggle-thumb" />
+          </button>
+        </div>
+
         <div className="sp-toggle-row" onClick={() => updateSetting("experimentalWarp", !s.experimentalWarp)}>
           <div className="sp-toggle-text">
             <span className="sp-toggle-label">Warp chat backend</span>

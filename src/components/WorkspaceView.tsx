@@ -9,7 +9,7 @@ import { addRecent, getRecents, removeRecent } from "../store/recents";
 import { getOpenProjects, saveOpenProjects } from "../store/openProjects";
 import { setProjectWorktreeMeta } from "../store/worktrees";
 import { track } from "../lib/telemetry";
-import { getSession, getBranchSessions, getRootSessionsForProject, getAllSessions, getBranchPath, getProjectPath, saveSession, setSessionConversationId, markSessionClosed, removeBranchByPath, removeSession, pruneSessions } from "../store/sessions";
+import { getSession, getBranchSessions, getRootSessionsForProject, getAllSessions, getBranchPath, getProjectPath, saveSession, setSessionConversationId, setSessionName, markSessionClosed, removeBranchByPath, removeSession, pruneSessions } from "../store/sessions";
 import { getRuntimeState, setRuntimeState } from "../lib/runtimeState";
 import { loadProjectSettings } from "./ProjectSettingsPanel/useProjectSettings";
 import { loadTempestConfig } from "../lib/tempestConfig";
@@ -1530,14 +1530,23 @@ export function WorkspaceView({ zen, name, path }: Props) {
     if (renamingSessionId) {
       const trimmed = renameValue.trim();
       if (trimmed) {
+        const id = renamingSessionId;
+        const target = sessions.find((s) => s.id === id);
         setSessions((prev) =>
-          prev.map((s) => {
-            if (s.id === renamingSessionId) {
-              return { ...s, name: trimmed };
-            }
-            return s;
-          })
+          prev.map((s) => (s.id === id ? { ...s, name: trimmed } : s)),
         );
+        // Persist to whichever store owns this tab so the name survives a
+        // lifecycle event, tab reorder, or reload. Without this the React
+        // state changes but the next re-sync overwrites it with the old name.
+        if (target?.kind === "thread") {
+          renameThread(id, trimmed);
+        } else if (target?.kind === "diff" || target?.kind === "preview" || target?.kind === "editor") {
+          const tab = getTabs().find((tb) => tb.instanceId === id);
+          if (tab) upsertTab({ ...tab, name: trimmed });
+        } else {
+          // Terminal / agent session — lives in the sessions store.
+          setSessionName(id, trimmed);
+        }
       }
     }
     setRenamingSessionId(null);
@@ -2017,6 +2026,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
                     onQueueClick={(id, e) => { e.stopPropagation(); setQueueOpenSessionId((prev) => (prev === id ? null : id)); }}
                     onCloseGroup={(projectId) => sessions.filter(s => s.projectId === projectId).forEach(s => closeSession(s.id))}
                     projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+                    onNewSession={(e) => {
+                      const projId = activeSession?.projectId ?? (projects[0]?.id ?? null);
+                      openSessionMenu(e, projId, "below");
+                    }}
                   />}
                   <div className="bar-end">
                     <AttentionPill

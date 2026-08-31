@@ -198,6 +198,30 @@
   object-fit: contain;
 }
 
+/* ─── New-session "+" button at the end of the tab strip ───────────── */
+
+.agent-tab-plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  margin-bottom: 4px;
+  align-self: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--tempest-fg-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.agent-tab-plus:hover {
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
+}
+
 /* ─── Blur wrap for designer mode ───────────────────────────────────── */
 
 .agent-tabs-blur-wrap {

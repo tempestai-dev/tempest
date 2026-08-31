@@ -38,6 +38,10 @@ export interface AppSettings {
   // Experimental: Warp (warpllm) chat backend on canvas chat nodes. Off by
   // default; when on, a "Warp" row appears in a chat node's Agents picker.
   experimentalWarp: boolean;
+  // Experimental: mobile companion app. Off by default; when on, the Mobile
+  // section appears in Settings so the user can pair a phone. Paired phones
+  // remain in localStorage while off — flipping the flag back on restores them.
+  experimentalMobile: boolean;
   // Override for the `claude` CLI the Claude Code chat bridge invokes. Empty →
   // bridge falls back to `where`/`which claude` on PATH. Corporate/offline
   // users can point this at their pinned install.
@@ -63,6 +67,7 @@ export const SETTINGS_DEFAULTS: AppSettings = {
   desktopNotifications: true,
   telemetryEnabled: false,
   experimentalWarp: false,
+  experimentalMobile: false,
   claudeCliPath: "",
 };
 

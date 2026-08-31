@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from "react";
-import { X, Eye, Globe, FileCode, TerminalSquare, Waypoints } from "lucide-react";
+import { X, Eye, Globe, FileCode, TerminalSquare, Waypoints, Plus } from "lucide-react";
 import { AgentIcon } from "./NewSessionMenu";
 import { WorkStateBadge, QueueBadge } from "./SessionBadges";
 import ProgressiveBlur from "./ProgressiveBlur";
@@ -53,6 +53,7 @@ interface Props {
   onQueueClick: (id: string, e: React.MouseEvent) => void;
   onCloseGroup?: (projectId: string) => void;
   projects?: { id: string; name: string }[];
+  onNewSession?: (e: React.MouseEvent<HTMLElement>) => void;
 }
 
 function SessionIcon({ session }: { session: SessionTab }) {
@@ -73,6 +74,7 @@ export default function AgentTabs({
   onQueueClick,
   onCloseGroup,
   projects,
+  onNewSession,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showLeft,  setShowLeft]  = useState(false);
@@ -195,6 +197,19 @@ export default function AgentTabs({
   const strip = (
     <div className="agent-tabs" ref={scrollRef} onDragLeave={onDragLeave}>
       {tabContent}
+      {onNewSession && (
+        <>
+          <div className="sep" />
+          <button
+            className="agent-tab-plus"
+            onClick={(e) => onNewSession(e)}
+            title="New session"
+            aria-label="New session"
+          >
+            <Plus size={14} />
+          </button>
+        </>
+      )}
     </div>
   );
 

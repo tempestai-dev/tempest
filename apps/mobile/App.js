@@ -1,11 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { View, Pressable, Text, Linking } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
-import { GLView } from 'expo-gl';
-import { Renderer, loadAsync } from 'expo-three';
-import { Asset } from 'expo-asset';
-import * as THREE from 'three';
 import {
   useFonts,
   Geist_400Regular,
@@ -45,94 +41,6 @@ export const geist = {
   medium: 'Geist_500Medium',
   semibold: 'Geist_600SemiBold',
 };
-
-function Logo3D() {
-  const rafRef = useRef(null);
-
-  useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
-
-  const onContextCreate = async (gl) => {
-    const { drawingBufferWidth: w, drawingBufferHeight: h } = gl;
-
-    const renderer = new Renderer({ gl, alpha: true });
-    renderer.setSize(w, h);
-    renderer.setClearColor(0x000000, 0);
-
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
-    camera.position.set(0, 0, 3);
-
-    // studio rig — bright enough that no facet crushes to black on a dark bg
-    scene.add(new THREE.AmbientLight(0xffffff, 1.8));
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x808080, 1.4));
-
-    const key = new THREE.DirectionalLight(0xfff4e6, 3.2);
-    key.position.set(4, 5, 6);
-    scene.add(key);
-
-    const fill = new THREE.DirectionalLight(0xbcd4ff, 2.0);
-    fill.position.set(-5, 2, 3);
-    scene.add(fill);
-
-    const rim = new THREE.DirectionalLight(0xffffff, 2.4);
-    rim.position.set(0, 3, -6);
-    scene.add(rim);
-
-    const under = new THREE.DirectionalLight(0xffffff, 0.8);
-    under.position.set(0, -4, 2);
-    scene.add(under);
-
-    // head-on spot straight at the model from camera direction
-    const front = new THREE.DirectionalLight(0xffffff, 3.5);
-    front.position.set(0, 0, 6);
-    scene.add(front);
-
-    // ring of eye-level side lights so every rotation gets a direct hit
-    const ring = [
-      [6, 0, 0],   // right
-      [-6, 0, 0],  // left
-      [4, 0, -4],  // back-right
-      [-4, 0, -4], // back-left
-      [4, 0, 4],   // front-right (low)
-      [-4, 0, 4],  // front-left (low)
-    ];
-    for (const [x, y, z] of ring) {
-      const l = new THREE.DirectionalLight(0xffffff, 1.5);
-      l.position.set(x, y, z);
-      scene.add(l);
-    }
-
-    // top-down so the crown never falls into shadow
-    const top = new THREE.DirectionalLight(0xffffff, 1.6);
-    top.position.set(0, 6, 0);
-    scene.add(top);
-
-    const asset = Asset.fromModule(require('./assets/logo.glb'));
-    await asset.downloadAsync();
-    const gltf = await loadAsync(asset.localUri || asset.uri);
-    const model = gltf.scene;
-
-    // fit model to a unit sphere so any glb sits centered at a sane scale
-    const box = new THREE.Box3().setFromObject(model);
-    const size = box.getSize(new THREE.Vector3()).length();
-    const center = box.getCenter(new THREE.Vector3());
-    model.position.sub(center);
-    const scale = 2.2 / size;
-    model.scale.setScalar(scale);
-
-    scene.add(model);
-
-    const tick = () => {
-      rafRef.current = requestAnimationFrame(tick);
-      model.rotation.y += 0.006;
-      renderer.render(scene, camera);
-      gl.endFrameEXP();
-    };
-    tick();
-  };
-
-  return <GLView style={{ width: 340, height: 340 }} onContextCreate={onContextCreate} />;
-}
 
 function GetStartedButton({ onPress }) {
   return (
@@ -185,9 +93,7 @@ function Welcome({ onGetStarted }) {
           Pair Tempest. Drive it from anywhere.
         </Text>
       </View>
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }}>
-        <Logo3D />
-      </View>
+      <View style={{ flex: 1 }} />
       <View style={{ paddingHorizontal: 20, paddingBottom: 16 }}>
         <GetStartedButton onPress={onGetStarted} />
         <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 14 }}>

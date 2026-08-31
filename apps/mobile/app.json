@@ -20,11 +20,14 @@
       "package": "com.tempestai.mobile",
       "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#000000",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -40,8 +43,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "REPLACE_ME_ON_FIRST_EAS_BUILD"
+        "projectId": "8ce33113-9b4d-4a44-9760-0a29efb472f9"
       }
-    }
+    },
+    "owner": "usetempest"
   }
 }
