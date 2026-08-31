@@ -121,6 +121,14 @@ jobs:
 
       - run: npm ci
 
+      # postinstall grabs cloudflared for the RUNNER host, which is wrong when
+      # we cross-compile (macos-latest is arm64 but one matrix leg targets
+      # x86_64-apple-darwin). Re-fetch by matrix target so Tauri finds
+      # binaries/cloudflared-<target-triple> at build time.
+      - name: Fetch cloudflared sidecar for build target
+        if: matrix.rust-target != ''
+        run: node scripts/install-cloudflared.mjs ${{ matrix.rust-target }}
+
       # Notarization rejects any unsigned nested Mach-O (e.g. onnxruntime-node
       # dylibs/.node files that atlas ships as bundled resources). Pre-sign
       # them with the same Developer ID + secure timestamp Tauri uses on the

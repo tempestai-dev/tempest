@@ -22,50 +22,38 @@ const BIN_DIR = resolve(REPO_ROOT, 'src-tauri', 'binaries');
 const LATEST_RELEASE_URL =
   'https://github.com/cloudflare/cloudflared/releases/latest/download';
 
+// Key by Rust target triple so a caller can request a specific cross-target
+// (e.g. building x86_64-apple-darwin on an arm64 runner) instead of always
+// grabbing the host's binary.
+const ARTIFACTS = {
+  'x86_64-pc-windows-msvc':      { asset: 'cloudflared-windows-amd64.exe', ext: '.exe', archive: null },
+  'x86_64-apple-darwin':         { asset: 'cloudflared-darwin-amd64.tgz',  ext: '',     archive: 'tgz' },
+  'aarch64-apple-darwin':        { asset: 'cloudflared-darwin-arm64.tgz',  ext: '',     archive: 'tgz' },
+  'x86_64-unknown-linux-gnu':    { asset: 'cloudflared-linux-amd64',       ext: '',     archive: null },
+  'aarch64-unknown-linux-gnu':   { asset: 'cloudflared-linux-arm64',       ext: '',     archive: null },
+};
+
+const HOST_TARGETS = {
+  'win32:x64':    'x86_64-pc-windows-msvc',
+  'darwin:x64':   'x86_64-apple-darwin',
+  'darwin:arm64': 'aarch64-apple-darwin',
+  'linux:x64':    'x86_64-unknown-linux-gnu',
+  'linux:arm64':  'aarch64-unknown-linux-gnu',
+};
+
+// Explicit target wins (CLI arg or env var), else fall back to the host.
+const resolveTarget = () => {
+  const explicit = process.argv[2] || process.env.CLOUDFLARED_TARGET;
+  if (explicit) return explicit.trim();
+  return HOST_TARGETS[`${process.platform}:${process.arch}`] || null;
+};
+
 const platformArtifact = () => {
-  const p = process.platform;
-  const a = process.arch;
-  if (p === 'win32' && a === 'x64') {
-    return {
-      asset: 'cloudflared-windows-amd64.exe',
-      targetTriple: 'x86_64-pc-windows-msvc',
-      ext: '.exe',
-      archive: null,
-    };
-  }
-  if (p === 'darwin' && a === 'x64') {
-    return {
-      asset: 'cloudflared-darwin-amd64.tgz',
-      targetTriple: 'x86_64-apple-darwin',
-      ext: '',
-      archive: 'tgz',
-    };
-  }
-  if (p === 'darwin' && a === 'arm64') {
-    return {
-      asset: 'cloudflared-darwin-arm64.tgz',
-      targetTriple: 'aarch64-apple-darwin',
-      ext: '',
-      archive: 'tgz',
-    };
-  }
-  if (p === 'linux' && a === 'x64') {
-    return {
-      asset: 'cloudflared-linux-amd64',
-      targetTriple: 'x86_64-unknown-linux-gnu',
-      ext: '',
-      archive: null,
-    };
-  }
-  if (p === 'linux' && a === 'arm64') {
-    return {
-      asset: 'cloudflared-linux-arm64',
-      targetTriple: 'aarch64-unknown-linux-gnu',
-      ext: '',
-      archive: null,
-    };
-  }
-  return null;
+  const targetTriple = resolveTarget();
+  if (!targetTriple) return null;
+  const spec = ARTIFACTS[targetTriple];
+  if (!spec) return null;
+  return { ...spec, targetTriple };
 };
 
 const exists = async (p) => {
@@ -88,7 +76,12 @@ const extractTgz = (archive, outDir) =>
 const main = async () => {
   const spec = platformArtifact();
   if (!spec) {
-    console.warn(`[install-cloudflared] no artifact for ${process.platform}/${process.arch}; skipping`);
+    const requested = process.argv[2] || process.env.CLOUDFLARED_TARGET;
+    if (requested) {
+      console.warn(`[install-cloudflared] unknown target triple '${requested}'; skipping`);
+    } else {
+      console.warn(`[install-cloudflared] no artifact for ${process.platform}/${process.arch}; skipping`);
+    }
     return;
   }
   await mkdir(BIN_DIR, { recursive: true });
