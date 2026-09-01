@@ -2,7 +2,7 @@ import { memo, useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   LayoutGrid, Brain, List, Workflow, FolderPlus, TerminalSquare, Cpu,
   ChevronDown, ChevronRight, GitBranch, Plus, Cog, Waypoints, Trash2,
-  Bug, Mail, SunMoon, Settings, FolderOpen, Eye, Globe, FileCode,
+  Bug, Mail, SunMoon, Settings, FolderOpen, Eye, Globe, FileCode, Download,
 } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Session, Worktree, Project, NavSection } from "../../types/workspace";
@@ -49,6 +49,7 @@ export interface LeftSidebarProps {
   // Handlers (defined in parent)
   goTo: (s: NavSection) => void;
   addWorkspace: () => void;
+  onCloneRepo: () => void;
   openSessionMenu: (e: React.MouseEvent<HTMLElement>, projectId: string | null, placement: NewSessionPlacement) => void;
   openBranchSessionMenu: (e: React.MouseEvent<HTMLElement>, worktreePath: string, projectId: string, label: string, isRoot: boolean) => void;
   openCtxMenu: (
@@ -87,7 +88,7 @@ function LeftSidebarImpl(props: LeftSidebarProps) {
     projects, sessions, activeSessionId, zenSidebarItems,
     gitProjectIds, atlasEnabled, threadsVersion, expandedWorktrees,
     setActiveSessionId, setProjects, setProjectSettingsPanelId, setSettingsOpen,
-    goTo, addWorkspace, openSessionMenu, openBranchSessionMenu, openCtxMenu,
+    goTo, addWorkspace, onCloneRepo, openSessionMenu, openBranchSessionMenu, openCtxMenu,
     openSession, openThreadTab, toggleProject, toggleWorktree, toggleTheme,
     ensureThreadsLoaded, createThread, renameThread, removeThread,
   } = props;
@@ -209,9 +210,14 @@ function LeftSidebarImpl(props: LeftSidebarProps) {
         <>
           <div className="sidebar-section-label sidebar-section-label--row">
             <span>Projects</span>
-            <Tooltip content="Add project" placement="top">
-              <FolderPlus size={13} className="sidebar-section-add" onClick={addWorkspace} />
-            </Tooltip>
+            <div className="sidebar-section-actions">
+              <Tooltip content="Add project" placement="top">
+                <FolderPlus size={13} className="sidebar-section-add" onClick={addWorkspace} />
+              </Tooltip>
+              <Tooltip content="Clone from remote" placement="top">
+                <Download size={13} className="sidebar-section-add" onClick={onCloneRepo} />
+              </Tooltip>
+            </div>
           </div>
           {projects.length === 0 ? (
             <div className="projects-empty-box">No projects added</div>
@@ -759,6 +765,11 @@ function LeftSidebarImpl(props: LeftSidebarProps) {
             ) : (
               <Tooltip content="Add project" placement="top">
                 <FolderPlus size={16} className="sidebar-bottom-icon" onClick={addWorkspace} />
+              </Tooltip>
+            )}
+            {!zen && (
+              <Tooltip content="Clone from remote" placement="top">
+                <Download size={16} className="sidebar-bottom-icon" onClick={onCloneRepo} />
               </Tooltip>
             )}
           </div>

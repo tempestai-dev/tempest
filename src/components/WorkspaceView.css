@@ -940,6 +940,12 @@
   gap: 8px;
 }
 
+.sidebar-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .sidebar-section-add {
   color: var(--tempest-fg-subtle);
   cursor: pointer;

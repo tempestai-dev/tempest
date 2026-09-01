@@ -10,6 +10,7 @@ mod agent_hooks;
 mod automations;
 mod canvas_mcp;
 mod claude_bridge;
+mod git_clone;
 mod node_ingest;
 mod notes;
 mod pairing_relay;
@@ -2052,7 +2053,7 @@ mod resolve_node_tests {
 
 /// Build a `Command` that never opens a console window on Windows.
 /// On every other platform this is identical to `std::process::Command::new`.
-fn new_command(program: &str) -> std::process::Command {
+pub(crate) fn new_command(program: &str) -> std::process::Command {
     #[cfg(windows)]
     {
         let mut cmd = std::process::Command::new(program);
@@ -4624,6 +4625,8 @@ pub fn run() {
             stop_atlas_daemon,
             write_canvas_mcp_config,
             register_service_route,
+            git_clone::check_clone_target,
+            git_clone::git_clone_repo,
             secrets::secret_get,
             secrets::secret_set,
             secrets::secret_delete,

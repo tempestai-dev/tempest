@@ -2,7 +2,7 @@ import { createPortal } from "react-dom";
 import { useState, useMemo, useEffect, useRef } from "react";
 import {
   ChevronRight, ChevronLeft, PanelLeft, PanelRight, Columns,
-  Rows, FolderOpen, Plus, X, Radio, List, Settings, SunMoon,
+  Rows, FolderOpen, Plus, X, Radio, List, Settings, SunMoon, Download,
 } from "lucide-react";
 import type { ActionId } from "../store/keybindings";
 import { getBindings, formatShortcut } from "../store/keybindings";
@@ -26,6 +26,7 @@ export interface CommandPaletteProps {
   onToggleRightSidebar: () => void;
   onOpenSettings: () => void;
   onOpenProject: () => void;
+  onCloneRepo: () => void;
   onNewWorkspace: () => void;
   onCloseTab: () => void;
   onNextTab: () => void;
@@ -53,7 +54,7 @@ const SECTION_ORDER: Section[] = ["Navigation", "Layout", "Workspaces", "Appeara
 
 export function CommandPalette({
   onClose, onToggleLeftSidebar, onToggleRightSidebar, onOpenSettings,
-  onOpenProject, onNewWorkspace, onCloseTab, onNextTab, onPrevTab,
+  onOpenProject, onCloneRepo, onNewWorkspace, onCloseTab, onNextTab, onPrevTab,
   onBroadcast, onSplitV, onSplitH, onOpenQueue, onToggleTheme,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
@@ -71,6 +72,7 @@ export function CommandPalette({
     { id: "split-v",              section: "Layout",     label: "Split Pane Side by Side", icon: <Columns size={14} />,      actionId: "splitPaneV",         run: () => { onSplitV(); onClose(); } },
     { id: "split-h",              section: "Layout",     label: "Split Pane Top / Bottom", icon: <Rows size={14} />,         actionId: "splitPaneH",         run: () => { onSplitH(); onClose(); } },
     { id: "open-project",         section: "Workspaces", label: "Open Project",            icon: <FolderOpen size={14} />,   actionId: "openProject",        run: () => { onOpenProject(); onClose(); } },
+    { id: "clone-repo",           section: "Workspaces", label: "Clone from Remote",       icon: <Download size={14} />,     keywords: "git clone remote url", run: () => { onCloneRepo(); onClose(); } },
     { id: "new-workspace",        section: "Workspaces", label: "New Workspace",           icon: <Plus size={14} />,         actionId: "newWorkspace",       run: () => { onNewWorkspace(); onClose(); } },
     { id: "close-tab",            section: "Workspaces", label: "Close Tab",               icon: <X size={14} />,            actionId: "closeTab",           run: () => { onCloseTab(); onClose(); } },
     { id: "broadcast",            section: "Workspaces", label: "Broadcast to Agents",     icon: <Radio size={14} />,        actionId: "broadcast",          run: () => { onBroadcast(); onClose(); } },

@@ -1,0 +1,65 @@
+.crm-modal {
+  width: 440px;
+}
+
+/* ── Progress panel (shown while cloning) ─────────────────────────────── */
+.crm-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.crm-spinner {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--tempest-border-subtle);
+  border-top-color: var(--tempest-accent-blue);
+  animation: crm-spin 0.7s linear infinite;
+}
+
+@keyframes crm-spin {
+  to { transform: rotate(360deg); }
+}
+
+.crm-line {
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  color: var(--tempest-fg-muted);
+  margin: 0;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Error panel ───────────────────────────────────────────────────────── */
+.crm-error-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.crm-error-detail {
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  color: var(--tempest-fg-subtle);
+  background: var(--tempest-bg-input);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 0;
+  max-height: 120px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crm-spinner {
+    animation-duration: 0.001ms;
+    animation-iteration-count: 1;
+  }
+}
