@@ -4692,6 +4692,7 @@ pub fn run() {
             claude_bridge::claude_permission_decision,
             claude_bridge::claude_stream_cancel,
             warp_bridge::warp_chat,
+            warp_bridge::warp_model_info,
             quota::quota_read_all,
             node_ingest::extract_file_text,
             node_ingest::scrape_url,

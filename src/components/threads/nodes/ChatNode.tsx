@@ -17,7 +17,7 @@ import { CDN, CHAT_PROVIDERS, CLAUDE_CODE, CLI_AGENTS, CLI_AGENT_LABELS, CLI_AGE
 import { useModelManifest, contextSizeFor } from "../../../lib/remoteConfig";
 import { streamChat, type ChatStreamEvent } from "../../../lib/chat";
 import { streamClaudeCode, type ClaudeCodeStream } from "../../../lib/claudeCode";
-import { streamWarp } from "../../../lib/warp";
+import { streamWarp, runWarpAgent } from "../../../lib/warp";
 import { useSettings } from "../../../store/appSettings";
 import { createChatTools } from "../../../lib/chatTools";
 import {
@@ -437,9 +437,11 @@ export function ChatNode({ id, data }: { id: string; data?: { collapsed?: boolea
     const compressionNote = compressing ? compressionSystemNote(atlasIndexed ?? false) : "";
     const system = [BASE_SYSTEM, lineage, canvasMap, compacted.index, compressionNote]
       .filter(Boolean).join("\n\n");
-    // BYOK chat wires our own tools. The CLI harness brings Claude Code's native
-    // tools (and reaches the canvas via the tempest-canvas MCP), so no double set.
-    const tools = backend === "api" && projectPath
+    // BYOK chat and Warp both wire our own tools — Warp reuses the same set via
+    // its own agent loop (see runWarpAgent). The CLI harness brings Claude Code's
+    // native tools (and reaches the canvas via the tempest-canvas MCP), so no
+    // double set there.
+    const tools = (backend === "api" || backend === "warp") && projectPath
       ? await createChatTools({
           projectPath,
           atlasIndexed: atlasIndexed ?? false,
@@ -556,14 +558,26 @@ export function ChatNode({ id, data }: { id: string; data?: { collapsed?: boolea
         onEvent,
       });
     } else if (backend === "warp") {
-      // Experimental Warp backend — non-streaming. system carries the same
-      // lineage + canvas map the BYOK path builds, so context stays consistent.
-      cancelRef.current = streamWarp({
-        model: model.id,
-        messages: [...history, { role: "user", content: rawText }],
-        system,
-        onEvent,
-      });
+      // Experimental Warp (warpllm) backend. When tools are available (project
+      // open, so createChatTools ran) we drive the agentic loop through
+      // runWarpAgent — one Tauri call per model step, with tool dispatch on
+      // the TS side so results ride the existing tool-call/tool-result events.
+      // No tools → the one-shot streamWarp path stays as the fallback.
+      const warpMessages = [...history, { role: "user" as const, content: rawText }];
+      cancelRef.current = tools
+        ? runWarpAgent({
+            model: model.id,
+            messages: warpMessages,
+            system,
+            tools,
+            onEvent,
+          })
+        : streamWarp({
+            model: model.id,
+            messages: warpMessages,
+            system,
+            onEvent,
+          });
     } else {
       cancelRef.current = streamChat({
         providerId: provider.id,

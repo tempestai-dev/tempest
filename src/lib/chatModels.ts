@@ -131,14 +131,10 @@ export const WARP_MODELS: ChatModel[] = [
   { id: "openrouter/anthropic/claude-sonnet-4", label: "Claude Sonnet 4"  },
 ];
 
-// warpllm reads keys from process env, one per provider. Map the routing
-// prefix → the env var so the frontend can pass the right BYOK key through.
-export const WARP_PROVIDER_ENV: Record<string, string> = {
-  openai:     "OPENAI_API_KEY",
-  deepseek:   "DEEPSEEK_API_KEY",
-  kimi:       "MOONSHOT_API_KEY",
-  openrouter: "OPENROUTER_API_KEY",
-};
+// Provider + env-var lookup is authoritative via the Rust registry — call
+// `warp_model_info(model)` (see src/lib/warp.ts::modelInfo) rather than
+// maintaining a mapping here. warpllm's roster changes with each release; the
+// old hand-written WARP_PROVIDER_ENV table drifted out of sync at every bump.
 
 export const PROVIDER_MODELS: Record<string, ChatModel[]> = {
   anthropic: [
