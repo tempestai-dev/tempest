@@ -17,6 +17,7 @@ import {
   seedPrng,
 } from '@tempest/crypto';
 import nacl from 'tweetnacl';
+import { setWarmSocket } from './warmSocket';
 
 // Expo Go has no webcrypto; seed once before any keygen.
 seedPrng((n) => Crypto.getRandomBytes(n));
@@ -39,7 +40,11 @@ export const parseQrPayload = (raw) => {
 // Run the phone-side handshake. Returns { promise, cancel }.
 // Retries the dial while the TTL window is open — TryCloudflare DNS/edge
 // propagation can trail cloudflared's `/ready` by ~30s.
-export const runPhonePairing = (payload, { onStatus, ttlMs = 60_000 } = {}) => {
+//
+// keepAliveOnPair (default true) hands the pairing WS off to warmSocket so
+// startRpcClient can reuse it instead of re-dialing. Kills the reconnect
+// race that used to strand the first protocol.hello on a fresh CF tunnel.
+export const runPhonePairing = (payload, { onStatus, ttlMs = 60_000, keepAliveOnPair = true } = {}) => {
   const url = `${payload.relay_url}?session=${encodeURIComponent(payload.session_id)}&role=phone`;
 
   const laptopPubkey = b64.dec(payload.laptop_pubkey);
@@ -82,7 +87,21 @@ export const runPhonePairing = (payload, { onStatus, ttlMs = 60_000 } = {}) => {
       if (settled) return;
       settled = true;
       onStatus?.('paired');
-      cleanup();
+      if (keepAliveOnPair && ws && ws.readyState === 1 /* OPEN */) {
+        // Stop pairing-side timers but keep the WS alive for the RPC client.
+        if (ttlTimer) { clearTimeout(ttlTimer); ttlTimer = null; }
+        if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+        if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+        // Detach pairing handlers — rpc.js installs its own via addEventListener.
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+        setWarmSocket(payload.session_id, ws);
+        ws = null; // release from cleanup()'s reach
+        cancelled = true;
+      } else {
+        cleanup();
+      }
       resolve(r);
     };
 

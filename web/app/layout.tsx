@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Geist_Pixel } from "next/font/google";
 import { Providers } from "@/provider/theme-provider";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
@@ -60,6 +60,12 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const geistPixel = Geist_Pixel({
+  variable: "--font-geist-pixel",
+  subsets: ["latin"],
+  weight: "400",
+});
+
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: "Tempest — Run Claude Code, Aider & AI Agents in Parallel",
@@ -100,7 +106,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${geistPixel.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <script

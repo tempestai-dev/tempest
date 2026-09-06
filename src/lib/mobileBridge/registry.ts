@@ -14,8 +14,16 @@ export function registerBridge(pairingId: string, ws: WebSocket, sessionKey: Uin
   const b = attachBridge(ws, sessionKey);
   bridges.set(pairingId, b);
 
+  // When the ws dies, tear down the bridge — otherwise the RpcPeer's store
+  // subscriptions (session.updated, queue.changed, projects.changed, PTY
+  // stream listeners) keep firing and spam InvalidState errors as they emit
+  // into a dead socket.
   ws.addEventListener("close", () => {
-    if (bridges.get(pairingId) === b) bridges.delete(pairingId);
+    if (bridges.get(pairingId) === b) {
+      b.close();
+      bridges.delete(pairingId);
+      console.log(`[bridge] torn down pairing=${pairingId.slice(0, 8)} (ws closed)`);
+    }
   });
 
   return b;

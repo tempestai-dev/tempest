@@ -5639,7 +5639,7 @@ dependencies = [
 
 [[package]]
 name = "tempest"
-version = "0.1.20"
+version = "0.1.21"
 dependencies = [
  "base64 0.22.1",
  "calamine",
@@ -6413,9 +6413,9 @@ dependencies = [
 
 [[package]]
 name = "warpllm"
-version = "0.2.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "751d7c693b6911577015ed01fbfb7288cd281e61859d88f4e279f8e584f30d69"
+checksum = "5306db4be6e04bf538fbb78cbad394284596fbf30fae29b42945f640734cf003"
 dependencies = [
  "reqwest 0.12.28",
  "serde",

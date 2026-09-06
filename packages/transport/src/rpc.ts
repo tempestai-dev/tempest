@@ -61,9 +61,13 @@ export class RpcPeer {
   }
 
   emit<E extends ServerEvent>(event: E, payload: ServerEventPayload[E]): void {
-    if (this.closed) return;
+    if (this.closed) { console.log(`[rpc/peer] emit(${event}) DROPPED — closed`); return; }
     const frame: RpcEvent<E> = { event, payload };
-    this.channel.send(encryptFrame(frame as WireFrame, this.sessionKey));
+    try {
+      this.channel.send(encryptFrame(frame as WireFrame, this.sessionKey));
+    } catch (e) {
+      console.error(`[rpc/peer] emit(${event}) send threw`, e);
+    }
   }
 
   on<E extends ServerEvent>(event: E, handler: (payload: ServerEventPayload[E]) => void): () => void {
@@ -81,6 +85,7 @@ export class RpcPeer {
 
   private dispose(err: Error): void {
     if (this.closed) return;
+    console.log(`[rpc/peer] dispose reason=${err.message} pending=${this.pending.size} listeners=${this.listeners.size}`);
     this.closed = true;
     this.detachMsg?.(); this.detachMsg = null;
     this.detachClose?.(); this.detachClose = null;
@@ -90,11 +95,11 @@ export class RpcPeer {
 
   private onFrame(raw: string): void {
     const frame = decryptFrame(raw, this.sessionKey);
-    if (!frame) return;
+    if (!frame) { console.log(`[rpc/peer] decrypt failed len=${raw.length}`); return; }
 
     if (isResponse(frame)) {
       const p = this.pending.get(frame.id);
-      if (!p) return;
+      if (!p) { console.log(`[rpc/peer] response for unknown id=${frame.id}`); return; }
       this.pending.delete(frame.id);
       if ("error" in frame) p.reject(new Error(`${frame.error.code}: ${frame.error.msg}`));
       else p.resolve((frame as RpcResponse & { result: unknown }).result);
@@ -103,6 +108,7 @@ export class RpcPeer {
 
     if (isEvent(frame)) {
       const set = this.listeners.get(frame.event);
+      console.log(`[rpc/peer] ← event ${frame.event} listeners=${set?.size ?? 0}`);
       if (set) for (const fn of set) { try { fn(frame.payload); } catch (e) { console.error("[rpc] event handler", e); } }
       return;
     }

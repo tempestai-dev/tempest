@@ -4488,20 +4488,25 @@ pub fn run() {
     if canvas_mcp::maybe_serve() {
         return;
     }
-    tauri::Builder::default()
-        // Single-instance guard MUST be the first plugin. When a second
-        // Tempest.exe is launched, its argv is forwarded here and the process
-        // exits — no second PTY registry, atlas daemons, or DB scheduler.
-        // The callback focuses the existing main window so the user sees the
-        // click do something.
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+    let mut builder = tauri::Builder::default();
+    // Single-instance guard MUST be the first plugin. When a second
+    // Tempest.exe is launched, its argv is forwarded here and the process
+    // exits — no second PTY registry, atlas daemons, or DB scheduler.
+    // The callback focuses the existing main window so the user sees the
+    // click do something. Skipped in debug builds so a `tauri dev` run can
+    // coexist with a production Tempest the user has open for real work.
+    #[cfg(not(debug_assertions))]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             use tauri::Manager;
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.unminimize();
                 let _ = w.show();
                 let _ = w.set_focus();
             }
-        }))
+        }));
+    }
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
