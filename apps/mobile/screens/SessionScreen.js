@@ -141,6 +141,11 @@ export default function SessionScreen({ client, session, connState, onBack }) {
   const [termReady, setTermReady] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
   const [termHtml, setTermHtml] = useState(null);
+  // Diagnostic counters — surface which link in the wire is stalled.
+  // outputs: number of agent.output events received from desktop.
+  // replay: total chunks in the initial subscribe replay payload.
+  // lastRx: ms since last chunk (either replay or live). Zero if never.
+  const [diag, setDiag] = useState({ outputs: 0, replay: 0, lastRxAt: 0, sentAt: 0 });
   const webRef = useRef(null);
   // Chunks that arrive before the WebView is ready sit here. Ref-based so
   // ready/output effects don't churn on state.
@@ -172,6 +177,7 @@ export default function SessionScreen({ client, session, connState, onBack }) {
     if (!client || !session?.id) return;
     const off = client.on('agent.output', ({ sessionId, chunk }) => {
       if (sessionId !== session.id) return;
+      setDiag((d) => ({ ...d, outputs: d.outputs + 1, lastRxAt: Date.now() }));
       if (!termReadyRef.current) { pending.current.push(chunk); return; }
       inject(chunk);
     });
@@ -190,6 +196,7 @@ export default function SessionScreen({ client, session, connState, onBack }) {
       .then((r) => {
         if (cancelled) return;
         const replay = r?.replay || [];
+        setDiag((d) => ({ ...d, replay: replay.length, lastRxAt: replay.length ? Date.now() : d.lastRxAt }));
         if (termReadyRef.current) {
           for (const c of replay) inject(c);
         } else {
@@ -226,6 +233,7 @@ export default function SessionScreen({ client, session, connState, onBack }) {
     setBusy(true);
     try {
       await client.request('agent.send', { sessionId: session.id, text });
+      setDiag((d) => ({ ...d, sentAt: Date.now() }));
       setDraft('');
     } catch (e) {
       setError(e.message);
@@ -266,7 +274,12 @@ export default function SessionScreen({ client, session, connState, onBack }) {
               <Text style={styles.subtitle} numberOfLines={1}>{session.agent}</Text>
             ) : null}
           </View>
-          <View style={{ width: 60 }} />
+          <View style={styles.diag}>
+            <Text style={styles.diagText}>
+              {connState[0].toUpperCase()} · {subscribed ? 'S' : '-'} · rx{diag.outputs}
+              {diag.replay ? ` +${diag.replay}` : ''}
+            </Text>
+          </View>
         </View>
 
         {error ? (
@@ -345,6 +358,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: '#18181b',
   },
   back: { color: '#e4e4e7', fontSize: 17, fontFamily: geist.regular, width: 90 },
+  diag: {
+    width: 90, alignItems: 'flex-end', paddingHorizontal: 4,
+  },
+  diagText: {
+    color: '#71717a', fontSize: 10, fontFamily: 'GeistPixel',
+    letterSpacing: 0.5,
+  },
   title: { color: '#fafafa', fontSize: 15, fontFamily: geist.semibold, letterSpacing: -0.2 },
   subtitle: { color: '#8ab4f8', fontSize: 11, fontFamily: geist.medium, letterSpacing: 0.3, marginTop: 2 },
 

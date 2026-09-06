@@ -79,7 +79,11 @@ export function attachBridge(ws: WebSocket, sessionKey: Uint8Array): AttachedBri
   // it publishes on mount (see workspaceApi.ts). A phone that connects before
   // WorkspaceView mounts gets a clean `desktop_not_ready` error.
   peer.handle("session.open", async (input) => getWorkspaceApi().openSession(input));
-  peer.handle("session.hop", async ({ id }) => { await getWorkspaceApi().hopSession(id); });
+  peer.handle("session.hop", async ({ id }) => {
+    console.log(`[bridge] session.hop enter id=${id.slice(0, 8)}`);
+    try { await getWorkspaceApi().hopSession(id); console.log(`[bridge] session.hop ok id=${id.slice(0, 8)}`); }
+    catch (e) { console.error(`[bridge] session.hop err id=${id.slice(0, 8)}`, e); throw e; }
+  });
 
   // agent.send mirrors the desktop QueuePanel Send button. Reply is
   // fire-and-forget: enqueue synchronously, kick the drain in the background
@@ -99,6 +103,7 @@ export function attachBridge(ws: WebSocket, sessionKey: Uint8Array): AttachedBri
     catch (e) { console.error(`[bridge] agent.send markUserInput failed sid=${sessionId.slice(0, 8)}`, e); }
   };
   peer.handle("agent.send", async ({ sessionId, text }) => {
+    console.log(`[bridge] agent.send sid=${sessionId.slice(0, 8)} text=${JSON.stringify(text.slice(0, 60))} workState=${getWorkState(sessionId)} sm_has=${sessionManager.has(sessionId)}`);
     enqueue(sessionId, text);
     // queueMicrotask so the queue.changed emit for the enqueue lands on the
     // phone before any status flip from the dequeue below.
@@ -131,14 +136,14 @@ export function attachBridge(ws: WebSocket, sessionKey: Uint8Array): AttachedBri
     let count = 0;
     const listener = (chunk: string) => {
       count++;
-      if (count <= 3 || count % 50 === 0) {
-        console.log(`[bridge] agent.output → phone session=${sessionId.slice(0, 8)} chunk#${count} bytes=${chunk.length}`);
-      }
+      // Log EVERY chunk so we can see if the desktop fanout is firing.
+      console.log(`[bridge] agent.output → phone sid=${sessionId.slice(0, 8)} #${count} bytes=${chunk.length} first=${JSON.stringify(chunk.slice(0, 40))}`);
       peer.emit("agent.output", { sessionId, chunk });
     };
     const replay = sessionManager.attach(sessionId, listener);
     streamOff.set(sessionId, () => sessionManager.detach(sessionId, listener));
-    console.log(`[bridge] agent.subscribe session=${sessionId.slice(0, 8)} replay_chunks=${replay.length}`);
+    const replayBytes = replay.reduce((n, s) => n + s.length, 0);
+    console.log(`[bridge] agent.subscribe sid=${sessionId.slice(0, 8)} replay_chunks=${replay.length} replay_bytes=${replayBytes} sm_has=${sessionManager.has(sessionId)}`);
     return { replay };
   });
   peer.handle("agent.unsubscribe", async ({ sessionId }) => { detachStream(sessionId); });

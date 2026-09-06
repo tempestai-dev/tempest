@@ -21,6 +21,14 @@ import {
   WorktreesVisual,
   ThreadsVisual,
   DiffVisual,
+  TerminalVisual,
+  PreviewVisual,
+  StatusVisual,
+  HistoryVisual,
+  TokensVisual,
+  DatabaseBranchesVisual,
+  SandboxVisual,
+  NativeVisual,
 } from "../_components/feature-visuals";
 
 type Feature = {
@@ -36,14 +44,14 @@ const features: Feature[] = [
   { icon: GitBranch,       title: "Parallel worktrees",  body: "Every session gets its own git worktree and branch. Agents never touch each other's files.", visual: WorktreesVisual },
   { icon: MessagesSquare,  title: "Threads",             body: "Drop chats, files, and notes onto a canvas. Feed each agent exactly the context it needs.", visual: ThreadsVisual },
   { icon: GitPullRequest,  title: "Diff, commit, PR",    body: "Review every change in a live diff viewer. Stage, commit, push, and open a PR without leaving Tempest.", visual: DiffVisual },
-  { icon: Terminal,        title: "Real terminal",       body: "ANSI color, in-session search, clickable links — a full PTY in every session." },
-  { icon: MonitorPlay,     title: "Live preview",        body: "Watch your dev server update in real time as agents change code." },
-  { icon: Activity,        title: "Live status",         body: "See the instant each agent finishes a turn. No tab-watching, no babysitting." },
-  { icon: History,         title: "Full history",        body: "Close a tab and reopen it later. Each agent resumes exactly where it left off." },
-  { icon: Coins,           title: "Token intelligence",  body: "A local knowledge graph shared across sessions — up to 64% less context, 58% fewer tool calls." },
-  { icon: Database,        title: "Database branches",   body: "An isolated Postgres instance per agent. Parallel runs never corrupt each other's data." },
-  { icon: Shield,          title: "Hephaestus sandbox",  body: "OS-level process isolation on every platform. Job Objects, sandbox-exec, bubblewrap." },
-  { icon: Zap,             title: "Native, not Electron",body: "Tauri 2 on Windows, macOS, and Linux. Boots fast, stays cool, feels like the OS." },
+  { icon: Terminal,        title: "Real terminal",       body: "ANSI color, in-session search, clickable links — a full PTY in every session.", visual: TerminalVisual },
+  { icon: MonitorPlay,     title: "Live preview",        body: "Watch your dev server update in real time as agents change code.", visual: PreviewVisual },
+  { icon: Activity,        title: "Live status",         body: "See the instant each agent finishes a turn. No tab-watching, no babysitting.", visual: StatusVisual },
+  { icon: History,         title: "Full history",        body: "Close a tab and reopen it later. Each agent resumes exactly where it left off.", visual: HistoryVisual },
+  { icon: Coins,           title: "Token intelligence",  body: "A local knowledge graph shared across sessions — 86% token efficiency, 92% fewer tool calls.", visual: TokensVisual },
+  { icon: Database,        title: "Database branches",   body: "An isolated Postgres instance per agent. Parallel runs never corrupt each other's data.", visual: DatabaseBranchesVisual },
+  { icon: Shield,          title: "Hephaestus sandbox",  body: "OS-level process isolation on every platform. Job Objects, sandbox-exec, bubblewrap.", visual: SandboxVisual },
+  { icon: Zap,             title: "Native, not Electron",body: "Tauri 2 on Windows, macOS, and Linux. Boots fast, stays cool, feels like the OS.", visual: NativeVisual },
 ];
 
 export function FeatureGridSection() {

@@ -163,6 +163,7 @@ class SessionManager {
       this.pending.delete(sessionId);
     }
     this.sessions.set(sessionId, record);
+    console.log(`[sm] register sid=${sessionId.slice(0, 8)} agent=${!!isAgent} adopted_pending=${pending?.size ?? 0} listeners=${record.listeners.size}`);
     channel.onmessage = (payload) => this.processChunk(sessionId, payload.data);
   }
 
@@ -193,9 +194,11 @@ class SessionManager {
       let pending = this.pending.get(sessionId);
       if (!pending) { pending = new Set(); this.pending.set(sessionId, pending); }
       pending.add(onData);
+      console.log(`[sm] attach sid=${sessionId.slice(0, 8)} → PARKED (no PTY registered) pending=${pending.size}`);
       return [];
     }
     record.listeners.add(onData);
+    console.log(`[sm] attach sid=${sessionId.slice(0, 8)} listeners=${record.listeners.size} buffer_chunks=${record.buffer.length} buffer_bytes=${record.bufferBytes}`);
     return [...record.buffer];
   }
 
@@ -389,8 +392,16 @@ class SessionManager {
     }
 
     // Deliver to all attached renderers (visible terminal panes).
+    if (record.listeners.size === 0) {
+      // High-signal: chunk arrived but nobody's listening — mobile subscribe
+      // hasn't landed OR sessionManager parked it in `pending`.
+      console.log(`[sm] chunk sid=${sessionId.slice(0, 8)} bytes=${data.length} listeners=0 (dropped)`);
+    } else {
+      console.log(`[sm] chunk sid=${sessionId.slice(0, 8)} bytes=${data.length} listeners=${record.listeners.size}`);
+    }
     for (const listener of record.listeners) {
-      listener(data);
+      try { listener(data); }
+      catch (e) { console.error(`[sm] listener threw sid=${sessionId.slice(0, 8)}`, e); }
     }
   }
 

@@ -28,20 +28,24 @@ export const metadata = {
 
 export default function NewLandingPage() {
   return (
-    <main className="relative mx-auto w-full max-w-[1380px] overflow-hidden">
+    <main className="relative mx-auto w-full max-w-[1380px]">
       <Header />
-      <section className="relative h-screen w-full overflow-hidden border-b border-l border-r border-dashed border-muted-foreground/30">
-        <video
-          src="/video/hero-bg.mp4"
-          autoPlay
-          loop
-          muted
-          playsInline
-          className="absolute inset-0 h-full w-full object-cover object-left sm:object-center"
-        />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/20 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/30" />
-        <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/70 to-transparent" />
+      <section className="relative h-screen w-full">
+        <div className="absolute top-0 left-1/2 h-full w-screen -translate-x-1/2 overflow-hidden">
+          <video
+            src="/video/hero-bg.mp4"
+            poster="/video/hero-bg.png"
+            autoPlay
+            loop
+            muted
+            playsInline
+            className="absolute inset-0 h-full w-full object-cover object-left sm:object-center"
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0a]/60 via-[#0a0a0a]/20 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a]/50 via-transparent to-[#0a0a0a]/30" />
+          <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[#0a0a0a]/70 to-transparent" />
+          <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-[#0a0a0a] to-transparent" />
+        </div>
         <div className="absolute inset-x-0 bottom-0 z-10 flex flex-col gap-8 px-8 pb-12 sm:pb-16 lg:flex-row lg:items-end lg:justify-between lg:gap-10 lg:pb-20">
           <div className="max-w-2xl">
             <span className="text-[13px] uppercase tracking-[0.12em] text-white/60">
