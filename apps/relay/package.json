@@ -12,7 +12,7 @@
   "devDependencies": {
     "tweetnacl": "^1.0.3",
     "tweetnacl-util": "^0.15.1",
-    "wrangler": "^4.0.0",
+    "wrangler": "^4.128.0",
     "ws": "^8.18.0"
   }
 }
