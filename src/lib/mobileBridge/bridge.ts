@@ -191,7 +191,13 @@ export function attachBridge(ws: WebSocket, sessionKey: Uint8Array): AttachedBri
     dirty.add(e.id);
     scheduleFlush();
   });
-  const unWork = subscribeAllWorkStateChanges((id) => { dirty.add(id); scheduleFlush(); });
+  const unWork = subscribeAllWorkStateChanges((id) => {
+    dirty.add(id); scheduleFlush();
+    // Agent just went idle/done → drain anything mobile enqueued while it was
+    // working. Mirrors WorkspaceView.onWorkDone, but for items added by the
+    // mobile peer between turns.
+    if (getWorkState(id) !== "working") kickDrain(id);
+  });
   const unQueue = subscribeAllQueueChanges((sessionId) => {
     peer.emit("queue.changed", { sessionId, queue: projectQueue(sessionId) });
     // Queue length affects the SessionSummary — schedule that too.

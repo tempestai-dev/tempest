@@ -203,6 +203,10 @@ export function MobileSection() {
         // Hand the still-open WS off to the RPC bridge so the phone can
         // start querying agents / queues / permissions immediately.
         if (r.ws) registerBridge(record.id, r.ws, r.sessionKey);
+        // The WS now belongs to the bridge. Drop our cancel ref so the
+        // component-unmount cleanup (line ~137) can't close it out from
+        // under the bridge on panel dismiss.
+        activeCancelRef.current = null;
         // Give the "Paired." label a beat, then close the panel.
         setTimeout(() => {
           setLive(null);
