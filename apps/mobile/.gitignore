@@ -41,3 +41,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# generated xterm bundle (regenerated via postinstall)
+lib/terminal-webview-engine.generated.js

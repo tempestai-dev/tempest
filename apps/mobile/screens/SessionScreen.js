@@ -5,134 +5,15 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { WebView } from 'react-native-webview';
+import { XTERM_HTML } from '../lib/terminal-webview-html';
 
 const geist = { regular: 'Geist_400Regular', medium: 'Geist_500Medium', semibold: 'Geist_600SemiBold' };
 
-// xterm.js in a WebView. Same PTY bytes the desktop pane renders — no
-// ANSI stripping. Fetched by RN from cdnjs and inlined into the HTML; the
-// WebView's own network is blocked in some configurations (WKWebView with an
-// html:baseUrl origin, corp/school proxies), but RN itself can reach cdnjs
-// since it's already talking to the tunnel. Cached at module scope so we
-// only pay the fetch once per app launch.
-const CDN_MIRRORS = [
-  {
-    css: 'https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.css',
-    js:  'https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.js',
-    fit: 'https://cdnjs.cloudflare.com/ajax/libs/xterm-addon-fit/0.8.0/xterm-addon-fit.min.js',
-  },
-  {
-    css: 'https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css',
-    js:  'https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js',
-    fit: 'https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js',
-  },
-];
-
-async function fetchMirror(m) {
-  const [css, js, fit] = await Promise.all([
-    fetch(m.css).then((r) => { if (!r.ok) throw new Error(`css ${r.status}`); return r.text(); }),
-    fetch(m.js ).then((r) => { if (!r.ok) throw new Error(`js ${r.status}`);  return r.text(); }),
-    fetch(m.fit).then((r) => { if (!r.ok) throw new Error(`fit ${r.status}`); return r.text(); }),
-  ]);
-  return [css, js, fit];
-}
-
-let xtermBundlePromise = null;
-function loadXtermBundle() {
-  if (xtermBundlePromise) return xtermBundlePromise;
-  xtermBundlePromise = (async () => {
-    let lastErr;
-    for (const m of CDN_MIRRORS) {
-      try { return await fetchMirror(m); }
-      catch (e) { lastErr = e; }
-    }
-    throw lastErr || new Error('all mirrors failed');
-  })().catch((e) => { xtermBundlePromise = null; throw e; });
-  return xtermBundlePromise;
-}
-
-// Build the WebView HTML with xterm's JS + CSS inlined. Escaping </script>
-// inside JS strings is the only landmine — split the token so no closing
-// </script> lives inside the outer <script> block.
-function buildTermHtml(cssText, xtermJs, fitJs) {
-  const safe = (s) => s.replace(/<\/(script)/gi, '<\\/$1');
-  return `<!doctype html>
-<html><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<style>${cssText}</style>
-<style>
-  html, body { margin: 0; padding: 0; height: 100%; background: #050506; overflow: hidden; }
-  #term { height: 100vh; width: 100vw; padding: 6px; box-sizing: border-box; }
-  .xterm-viewport { background: #050506 !important; }
-</style>
-</head><body>
-<div id="term"></div>
-<script>${safe(xtermJs)}</script>
-<script>${safe(fitJs)}</script>
-<script>
-  (function () {
-    var queue = [];
-    var ready = false;
-    var term = null;
-    var fit  = null;
-    function post(kind, data) {
-      try { window.ReactNativeWebView.postMessage(JSON.stringify({ kind: kind, data: data })); } catch (e) {}
-    }
-    window.__write = function (b64) {
-      // Chunk sent from RN as base64 to survive JS-string escaping.
-      var s;
-      try { s = atob(b64); } catch (e) { s = ''; }
-      if (!ready) { queue.push(s); return; }
-      term.write(s);
-    };
-    window.__clear = function () { if (term) term.clear(); queue.length = 0; };
-    window.__fit   = function () { try { fit && fit.fit(); } catch (e) {} };
-    if (!window.Terminal) { post('error', 'xterm globals missing after inline load'); return; }
-    function boot() {
-      term = new window.Terminal({
-        convertEol: true,
-        cursorBlink: false,
-        fontFamily: 'Menlo, monospace',
-        fontSize: 12,
-        theme: { background: '#050506', foreground: '#d4d4d8' },
-        scrollback: 5000,
-        disableStdin: true,
-      });
-      if (window.FitAddon) {
-        fit = new window.FitAddon.FitAddon();
-        term.loadAddon(fit);
-      }
-      term.open(document.getElementById('term'));
-      try { fit && fit.fit(); } catch (e) {}
-      ready = true;
-      for (var i = 0; i < queue.length; i++) term.write(queue[i]);
-      queue.length = 0;
-      post('ready', null);
-      window.addEventListener('resize', function () { try { fit && fit.fit(); } catch (e) {} });
-    }
-    boot();
-  }());
-</script>
-</body></html>`;
-}
-
-// Minimal base64 encoder — Buffer isn't in RN, btoa doesn't handle non-latin.
-// Chunks are ANSI bytes (single-byte, latin-1 safe) so this is enough.
-const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-function b64encode(str) {
-  let out = '', i = 0;
-  while (i < str.length) {
-    const c1 = str.charCodeAt(i++) & 0xff;
-    const c2 = i < str.length ? str.charCodeAt(i++) & 0xff : NaN;
-    const c3 = i < str.length ? str.charCodeAt(i++) & 0xff : NaN;
-    out += B64[c1 >> 2];
-    out += B64[((c1 & 3) << 4) | ((isNaN(c2) ? 0 : c2) >> 4)];
-    out += isNaN(c2) ? '=' : B64[((c2 & 15) << 2) | ((isNaN(c3) ? 0 : c3) >> 6)];
-    out += isNaN(c3) ? '=' : B64[c3 & 63];
-  }
-  return out;
-}
+// Busy agents deliver ~200 stream frames/s; batching writes per animation
+// tick collapses the per-frame RN <-> WebView IPC cost that runs the phone hot.
+const WRITE_FLUSH_MS = 16;
 
 export default function SessionScreen({ client, session, connState, onBack }) {
   const [draft, setDraft] = useState('');
@@ -140,37 +21,53 @@ export default function SessionScreen({ client, session, connState, onBack }) {
   const [error, setError] = useState(null);
   const [termReady, setTermReady] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
-  const [termHtml, setTermHtml] = useState(null);
-  // Diagnostic counters — surface which link in the wire is stalled.
-  // outputs: number of agent.output events received from desktop.
-  // replay: total chunks in the initial subscribe replay payload.
-  // lastRx: ms since last chunk (either replay or live). Zero if never.
   const [diag, setDiag] = useState({ outputs: 0, replay: 0, lastRxAt: 0, sentAt: 0 });
+  const [landscape, setLandscape] = useState(false);
+  const [webviewKey, setWebviewKey] = useState(0);
   const webRef = useRef(null);
-  // Chunks that arrive before the WebView is ready sit here. Ref-based so
-  // ready/output effects don't churn on state.
-  const pending = useRef([]);
   const termReadyRef = useRef(false);
+  const pending = useRef([]);
+  const flushTimerRef = useRef(null);
+  // Last dims we pushed to the PTY, so orientation/keyboard churn doesn't
+  // spam SIGWINCH at the agent.
+  const lastPushedDims = useRef({ cols: 0, rows: 0 });
 
-  useEffect(() => {
-    let cancelled = false;
-    loadXtermBundle()
-      .then(([css, js, fit]) => { if (!cancelled) setTermHtml(buildTermHtml(css, js, fit)); })
-      .catch((e) => { if (!cancelled) setError(`xterm fetch failed: ${e.message}`); });
-    return () => { cancelled = true; };
+  // Restore portrait on leave — otherwise the whole app stays sideways.
+  useEffect(() => () => {
+    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(() => {});
   }, []);
 
-  const inject = (chunk) => {
-    const b64 = b64encode(chunk);
-    // injectJavaScript needs a trailing `true;` to satisfy Android's return-value contract.
-    webRef.current?.injectJavaScript(`window.__write && window.__write("${b64}"); true;`);
+  const toggleOrientation = async () => {
+    const next = !landscape;
+    try {
+      await ScreenOrientation.lockAsync(
+        next
+          ? ScreenOrientation.OrientationLock.LANDSCAPE
+          : ScreenOrientation.OrientationLock.PORTRAIT,
+      );
+      setLandscape(next);
+    } catch (e) {
+      setError(`orientation: ${e?.message || e}`);
+    }
   };
 
-  const flushPending = () => {
-    if (!webRef.current) return;
-    const chunks = pending.current;
+  const postToWeb = (msg) => {
+    webRef.current?.postMessage(JSON.stringify(msg));
+  };
+
+  const flushWrites = () => {
+    flushTimerRef.current = null;
+    if (!pending.current.length || !termReadyRef.current) return;
+    const merged = pending.current.join('');
     pending.current = [];
-    for (const c of chunks) inject(c);
+    postToWeb({ type: 'write', data: merged });
+  };
+
+  const queueWrite = (chunk) => {
+    pending.current.push(chunk);
+    if (!termReadyRef.current) return;
+    if (flushTimerRef.current) return;
+    flushTimerRef.current = setTimeout(flushWrites, WRITE_FLUSH_MS);
   };
 
   useEffect(() => {
@@ -178,30 +75,31 @@ export default function SessionScreen({ client, session, connState, onBack }) {
     const off = client.on('agent.output', ({ sessionId, chunk }) => {
       if (sessionId !== session.id) return;
       setDiag((d) => ({ ...d, outputs: d.outputs + 1, lastRxAt: Date.now() }));
-      if (!termReadyRef.current) { pending.current.push(chunk); return; }
-      inject(chunk);
+      queueWrite(chunk);
     });
     return () => { off?.(); };
   }, [client, session?.id]);
 
-  // One subscribe per (session, connection). Not gated on termReady — chunks
-  // and replay both land in `pending` until the WebView boots and flushes.
-  // Re-firing on termReady would burn a subscribe/unsubscribe pair every mount
-  // and race the desktop bridge on the same sessionId.
+  // One subscribe per (session, connection). Replay chunks land in the same
+  // pending queue that live output uses, so ordering is preserved.
   useEffect(() => {
     if (!client || !session?.id || connState !== 'open') return;
     let cancelled = false;
     setSubscribed(false);
+    // A fresh peer (reconnect or new session) hasn't been told our dims yet.
+    lastPushedDims.current = { cols: 0, rows: 0 };
+    // Kick a viewport fit through the WebView so the new subscription starts
+    // with the PTY sized to what we actually render.
+    postToWeb({ type: 'fit' });
     client.request('agent.subscribe', { sessionId: session.id })
       .then((r) => {
         if (cancelled) return;
         const replay = r?.replay || [];
         setDiag((d) => ({ ...d, replay: replay.length, lastRxAt: replay.length ? Date.now() : d.lastRxAt }));
-        if (termReadyRef.current) {
-          for (const c of replay) inject(c);
-        } else {
-          pending.current.unshift(...replay);
-        }
+        // Replay is snapshot data — must land before any live chunks that
+        // came in during the round-trip.
+        pending.current = [...replay, ...pending.current];
+        if (termReadyRef.current) flushWrites();
         setSubscribed(true);
       })
       .catch((e) => { if (!cancelled) setError(`subscribe failed: ${e.message}`); });
@@ -211,20 +109,39 @@ export default function SessionScreen({ client, session, connState, onBack }) {
     };
   }, [client, session?.id, connState]);
 
+  const pushViewport = (cols, rows) => {
+    if (!client || !session?.id || connState !== 'open') return;
+    if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols < 2 || rows < 2) return;
+    if (lastPushedDims.current.cols === cols && lastPushedDims.current.rows === rows) return;
+    lastPushedDims.current = { cols, rows };
+    client.request('agent.resize', { sessionId: session.id, cols, rows }).catch((e) => {
+      // Older desktops without the RPC will error — cache to stop retrying.
+      if (String(e?.message || '').includes('agent.resize')) lastPushedDims.current = { cols: -1, rows: -1 };
+    });
+  };
+
   const onWebMessage = (ev) => {
     try {
       const msg = JSON.parse(ev.nativeEvent.data);
-      if (msg.kind === 'ready') {
+      if (msg.kind === 'web-ready') {
         termReadyRef.current = true;
         setTermReady(true);
-        flushPending();
-        // Note: intentionally NOT calling pty.resize — that would shrink the
-        // shared desktop PTY to phone dims. xterm word-wraps locally instead;
-        // desktop pane stays at its own size.
+        flushWrites();
+      } else if (msg.kind === 'resize') {
+        pushViewport(msg.data?.cols, msg.data?.rows);
       } else if (msg.kind === 'error') {
         setError(`terminal: ${msg.data}`);
       }
     } catch {}
+  };
+
+  // WKWebView content-process loss / Android render-process gone: swap in a
+  // fresh WebView. Chunks queued in `pending` will replay when it reboots.
+  const remountWebView = () => {
+    termReadyRef.current = false;
+    setTermReady(false);
+    if (flushTimerRef.current) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null; }
+    setWebviewKey((k) => k + 1);
   };
 
   const send = async () => {
@@ -274,12 +191,9 @@ export default function SessionScreen({ client, session, connState, onBack }) {
               <Text style={styles.subtitle} numberOfLines={1}>{session.agent}</Text>
             ) : null}
           </View>
-          <View style={styles.diag}>
-            <Text style={styles.diagText}>
-              {connState[0].toUpperCase()} · {subscribed ? 'S' : '-'} · rx{diag.outputs}
-              {diag.replay ? ` +${diag.replay}` : ''}
-            </Text>
-          </View>
+          <Pressable onPress={toggleOrientation} hitSlop={12} style={styles.rotBtn}>
+            <Text style={styles.rotBtnText}>{landscape ? '▯' : '▭'}</Text>
+          </Pressable>
         </View>
 
         {error ? (
@@ -290,27 +204,33 @@ export default function SessionScreen({ client, session, connState, onBack }) {
         ) : null}
 
         <View style={styles.stream}>
-          {termHtml ? (
-            <WebView
-              ref={webRef}
-              originWhitelist={['*']}
-              source={{ html: termHtml, baseUrl: 'https://tempest.local/' }}
-              onMessage={onWebMessage}
-              javaScriptEnabled
-              domStorageEnabled
-              scrollEnabled={false}
-              mixedContentMode="always"
-              allowsBackForwardNavigationGestures={false}
-              style={{ backgroundColor: '#050506', flex: 1 }}
-              containerStyle={{ backgroundColor: '#050506' }}
-              androidLayerType="hardware"
-            />
-          ) : null}
-          {(!termHtml || !termReady || !subscribed) ? (
+          <WebView
+            key={webviewKey}
+            ref={webRef}
+            originWhitelist={['*']}
+            source={{ html: XTERM_HTML }}
+            onMessage={onWebMessage}
+            javaScriptEnabled
+            domStorageEnabled
+            scrollEnabled={false}
+            nestedScrollEnabled
+            // Android WebView defaults textZoom to the system font scale,
+            // inflating xterm's DOM glyphs past its canvas-measured cell grid.
+            textZoom={100}
+            scalesPageToFit={false}
+            allowsBackForwardNavigationGestures={false}
+            style={{ backgroundColor: '#050506', flex: 1 }}
+            containerStyle={{ backgroundColor: '#050506' }}
+            androidLayerType="hardware"
+            onError={(e) => setError(`webview: ${e?.nativeEvent?.description || 'load failed'}`)}
+            onRenderProcessGone={remountWebView}
+            onContentProcessDidTerminate={remountWebView}
+          />
+          {(!termReady || !subscribed) ? (
             <View style={styles.overlay} pointerEvents="none">
               <ActivityIndicator size="small" color="#71717a" />
               <Text style={styles.overlayText}>
-                {!termHtml ? 'Fetching terminal…' : !termReady ? 'Loading terminal…' : 'Subscribing…'}
+                {!termReady ? 'Loading terminal…' : 'Subscribing…'}
               </Text>
             </View>
           ) : null}
@@ -358,12 +278,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: '#18181b',
   },
   back: { color: '#e4e4e7', fontSize: 17, fontFamily: geist.regular, width: 90 },
-  diag: {
-    width: 90, alignItems: 'flex-end', paddingHorizontal: 4,
+  rotBtn: {
+    width: 90, alignItems: 'flex-end', paddingHorizontal: 8, paddingVertical: 4,
   },
-  diagText: {
-    color: '#71717a', fontSize: 10, fontFamily: 'GeistPixel',
-    letterSpacing: 0.5,
+  rotBtnText: {
+    color: '#e4e4e7', fontSize: 22, lineHeight: 22,
   },
   title: { color: '#fafafa', fontSize: 15, fontFamily: geist.semibold, letterSpacing: -0.2 },
   subtitle: { color: '#8ab4f8', fontSize: 11, fontFamily: geist.medium, letterSpacing: 0.3, marginTop: 2 },

@@ -128,6 +128,10 @@ export interface RpcParams {
    *  replay buffer so the client (xterm on the phone) can catch up. */
   "agent.subscribe":    { sessionId: string };
   "agent.unsubscribe":  { sessionId: string };
+  /** Mobile viewport → desktop PTY. Sends SIGWINCH so TUIs re-lay out
+   *  at the phone's actual width, otherwise absolute-position escapes
+   *  and box-drawing land at wrong cells for the mobile grid. */
+  "agent.resize":       { sessionId: string; cols: number; rows: number };
 
   "permission.list":    Record<string, never>;
   "permission.decide":  { sessionId: string; decision: "approve" | "deny" };
@@ -158,6 +162,7 @@ export interface RpcResult {
   "agent.stop":         void;
   "agent.subscribe":    { replay: string[] };
   "agent.unsubscribe":  void;
+  "agent.resize":       void;
 
   "permission.list":    PermissionRequest[];
   "permission.decide":  void;

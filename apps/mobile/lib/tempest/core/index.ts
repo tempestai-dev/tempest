@@ -102,6 +102,7 @@ export interface RpcParams {
   "agent.stop":         { sessionId: string };
   "agent.subscribe":    { sessionId: string };
   "agent.unsubscribe":  { sessionId: string };
+  "agent.resize":       { sessionId: string; cols: number; rows: number };
 
   "permission.list":    Record<string, never>;
   "permission.decide":  { sessionId: string; decision: "approve" | "deny" };
@@ -132,6 +133,7 @@ export interface RpcResult {
   "agent.stop":         void;
   "agent.subscribe":    { replay: string[] };
   "agent.unsubscribe":  void;
+  "agent.resize":       void;
 
   "permission.list":    PermissionRequest[];
   "permission.decide":  void;

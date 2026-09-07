@@ -148,6 +148,15 @@ export function attachBridge(ws: WebSocket, sessionKey: Uint8Array): AttachedBri
   });
   peer.handle("agent.unsubscribe", async ({ sessionId }) => { detachStream(sessionId); });
 
+  // Push the mobile viewport into the PTY so TUIs re-lay out at the phone's
+  // width. Without this, cursor-position escapes and box-drawing that the
+  // agent emits assuming the desktop PTY cols land at wrong cells on mobile.
+  peer.handle("agent.resize", async ({ sessionId, cols, rows }) => {
+    if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols < 1 || rows < 1) return;
+    await invoke("resize_pty", { sessionId, cols, rows }).catch((e) =>
+      console.error(`[bridge] agent.resize failed sid=${sessionId.slice(0, 8)}`, e));
+  });
+
   // ponytail: permission.decide waits on Phase 4 (agent-hook approve/deny
   // plumbing lands with Expo Push). Until then, mobile gets a clean error.
   peer.handle("permission.decide", async () => { throw new Error("not_implemented:permission.decide"); });
