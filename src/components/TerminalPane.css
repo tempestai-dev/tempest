@@ -83,3 +83,70 @@
 .terminal-pane .xterm .xterm-scrollable-element > .shadow {
   display: none !important;
 }
+
+/* Mobile-driver lock. Root is click-through so xterm selection still works;
+   only the card itself catches pointer events. No scrim/blur — the terminal
+   keeps painting behind it as live status. */
+.terminal-mobile-lock-root {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.terminal-mobile-lock-card {
+  pointer-events: auto;
+  width: min(24rem, 100%);
+  background: var(--tempest-bg-panel);
+  color: var(--tempest-fg-default);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 8px;
+  box-shadow: 0 10px 32px -8px rgba(0, 0, 0, 0.45);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.terminal-mobile-lock-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.terminal-mobile-lock-title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+.terminal-mobile-lock-body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--tempest-fg-muted);
+}
+.terminal-mobile-lock-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.terminal-mobile-lock-btn {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: var(--tempest-fg-default);
+  color: var(--tempest-bg-panel);
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+.terminal-mobile-lock-btn:hover { opacity: 0.9; }
+.terminal-mobile-lock-btn:active { opacity: 0.8; }
+.terminal-mobile-lock-btn:focus-visible {
+  outline: 2px solid var(--tempest-fg-default);
+  outline-offset: 2px;
+}

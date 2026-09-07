@@ -12,6 +12,7 @@ import { getSettings, useSettings } from "../store/appSettings";
 import { getBindings, matchesEvent } from "../store/keybindings";
 import { sessionManager } from "../store/sessionManager";
 import { webglPool } from "../lib/webglPool";
+import { useIsMobileControlled, takeBack, isControlled } from "../store/mobileControlledSessions";
 import "@xterm/xterm/css/xterm.css";
 import "./TerminalPane.css";
 
@@ -69,6 +70,7 @@ export const TerminalPane = memo(forwardRef<TerminalPaneHandle, Props>(function 
   const [searchQuery, setSearchQuery] = useState("");
   const { theme } = useTheme();
   const settings = useSettings();
+  const mobileControlled = useIsMobileControlled(sessionId);
 
   useImperativeHandle(ref, () => ({
     clear: () => { termRef.current?.reset(); },
@@ -82,6 +84,9 @@ export const TerminalPane = memo(forwardRef<TerminalPaneHandle, Props>(function 
     const term = termRef.current;
     if (!term || !c || c.offsetWidth === 0 || c.offsetHeight === 0) return;
     fitAddonRef.current?.fit();
+    // While a phone is driving this session, the PTY is sized to the phone's
+    // viewport. Refitting from the desktop here would clobber that.
+    if (isControlled(sessionId)) return;
     invoke("resize_pty", { sessionId, rows: term.rows, cols: term.cols }).catch(() => {});
   };
 
@@ -89,6 +94,16 @@ export const TerminalPane = memo(forwardRef<TerminalPaneHandle, Props>(function 
   useEffect(() => {
     if (termRef.current) termRef.current.options.theme = getTerminalTheme();
   }, [theme]);
+
+  // Reflect mobile-drive state onto xterm's stdin gate. `disableStdin` stops
+  // xterm from emitting user keystrokes as onData, matching the visual lock.
+  useEffect(() => {
+    const t = termRef.current;
+    if (!t) return;
+    t.options.disableStdin = readOnly || mobileControlled;
+    // When the phone lets go, snap back to desktop dims immediately.
+    if (!mobileControlled) requestAnimationFrame(fitIfVisible);
+  }, [mobileControlled, readOnly]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Hot-swap terminal display settings without recreating the session.
   useEffect(() => {
@@ -155,6 +170,9 @@ export const TerminalPane = memo(forwardRef<TerminalPaneHandle, Props>(function 
 
     if (!readOnly) {
       term.onData((data) => {
+        // Phone is driving — drop desktop-originated keystrokes so both sides
+        // aren't typing into the same PTY at once.
+        if (isControlled(sessionId)) return;
         const bytes = Array.from(new TextEncoder().encode(data));
         invoke("write_to_pty", { sessionId, data: bytes }).catch(() => {});
         if (isAgent && data.includes("\r")) sessionManager.markUserInput(sessionId);
@@ -317,6 +335,27 @@ export const TerminalPane = memo(forwardRef<TerminalPaneHandle, Props>(function 
         </div>
       )}
       <div ref={containerRef} className="terminal-pane" />
+      {mobileControlled ? (
+        <div className="terminal-mobile-lock-root" role="dialog" aria-live="assertive">
+          <div className="terminal-mobile-lock-card">
+            <div className="terminal-mobile-lock-header">
+              <div className="terminal-mobile-lock-title">Phone is in control</div>
+              <div className="terminal-mobile-lock-body">
+                Desktop input is paused. Take back this terminal to type here.
+              </div>
+            </div>
+            <div className="terminal-mobile-lock-actions">
+              <button
+                type="button"
+                className="terminal-mobile-lock-btn"
+                onClick={() => takeBack(sessionId)}
+              >
+                Take back
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }));

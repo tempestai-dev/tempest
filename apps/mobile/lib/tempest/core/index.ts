@@ -151,6 +151,7 @@ export interface ServerEventPayload {
   "permission.resolved": { sessionId: string };
   "projects.changed":   { projects: ProjectSummary[] };
   "agent.output":       { sessionId: string; chunk: string };
+  "session.controllerYielded": { sessionId: string };
 }
 
 export type ServerEvent = keyof ServerEventPayload;

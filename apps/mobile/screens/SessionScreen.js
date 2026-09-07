@@ -24,6 +24,7 @@ export default function SessionScreen({ client, session, connState, onBack }) {
   const [diag, setDiag] = useState({ outputs: 0, replay: 0, lastRxAt: 0, sentAt: 0 });
   const [landscape, setLandscape] = useState(false);
   const [webviewKey, setWebviewKey] = useState(0);
+  const [yielded, setYielded] = useState(false);
   const webRef = useRef(null);
   const termReadyRef = useRef(false);
   const pending = useRef([]);
@@ -77,8 +78,26 @@ export default function SessionScreen({ client, session, connState, onBack }) {
       setDiag((d) => ({ ...d, outputs: d.outputs + 1, lastRxAt: Date.now() }));
       queueWrite(chunk);
     });
-    return () => { off?.(); };
+    const offYield = client.on('session.controllerYielded', ({ sessionId }) => {
+      if (sessionId !== session.id) return;
+      setYielded(true);
+    });
+    return () => { off?.(); offYield?.(); };
   }, [client, session?.id]);
+
+  const reconnectControl = () => {
+    if (!client || !session?.id || connState !== 'open') return;
+    setYielded(false);
+    lastPushedDims.current = { cols: 0, rows: 0 };
+    client.request('agent.subscribe', { sessionId: session.id })
+      .then((r) => {
+        const replay = r?.replay || [];
+        pending.current = [...replay, ...pending.current];
+        if (termReadyRef.current) flushWrites();
+        postToWeb({ type: 'fit' });
+      })
+      .catch((e) => setError(`resubscribe failed: ${e.message}`));
+  };
 
   // One subscribe per (session, connection). Replay chunks land in the same
   // pending queue that live output uses, so ordering is preserved.
@@ -111,6 +130,8 @@ export default function SessionScreen({ client, session, connState, onBack }) {
 
   const pushViewport = (cols, rows) => {
     if (!client || !session?.id || connState !== 'open') return;
+    // Desktop reclaimed — don't fight the desktop's fit until user resubscribes.
+    if (yielded) return;
     if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols < 2 || rows < 2) return;
     if (lastPushedDims.current.cols === cols && lastPushedDims.current.rows === rows) return;
     lastPushedDims.current = { cols, rows };
@@ -200,6 +221,15 @@ export default function SessionScreen({ client, session, connState, onBack }) {
           <View style={styles.errorBanner}>
             <Text style={styles.errorText}>{error}</Text>
             <Pressable onPress={() => setError(null)}><Text style={styles.errorDismiss}>×</Text></Pressable>
+          </View>
+        ) : null}
+
+        {yielded ? (
+          <View style={styles.yieldBanner}>
+            <Text style={styles.yieldText}>Desktop is in control of this session.</Text>
+            <Pressable onPress={reconnectControl} style={styles.yieldBtn}>
+              <Text style={styles.yieldBtnText}>Take control</Text>
+            </Pressable>
           </View>
         ) : null}
 
@@ -331,4 +361,16 @@ const styles = StyleSheet.create({
   },
   errorText: { flex: 1, color: '#f0b0b0', fontSize: 13, fontFamily: geist.regular },
   errorDismiss: { color: '#f0b0b0', fontSize: 20, paddingHorizontal: 6 },
+
+  yieldBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    marginHorizontal: 12, marginTop: 8, padding: 10, borderRadius: 8,
+    backgroundColor: 'rgba(120,150,220,0.12)', borderWidth: 1, borderColor: 'rgba(120,150,220,0.3)',
+  },
+  yieldText: { flex: 1, color: '#c0d4f5', fontSize: 13, fontFamily: geist.regular },
+  yieldBtn: {
+    paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6,
+    backgroundColor: '#ffffff',
+  },
+  yieldBtnText: { color: '#0c0d10', fontSize: 13, fontFamily: geist.semibold },
 });

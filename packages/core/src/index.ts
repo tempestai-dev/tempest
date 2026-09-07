@@ -184,6 +184,10 @@ export interface ServerEventPayload {
   "projects.changed":   { projects: ProjectSummary[] };
   /** Phase 3+: terminal stream chunk. */
   "agent.output":       { sessionId: string; chunk: string };
+  /** Desktop reclaimed control of the session's PTY. Mobile should stop
+   *  pushing viewport resizes and surface a "desktop is in control" banner
+   *  until the user resubscribes. */
+  "session.controllerYielded": { sessionId: string };
 }
 
 export type ServerEvent = keyof ServerEventPayload;

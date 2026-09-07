@@ -22,6 +22,7 @@ import {
 import { subscribeAllWorkStateChanges, clearWorkState, getWorkState } from "../../store/workState";
 import { getWorkspaceApi } from "./workspaceApi";
 import { sessionManager } from "../../store/sessionManager";
+import { addController, removeController, onTakeBack } from "../../store/mobileControlledSessions";
 
 export interface AttachedBridge {
   peer: RpcPeer;
@@ -127,34 +128,53 @@ export function attachBridge(ws: WebSocket, sessionKey: Uint8Array): AttachedBri
   // catches up before live chunks arrive. Unsubscribe on request AND on peer
   // close; otherwise sessionManager would keep forwarding into a dead socket.
   const streamOff = new Map<string, () => void>();
+  // Sessions this peer holds a mobile-controller ref for. Kept in sync with
+  // the global store so peer close correctly decrements each ref.
+  const controlled = new Set<string>();
+  // Desktop take-back the user just fired. Mobile resize pushes on these are
+  // rejected until this peer resubscribes.
+  const yielded = new Set<string>();
   const detachStream = (sessionId: string) => {
     const off = streamOff.get(sessionId);
     if (off) { off(); streamOff.delete(sessionId); }
+    if (controlled.delete(sessionId)) removeController(sessionId);
   };
   peer.handle("agent.subscribe", async ({ sessionId }) => {
     detachStream(sessionId);
+    yielded.delete(sessionId);
     let count = 0;
     const listener = (chunk: string) => {
       count++;
-      // Log EVERY chunk so we can see if the desktop fanout is firing.
       console.log(`[bridge] agent.output → phone sid=${sessionId.slice(0, 8)} #${count} bytes=${chunk.length} first=${JSON.stringify(chunk.slice(0, 40))}`);
       peer.emit("agent.output", { sessionId, chunk });
     };
     const replay = sessionManager.attach(sessionId, listener);
     streamOff.set(sessionId, () => sessionManager.detach(sessionId, listener));
+    controlled.add(sessionId);
+    addController(sessionId);
     const replayBytes = replay.reduce((n, s) => n + s.length, 0);
     console.log(`[bridge] agent.subscribe sid=${sessionId.slice(0, 8)} replay_chunks=${replay.length} replay_bytes=${replayBytes} sm_has=${sessionManager.has(sessionId)}`);
     return { replay };
   });
   peer.handle("agent.unsubscribe", async ({ sessionId }) => { detachStream(sessionId); });
 
-  // Push the mobile viewport into the PTY so TUIs re-lay out at the phone's
-  // width. Without this, cursor-position escapes and box-drawing that the
-  // agent emits assuming the desktop PTY cols land at wrong cells on mobile.
   peer.handle("agent.resize", async ({ sessionId, cols, rows }) => {
     if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols < 1 || rows < 1) return;
+    // Desktop reclaimed this session — ignore further phone-driven resizes
+    // until the peer resubscribes.
+    if (yielded.has(sessionId)) return;
     await invoke("resize_pty", { sessionId, cols, rows }).catch((e) =>
       console.error(`[bridge] agent.resize failed sid=${sessionId.slice(0, 8)}`, e));
+  });
+
+  // Desktop pressed "Take back". Every peer that holds this session gets a
+  // controllerYielded push and a poisoned resize gate. The store already
+  // zero'd the ref-count so we just drop our own ref without decrementing.
+  const unTakeBack = onTakeBack((sessionId) => {
+    if (!controlled.has(sessionId)) return;
+    controlled.delete(sessionId);
+    yielded.add(sessionId);
+    peer.emit("session.controllerYielded", { sessionId });
   });
 
   // ponytail: permission.decide waits on Phase 4 (agent-hook approve/deny
@@ -226,8 +246,11 @@ export function attachBridge(ws: WebSocket, sessionKey: Uint8Array): AttachedBri
     peer,
     close() {
       unLifecycle(); unWork(); unQueue(); unProjects(); unWorktrees();
+      unTakeBack();
       for (const off of streamOff.values()) off();
       streamOff.clear();
+      for (const sid of controlled) removeController(sid);
+      controlled.clear();
       peer.close();
     },
   };
