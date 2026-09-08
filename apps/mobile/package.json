@@ -16,9 +16,11 @@
     "expo-linear-gradient": "~57.0.1",
     "expo-screen-orientation": "~57.0.2",
     "expo-status-bar": "~57.0.1",
+    "lucide-react-native": "^0.475.0",
     "react": "19.2.3",
     "react-native": "0.86.3",
     "react-native-safe-area-context": "~5.7.0",
+    "react-native-svg": "15.15.4",
     "react-native-webview": "13.16.1",
     "tweetnacl": "^1.0.3",
     "tweetnacl-util": "^0.15.1"
@@ -33,6 +35,7 @@
   "private": true,
   "devDependencies": {
     "babel-preset-expo": "^57.0.8",
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "react-native-svg-transformer": "^1.5.0"
   }
 }

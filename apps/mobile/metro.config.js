@@ -14,4 +14,10 @@ config.resolver.extraNodeModules = {
 };
 config.resolver.assetExts.push('glb', 'gltf', 'bin');
 
+// SVG-as-React-component (agent icons). Reclassifies .svg from an asset to a
+// source module so react-native-svg-transformer can turn it into a component.
+config.transformer.babelTransformerPath = require.resolve('react-native-svg-transformer');
+config.resolver.assetExts = config.resolver.assetExts.filter((ext) => ext !== 'svg');
+config.resolver.sourceExts = [...config.resolver.sourceExts, 'svg'];
+
 module.exports = config;

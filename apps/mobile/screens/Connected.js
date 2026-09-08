@@ -1,9 +1,61 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, ScrollView, ActivityIndicator, StyleSheet, Linking } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  View, Text, Pressable, ScrollView, SectionList, TextInput,
+  RefreshControl, ActivityIndicator, StyleSheet, Linking,
+  Animated, Easing,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { TerminalSquare, Bot, Monitor, Menu, Plus, LogOut } from 'lucide-react-native';
 import { startRpcClient } from '../lib/rpc';
 import SessionScreen from './SessionScreen';
+
+// Bundled agent SVGs — mirror of desktop's src/assets/agent-icons + the
+// runtime-fetched set (amp/fx/grok/hermes/pi). Metro's svg-transformer turns
+// each into a react-native-svg component that respects a `color` prop when
+// the source uses fill="currentColor".
+import AntigravityIcon from '../assets/agent-icons/antigravity.svg';
+import ClaudeIcon from '../assets/agent-icons/claude-color.svg';
+import ClineIcon from '../assets/agent-icons/cline.svg';
+import CodexIcon from '../assets/agent-icons/codex.svg';
+import CopilotIcon from '../assets/agent-icons/githubcopilot-color.svg';
+import CursorIcon from '../assets/agent-icons/cursor.svg';
+import GeminiIcon from '../assets/agent-icons/geminicli-color.svg';
+import GooseIcon from '../assets/agent-icons/goose.svg';
+import OpencodeIcon from '../assets/agent-icons/opencode.svg';
+import AmpIcon from '../assets/agent-icons/amp.svg';
+import FxIcon from '../assets/agent-icons/fx.svg';
+import GrokIcon from '../assets/agent-icons/grok.svg';
+import HermesIcon from '../assets/agent-icons/hermes.svg';
+import PiIcon from '../assets/agent-icons/pi.svg';
+
+// Maps the agent id/hint the desktop stamps onto session.agent to its bundled
+// icon component. Keys match config/agents.json `icon` fields plus the id
+// itself where they diverge — desktop projectSession sends `s.agent` verbatim.
+const AGENT_ICONS = {
+  agy: AntigravityIcon, antigravity: AntigravityIcon,
+  claude: ClaudeIcon,
+  cline: ClineIcon,
+  codex: CodexIcon,
+  copilot: CopilotIcon,
+  cursor: CursorIcon,
+  gemini: GeminiIcon,
+  goose: GooseIcon,
+  opencode: OpencodeIcon,
+  amp: AmpIcon,
+  fx: FxIcon,
+  grok: GrokIcon,
+  hermes: HermesIcon,
+  pi: PiIcon,
+};
+
+// Mono-fill agents (desktop config/agents.json `"mono": true`). These SVGs use
+// fill="currentColor", so on dark bg we pass a light color; the equivalent of
+// the desktop's `[data-theme="dark"] .agent-icon--mono { filter: invert(1); }`.
+const MONO_AGENTS = new Set([
+  'agy', 'antigravity', 'cline', 'codex', 'cursor', 'goose', 'opencode',
+  'amp', 'fx', 'grok', 'hermes', 'pi',
+]);
 
 // Bump for any BREAKING wire change (removed method, changed field semantics,
 // new framing). MIN_COMPATIBLE_DESKTOP_VERSION is the oldest desktop this
@@ -19,9 +71,9 @@ const STATE_LABEL = { connecting: 'Connecting', open: 'Live', closed: 'Reconnect
 const STATE_COLOR = { connecting: '#e0c46c', open: '#7be495', closed: '#e07b7b' };
 
 const STATUS_COLOR = {
-  working: '#7be495',
+  working: '#e0c46c',
   waiting: '#e0c46c',
-  done: '#8a8a90',
+  done: '#7be495',
   idle: '#5a5a60',
 };
 
@@ -56,11 +108,13 @@ export default function Connected({ pairing, onUnpair, onBack }) {
   const [connState, setConnState] = useState('connecting');
   const [snapshot, setSnapshot] = useState(null);
   const [error, setError] = useState(null);
-  // Collapsed sets are on by-id for projects and by "projectId::branchKey" for
-  // branches. Everything else defaults to expanded — sidebar parity.
-  const [collapsedProjects, setCollapsedProjects] = useState(() => new Set());
-  const [collapsedBranches, setCollapsedBranches] = useState(() => new Set());
+  const [search, setSearch] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  // One flat collapse set keyed by "projectId::branchKey". Sections default expanded.
+  const [collapsedSections, setCollapsedSections] = useState(() => new Set());
   const [selectedSessionId, setSelectedSessionId] = useState(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmUnpair, setConfirmUnpair] = useState(false);
   // Session id currently being reopened via session.hop — shows a spinner on
   // the tapped row so the user gets feedback while the desktop respawns PTY.
   const [reopeningId, setReopeningId] = useState(null);
@@ -177,15 +231,36 @@ export default function Connected({ pairing, onUnpair, onBack }) {
     };
   }, [connState]);
 
+  // Manual pull-to-refresh — forces a fresh snapshot after stale-cache reconnects.
+  const onRefresh = useCallback(async () => {
+    const c = clientRef.current;
+    if (!c) return;
+    setRefreshing(true);
+    try {
+      const r = await c.request('session.list', {});
+      setSnapshot({
+        sessions: r?.sessions || [],
+        projects: r?.projects || [],
+        branches: r?.branches || [],
+        recents:  r?.recents  || [],
+      });
+    } catch (e) {
+      setError(e?.message || 'Refresh failed');
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
   const counts = useMemo(() => {
-    if (!snapshot) return { active: 0, waiting: 0, total: 0 };
-    let active = 0, waiting = 0;
+    if (!snapshot) return { active: 0, waiting: 0, idle: 0, inactive: 0, total: 0 };
+    let active = 0, waiting = 0, idle = 0, inactive = 0;
     for (const s of snapshot.sessions) {
-      if (s.closed) continue;
+      if (s.closed) { inactive++; continue; }
       if (s.status === 'waiting') waiting++;
       else if (s.status === 'working') active++;
+      else idle++;
     }
-    return { active, waiting, total: snapshot.sessions.length };
+    return { active, waiting, idle, inactive, total: snapshot.sessions.length };
   }, [snapshot]);
 
   // branchId → branch path, so a session's branchId maps to a worktree.
@@ -211,12 +286,10 @@ export default function Connected({ pairing, onUnpair, onBack }) {
       const isGit = !!project.isGit;
       const groups = new Map();
 
-      // Seed every disk-scanned worktree as an empty bucket (order preserved).
       for (const wt of worktrees) {
         groups.set(wt.path, { key: wt.path, label: wt.name, isRoot: false, sessions: [] });
       }
 
-      // Place sessions.
       for (const s of (snapshot.sessions || [])) {
         if (s.projectId !== project.id) continue;
         const branchPath = s.branchId ? branchPathById.get(s.branchId) : undefined;
@@ -224,8 +297,6 @@ export default function Connected({ pairing, onUnpair, onBack }) {
         if (branchPath && groups.has(branchPath)) {
           key = branchPath;
         } else if (branchPath) {
-          // Session's branch doesn't match any known worktree — synthesize a
-          // row so it's still visible under its branch name, not folded into root.
           key = branchPath;
           if (!groups.has(key)) {
             groups.set(key, { key, label: basename(branchPath), isRoot: false, sessions: [] });
@@ -239,8 +310,6 @@ export default function Connected({ pairing, onUnpair, onBack }) {
         groups.get(key).sessions.push(s);
       }
 
-      // Make sure the root row exists for git projects even without sessions —
-      // matches the desktop "main" pseudo-row.
       if (isGit && !groups.has(ROOT_KEY)) {
         groups.set(ROOT_KEY, { key: ROOT_KEY, label: 'main', isRoot: true, sessions: [] });
       }
@@ -252,8 +321,6 @@ export default function Connected({ pairing, onUnpair, onBack }) {
         const g = groups.get(wt.path);
         if (g) ordered.push(g);
       }
-      // Any synthesised branch rows (branch path with no matching worktree)
-      // land at the end, alphabetically — rare, but keeps them visible.
       for (const g of groups.values()) {
         if (g === root) continue;
         if (worktrees.some((w) => w.path === g.key)) continue;
@@ -265,8 +332,6 @@ export default function Connected({ pairing, onUnpair, onBack }) {
       out.push({ project, groups: ordered });
     }
 
-    // Sessions whose projectId isn't in snapshot.projects (rare) — surface
-    // them under a synthetic project so they don't vanish.
     const knownIds = new Set(projects.map((p) => p.id));
     const orphans = (snapshot.sessions || []).filter((s) => !knownIds.has(s.projectId));
     if (orphans.length > 0) {
@@ -287,12 +352,53 @@ export default function Connected({ pairing, onUnpair, onBack }) {
     return (snapshot?.recents || []).filter((r) => !openPaths.has(r.path));
   }, [snapshot, openPaths]);
 
-  const toggleProject = (id) => setCollapsedProjects((prev) => {
-    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
-  });
-  const toggleBranch = (key) => setCollapsedBranches((prev) => {
+  // Flatten byProject into SectionList sections. Each branch splits into
+  // "Agent Sessions" and "Terminals" via divider pseudo-items — mirrors the
+  // desktop sidebar (s.agent truthy = agent; else terminal). Search prunes
+  // sessions by name and hides fully-empty sections when a query is active.
+  const sections = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const out = [];
+    for (const { project, groups } of byProject) {
+      for (const g of groups) {
+        const key = `${project.id}::${g.key}`;
+        const collapsed = collapsedSections.has(key);
+        const matched = q
+          ? g.sessions.filter((s) => (s.name || '').toLowerCase().includes(q))
+          : g.sessions;
+        if (q && matched.length === 0) continue;
+
+        const agents = matched.filter((s) => !!s.agent);
+        const terminals = matched.filter((s) => !s.agent);
+        const data = [];
+        if (agents.length > 0) {
+          data.push({ __divider: true, id: `${key}::div::agents`, label: 'Agent Sessions' });
+          for (const s of agents) data.push(s);
+        }
+        if (terminals.length > 0) {
+          data.push({ __divider: true, id: `${key}::div::terminals`, label: 'Terminals' });
+          for (const s of terminals) data.push(s);
+        }
+
+        out.push({
+          key,
+          title: project.name,
+          subtitle: g.label,
+          isRoot: g.isRoot,
+          projectPath: project.path,
+          count: g.sessions.length,
+          matchedCount: matched.length,
+          collapsed,
+          data: collapsed ? [] : data,
+        });
+      }
+    }
+    return out;
+  }, [byProject, collapsedSections, search]);
+
+  const toggleSection = useCallback((key) => setCollapsedSections((prev) => {
     const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n;
-  });
+  }), []);
 
   // Tapping a closed (ghost) session reopens it on the desktop via session.hop
   // — same id, same conversation resumed — then enters SessionScreen once the
@@ -311,8 +417,11 @@ export default function Connected({ pairing, onUnpair, onBack }) {
     }
   };
 
-  // A row was tapped — hand control to SessionScreen, sharing the live client.
-  // If the session vanishes (removed / snapshot missing), fall back to the list.
+  // Placeholders — wired later. Long-press should open an action sheet;
+  // FAB should launch a "new session" flow.
+  const handleLongPressSession = (_s) => {};
+  const handleNewSession = () => {};
+
   const selectedSession = selectedSessionId
     ? (snapshot?.sessions || []).find((s) => s.id === selectedSessionId) || null
     : null;
@@ -338,135 +447,183 @@ export default function Connected({ pairing, onUnpair, onBack }) {
     );
   }
 
+  const topbar = (
+    <View style={styles.topbar}>
+      <Pressable onPress={onBack} hitSlop={12} disabled={!onBack} style={styles.topbarLeft}>
+        <Monitor size={22} color="#e4e4e7" strokeWidth={1.75} />
+        <Text style={styles.topbarName} numberOfLines={1} ellipsizeMode="tail">
+          {pairing?.name || 'Tempest desktop'}
+        </Text>
+      </Pressable>
+      <View style={styles.connBadge}>
+        <View style={[styles.connDot, { backgroundColor: STATE_COLOR[connState] }]} />
+        <Text style={styles.connText}>{STATE_LABEL[connState]}</Text>
+      </View>
+    </View>
+  );
+
+  const listHeader = (
+    <>
+      {topbar}
+      <View style={styles.statCards}>
+        <StatCard label="Active"   value={counts.active}   dot="#7be495" />
+        <StatCard label="Waiting"  value={counts.waiting}  dot="#e0c46c" />
+        <StatCard label="Idle"     value={counts.idle}     dot="#5a5a60" />
+        <StatCard label="Inactive" value={counts.inactive} dot="#3a3a40" hollow />
+      </View>
+
+      <View style={styles.searchWrap}>
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search sessions…"
+          placeholderTextColor="#71717a"
+          style={styles.searchInput}
+          autoCorrect={false}
+          autoCapitalize="none"
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+        />
+      </View>
+
+      {error && (
+        <View style={styles.errorBanner}><Text style={styles.errorText}>{error}</Text></View>
+      )}
+    </>
+  );
+
+  const listFooter = (
+    <>
+      {recents.length > 0 && (
+        <View style={styles.recentSection}>
+          <Text style={styles.recentSectionLabel}>Recent</Text>
+          {recents.slice(0, 8).map((r) => (
+            <View key={r.path} style={styles.recentRow}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.recentName} numberOfLines={1}>{r.name}</Text>
+                <Text style={styles.recentPath} numberOfLines={1}>{shortPath(r.path)}</Text>
+              </View>
+              <Text style={styles.recentTime}>{timeAgo(r.lastOpened)}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Reserve room so the last session row stays clear of the FAB / floating unpair. */}
+      <View style={{ height: 96 }} />
+    </>
+  );
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#09090b' }}>
       <StatusBar style="light" />
 
-      <View style={styles.topbar}>
-        {onBack ? (
-          <Pressable onPress={onBack} hitSlop={12}>
-            <Text style={styles.back}>‹ Desktops</Text>
-          </Pressable>
-        ) : <View />}
-        <View style={styles.connBadge}>
-          <View style={[styles.connDot, { backgroundColor: STATE_COLOR[connState] }]} />
-          <Text style={styles.connText}>{STATE_LABEL[connState]}</Text>
-        </View>
-      </View>
-
-      <View style={styles.header}>
-        <Text style={styles.hostName} numberOfLines={1}>{pairing?.name || 'Tempest desktop'}</Text>
-        <View style={styles.metaRow}>
-          <Text style={styles.fpText}>{pairing?.fingerprint}</Text>
-          <Text style={styles.metaDot}>·</Text>
-          <Text style={styles.metaCount}>{counts.total} sessions</Text>
-          {counts.active > 0 && <>
-            <Text style={styles.metaDot}>·</Text>
-            <Text style={[styles.metaCount, { color: '#7be495' }]}>{counts.active} active</Text>
-          </>}
-          {counts.waiting > 0 && <>
-            <Text style={styles.metaDot}>·</Text>
-            <Text style={[styles.metaCount, { color: '#e0c46c' }]}>{counts.waiting} approval</Text>
-          </>}
-        </View>
-      </View>
-
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.list}>
-        {error && (
-          <View style={styles.errorBanner}><Text style={styles.errorText}>{error}</Text></View>
-        )}
-
-        {!snapshot && !error && (
+      {!snapshot && !error ? (
+        <>
+          {topbar}
           <View style={styles.loading}>
             <ActivityIndicator size="small" color="#8a8a90" />
             <Text style={styles.loadingText}>Loading sessions…</Text>
           </View>
-        )}
-
-        {byProject.map(({ project, groups }) => {
-          const projectCollapsed = collapsedProjects.has(project.id);
-          const projectSessionCount = groups.reduce((n, g) => n + g.sessions.length, 0);
-          return (
-            <View key={project.id} style={styles.projectCard}>
-              <Pressable
-                style={styles.projectHead}
-                onPress={() => toggleProject(project.id)}
-                hitSlop={4}
-              >
-                <Chevron open={!projectCollapsed} />
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.projectName} numberOfLines={1}>{project.name}</Text>
-                  {project.path ? (
-                    <Text style={styles.projectPath} numberOfLines={1}>{shortPath(project.path)}</Text>
-                  ) : null}
-                </View>
-                <View style={styles.countPill}>
-                  <Text style={styles.countPillText}>{projectSessionCount}</Text>
-                </View>
-              </Pressable>
-
-              {!projectCollapsed && groups.map((g) => {
-                const branchKey = `${project.id}::${g.key}`;
-                const branchCollapsed = collapsedBranches.has(branchKey);
-                return (
-                  <View key={g.key} style={styles.branchBlock}>
-                    <Pressable
-                      style={styles.branchHead}
-                      onPress={() => toggleBranch(branchKey)}
-                      hitSlop={4}
-                    >
-                      <Chevron open={!branchCollapsed} size="small" />
-                      <Text style={styles.branchGlyph}>⑂</Text>
-                      <Text style={styles.branchLabel} numberOfLines={1}>{g.label}</Text>
-                      <Text style={styles.branchCount}>{g.sessions.length}</Text>
-                    </Pressable>
-                    {!branchCollapsed && (
-                      <View style={styles.sessionList}>
-                        {g.sessions.map((s) => (
-                          <SessionRow
-                            key={s.id}
-                            session={s}
-                            reopening={reopeningId === s.id}
-                            onPress={() => handleTapSession(s)}
-                          />
-                        ))}
-                      </View>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
-          );
-        })}
-
-        {snapshot && snapshot.sessions.length === 0 && (
-          <View style={styles.empty}>
-            <Text style={styles.emptyText}>No sessions yet.</Text>
-            <Text style={styles.emptySub}>Start one on your desktop to see it here.</Text>
-          </View>
-        )}
-
-        {recents.length > 0 && (
-          <View style={styles.recentSection}>
-            <Text style={styles.recentSectionLabel}>Recent</Text>
-            {recents.slice(0, 8).map((r) => (
-              <View key={r.path} style={styles.recentRow}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.recentName} numberOfLines={1}>{r.name}</Text>
-                  <Text style={styles.recentPath} numberOfLines={1}>{shortPath(r.path)}</Text>
-                </View>
-                <Text style={styles.recentTime}>{timeAgo(r.lastOpened)}</Text>
+        </>
+      ) : (
+        <SectionList
+          sections={sections}
+          keyExtractor={(item) => item.id}
+          stickySectionHeadersEnabled={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          contentContainerStyle={styles.list}
+          ListHeaderComponent={listHeader}
+          ListFooterComponent={listFooter}
+          ListEmptyComponent={
+            snapshot && snapshot.sessions.length === 0 ? (
+              <View style={styles.empty}>
+                <Text style={styles.emptyText}>No sessions yet.</Text>
+                <Text style={styles.emptySub}>Start one on your desktop to see it here.</Text>
               </View>
-            ))}
-          </View>
-        )}
-      </ScrollView>
+            ) : search.trim() ? (
+              <View style={styles.empty}>
+                <Text style={styles.emptyText}>No matches for “{search.trim()}”.</Text>
+              </View>
+            ) : null
+          }
+          renderSectionHeader={({ section }) => (
+            <SectionHeader section={section} onToggle={() => toggleSection(section.key)} />
+          )}
+          renderItem={({ item }) => (
+            item.__divider ? (
+              <KindDivider label={item.label} />
+            ) : (
+              <SessionRow
+                session={item}
+                reopening={reopeningId === item.id}
+                onPress={() => handleTapSession(item)}
+                onLongPress={() => handleLongPressSession(item)}
+              />
+            )
+          )}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#8a8a90"
+              colors={['#8a8a90']}
+            />
+          }
+        />
+      )}
 
-      <View style={styles.footer}>
-        <Pressable style={styles.unpairBtn} onPress={onUnpair}>
-          <Text style={styles.unpairText}>Unpair this desktop</Text>
-        </Pressable>
-      </View>
+      <Fab onPress={() => setMenuOpen(true)} />
+
+      {menuOpen && (
+        <>
+          <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />
+          <View style={styles.menuCard}>
+            <Pressable
+              style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+              onPress={() => { setMenuOpen(false); handleNewSession(); }}
+            >
+              <Plus size={16} color="#e4e4e7" strokeWidth={1.75} />
+              <Text style={styles.menuItemText}>New session</Text>
+            </Pressable>
+            <View style={styles.menuDivider} />
+            <Pressable
+              style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+              onPress={() => { setMenuOpen(false); setConfirmUnpair(true); }}
+            >
+              <LogOut size={16} color="#f0b0b0" strokeWidth={1.75} />
+              <Text style={[styles.menuItemText, { color: '#f0b0b0' }]}>Unpair desktop</Text>
+            </Pressable>
+          </View>
+        </>
+      )}
+
+      {confirmUnpair && (
+        <>
+          <Pressable style={styles.menuBackdrop} onPress={() => setConfirmUnpair(false)} />
+          <View style={styles.confirmCard}>
+            <Text style={styles.confirmTitle}>Unpair this desktop?</Text>
+            <Text style={styles.confirmBody}>
+              You'll need to re-pair {pairing?.name || 'this desktop'} by scanning its QR again.
+            </Text>
+            <View style={styles.confirmActions}>
+              <Pressable
+                style={({ pressed }) => [styles.confirmBtn, styles.confirmBtnGhost, pressed && { opacity: 0.7 }]}
+                onPress={() => setConfirmUnpair(false)}
+              >
+                <Text style={styles.confirmBtnGhostText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.confirmBtn, styles.confirmBtnDanger, pressed && { opacity: 0.85 }]}
+                onPress={() => { setConfirmUnpair(false); onUnpair?.(); }}
+              >
+                <Text style={styles.confirmBtnDangerText}>Unpair</Text>
+              </Pressable>
+            </View>
+          </View>
+        </>
+      )}
     </SafeAreaView>
   );
 }
@@ -489,36 +646,140 @@ function Chevron({ open, size = 'normal' }) {
   );
 }
 
-function SessionRow({ session, reopening, onPress }) {
-  const kind = session.closed ? 'closed' : (session.status || 'idle');
-  const dotColor = session.closed ? '#3a3a40' : STATUS_COLOR[kind === 'closed' ? 'done' : kind];
+function SectionHeader({ section, onToggle }) {
+  return (
+    <Pressable style={styles.sectionHeader} onPress={onToggle} hitSlop={4}>
+      <Chevron open={!section.collapsed} size="small" />
+      <Text style={styles.sectionTitle} numberOfLines={1}>{section.title}</Text>
+      {!section.isRoot && (
+        <>
+          <Text style={styles.sectionSep}>·</Text>
+          <Text style={styles.sectionBranch} numberOfLines={1}>{section.subtitle}</Text>
+        </>
+      )}
+      <Text style={styles.sectionCount}>{section.count}</Text>
+    </Pressable>
+  );
+}
+
+// Spinning ring for status=working. Uses RN Animated — no new deps.
+function WorkingRing({ color }) {
+  const spin = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.timing(spin, {
+        toValue: 1, duration: 1000, easing: Easing.linear, useNativeDriver: true,
+      })
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [spin]);
+  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  return (
+    <Animated.View
+      style={{
+        width: 10, height: 10, borderRadius: 5,
+        borderWidth: 2, borderColor: color, borderTopColor: 'transparent',
+        transform: [{ rotate }],
+      }}
+    />
+  );
+}
+
+function StatusGlyph({ session }) {
+  if (session.closed) {
+    return <View style={[styles.dot, { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#3a3a40' }]} />;
+  }
+  if (session.status === 'working') {
+    return <WorkingRing color={STATUS_COLOR.working} />;
+  }
+  const color = STATUS_COLOR[session.status] || STATUS_COLOR.idle;
+  return <View style={[styles.dot, { backgroundColor: color }]} />;
+}
+
+function SessionIcon({ session, size = 16 }) {
+  if (!session.agent) {
+    return <TerminalSquare size={size} color="#a1a1aa" strokeWidth={1.75} />;
+  }
+  const key = session.agent.toLowerCase();
+  const Svg = AGENT_ICONS[key];
+  if (Svg) {
+    // Mono icons render via fill="currentColor" — pass the theme's fg so they
+    // don't come out solid black on the dark app background.
+    const props = MONO_AGENTS.has(key)
+      ? { width: size, height: size, color: '#fafafa' }
+      : { width: size, height: size };
+    return <Svg {...props} />;
+  }
+  return <Bot size={size} color="#a1a1aa" strokeWidth={1.75} />;
+}
+
+function KindDivider({ label }) {
+  return (
+    <View style={styles.kindDivider}>
+      <Text style={styles.kindDividerText}>{label}</Text>
+    </View>
+  );
+}
+
+function SessionRow({ session, reopening, onPress, onLongPress }) {
   return (
     <Pressable
       style={({ pressed }) => [
         styles.sessionRow,
-        session.closed && !reopening && { opacity: 0.55 },
         pressed && { backgroundColor: '#18181b' },
       ]}
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={400}
       disabled={reopening}
       hitSlop={4}
     >
-      <View style={[styles.sessionDot, { backgroundColor: dotColor }]} />
+      <View style={styles.sessionIcon}>
+        <SessionIcon session={session} />
+      </View>
       <Text style={styles.sessionName} numberOfLines={1}>
         {session.name}
       </Text>
-      {session.agent ? (
-        <Text style={styles.sessionAgent} numberOfLines={1}>{session.agent}</Text>
-      ) : null}
       {session.queueLength > 0 ? (
-        <Text style={styles.sessionMeta}>{session.queueLength}q</Text>
+        <Text style={styles.sessionMeta}>{session.queueLength} queued</Text>
       ) : null}
-      {session.needsPermission ? (
-        <View style={styles.approvalDot} />
+      {session.createdAt ? (
+        <Text style={styles.sessionMeta}>{timeAgo(session.createdAt)}</Text>
       ) : null}
-      {reopening ? (
-        <ActivityIndicator size="small" color="#a1a1aa" style={{ marginLeft: 6 }} />
-      ) : null}
+      {session.needsPermission ? <View style={styles.approvalDot} /> : null}
+      {reopening ? <ActivityIndicator size="small" color="#a1a1aa" /> : null}
+    </Pressable>
+  );
+}
+
+function StatCard({ label, value, dot, hollow }) {
+  return (
+    <View style={styles.statCard}>
+      <View style={styles.statCardTop}>
+        <View
+          style={[
+            styles.statDot,
+            hollow
+              ? { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: dot }
+              : { backgroundColor: dot },
+          ]}
+        />
+        <Text style={styles.statValue}>{value}</Text>
+      </View>
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function Fab({ onPress }) {
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.fab, pressed && { opacity: 0.85 }]}
+      onPress={onPress}
+      hitSlop={8}
+    >
+      <Menu size={24} color="#09090b" strokeWidth={2.25} />
     </Pressable>
   );
 }
@@ -540,7 +801,7 @@ function ProtocolBlockScreen({ block, pairingName, onUnpair, onBack }) {
       <View style={styles.topbar}>
         {onBack ? (
           <Pressable onPress={onBack} hitSlop={12}>
-            <Text style={styles.back}>‹ Desktops</Text>
+            <Monitor size={22} color="#e4e4e7" strokeWidth={1.75} />
           </Pressable>
         ) : <View />}
         <View />
@@ -584,14 +845,20 @@ const blockStyles = StyleSheet.create({
   forgetBtnText: { color: '#71717a', fontSize: 13, fontFamily: geist.medium },
 });
 
-// shadcn-dark palette
+// shadcn-dark palette (skeleton — visual pass is Tempest's job, not orca's)
 // bg #09090b · card #0f0f11 · border #27272a · fg #fafafa · muted-fg #a1a1aa · dim #71717a
 const styles = StyleSheet.create({
   topbar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8,
   },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   back: { color: '#e4e4e7', fontSize: 17, fontFamily: geist.regular },
+  topbarLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
+  topbarName: {
+    color: '#e4e4e7', fontSize: 17, fontFamily: geist.medium,
+    maxWidth: 180, flexShrink: 1,
+  },
   connBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 7,
     paddingVertical: 7, paddingHorizontal: 13,
@@ -601,112 +868,164 @@ const styles = StyleSheet.create({
   connDot: { width: 7, height: 7, borderRadius: 3.5 },
   connText: { color: '#e4e4e7', fontSize: 13, fontFamily: geist.medium, letterSpacing: 0.3 },
 
-  header: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 20 },
+  header: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12 },
   hostName: { color: '#fafafa', fontSize: 26, fontFamily: geist.semibold, letterSpacing: -0.5 },
   metaRow: {
     flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',
-    marginTop: 10, gap: 8,
+    marginTop: 8, gap: 8,
   },
   fpText: { color: '#71717a', fontSize: 13, fontFamily: geist.medium, letterSpacing: 0.4 },
   metaDot: { color: '#3f3f46', fontSize: 13 },
   metaCount: { color: '#a1a1aa', fontSize: 13, fontFamily: geist.regular, letterSpacing: 0.1 },
 
-  list: { paddingBottom: 32, paddingHorizontal: 16, gap: 12 },
-
-  projectCard: {
+  statCards: {
+    flexDirection: 'row', gap: 8,
+    paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12,
+  },
+  statCard: {
+    flex: 1,
+    paddingVertical: 10, paddingHorizontal: 12,
+    borderRadius: 10,
     backgroundColor: '#0f0f11',
     borderWidth: 1, borderColor: '#27272a',
-    borderRadius: 14,
-    paddingVertical: 6, paddingHorizontal: 6,
+    gap: 6,
   },
-  projectHead: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingVertical: 14, paddingHorizontal: 10,
+  statCardTop: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  statDot: { width: 8, height: 8, borderRadius: 4 },
+  statValue: { color: '#fafafa', fontSize: 18, fontFamily: geist.semibold, letterSpacing: -0.3 },
+  statLabel: {
+    color: '#71717a', fontSize: 11, fontFamily: geist.medium,
+    letterSpacing: 0.3,
   },
-  projectName: { color: '#fafafa', fontSize: 18, fontFamily: geist.semibold, letterSpacing: -0.3 },
-  projectPath: { color: '#71717a', fontSize: 14, fontFamily: geist.regular, marginTop: 3, letterSpacing: 0.1 },
-  countPill: {
-    minWidth: 28, paddingHorizontal: 9, paddingVertical: 3,
-    borderRadius: 999, backgroundColor: '#18181b',
+
+  searchWrap: { paddingHorizontal: 16, paddingBottom: 8 },
+  searchInput: {
+    height: 40, borderRadius: 10, paddingHorizontal: 14,
+    backgroundColor: '#18181b',
     borderWidth: 1, borderColor: '#27272a',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  countPillText: {
-    color: '#a1a1aa', fontSize: 12, fontFamily: geist.medium, letterSpacing: 0.3,
+    color: '#fafafa', fontSize: 14, fontFamily: geist.regular,
   },
 
-  branchBlock: {
-    marginTop: 4, paddingLeft: 14, paddingTop: 6,
-    borderTopWidth: 1, borderTopColor: '#1c1c1f',
-  },
-  branchHead: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingVertical: 14, paddingHorizontal: 8,
-  },
-  branchGlyph: { color: '#8ab4f8', fontSize: 15, fontFamily: geist.regular },
-  branchLabel: {
-    color: '#e4e4e7', fontSize: 17, fontFamily: geist.medium, letterSpacing: 0,
-    lineHeight: 22, flex: 1,
-  },
-  branchCount: { color: '#71717a', fontSize: 14, fontFamily: geist.medium, letterSpacing: 0.2 },
+  list: { paddingBottom: 32 },
 
-  sessionList: { paddingLeft: 30, paddingBottom: 8, gap: 4 },
-  sessionRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingVertical: 14, paddingHorizontal: 10,
-    borderRadius: 8,
+  sectionHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 20, paddingVertical: 10,
+    marginTop: 8,
   },
-  sessionDot: { width: 8, height: 8, borderRadius: 4 },
-  sessionName: {
-    color: '#fafafa', fontSize: 16, fontFamily: geist.regular, letterSpacing: 0,
-    lineHeight: 22, flexShrink: 1,
+  sectionTitle: { color: '#e4e4e7', fontSize: 17, fontFamily: geist.regular, letterSpacing: 0 },
+  sectionSep: { color: '#3f3f46', fontSize: 13 },
+  sectionBranch: {
+    color: '#a1a1aa', fontSize: 12, fontFamily: geist.medium, letterSpacing: 0.2,
+    flexShrink: 1,
   },
-  sessionAgent: {
-    color: '#8ab4f8', fontSize: 12, fontFamily: geist.medium, letterSpacing: 0.3,
+  sectionCount: {
     marginLeft: 'auto',
+    color: '#71717a', fontSize: 12, fontFamily: geist.medium, letterSpacing: 0.3,
+  },
+
+  sessionRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 18, paddingLeft: 40, paddingRight: 20,
+    gap: 10,
+  },
+  sessionIcon: { width: 18, alignItems: 'center', justifyContent: 'center' },
+  sessionName: {
+    color: '#fafafa', fontSize: 13, fontFamily: geist.medium, letterSpacing: 0,
+    lineHeight: 18, flex: 1, flexShrink: 1,
   },
   sessionMeta: {
-    color: '#a1a1aa', fontSize: 12, fontFamily: geist.medium, letterSpacing: 0.2,
+    color: '#a1a1aa', fontSize: 12, fontFamily: geist.regular, letterSpacing: 0.1,
   },
-  approvalDot: {
-    width: 8, height: 8, borderRadius: 4, backgroundColor: '#e0c46c',
+  approvalDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#e0c46c' },
+
+  kindDivider: {
+    paddingLeft: 40, paddingRight: 20,
+    paddingTop: 12, paddingBottom: 4,
+  },
+  kindDividerText: {
+    color: '#71717a', fontSize: 11, fontFamily: geist.medium,
+    letterSpacing: 1.2, textTransform: 'uppercase',
   },
 
   recentSection: {
-    marginTop: 20, marginHorizontal: 16, paddingTop: 20,
+    marginTop: 24, marginHorizontal: 20, paddingTop: 16,
     borderTopWidth: 1, borderTopColor: '#1c1c1f',
   },
   recentSectionLabel: {
-    color: '#71717a', fontSize: 12, fontFamily: geist.medium,
-    letterSpacing: 1.6, textTransform: 'uppercase', marginBottom: 12,
-    paddingHorizontal: 4,
+    color: '#71717a', fontSize: 11, fontFamily: geist.medium,
+    letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 8,
   },
   recentRow: {
     flexDirection: 'row', alignItems: 'center', gap: 14,
-    paddingVertical: 12, paddingHorizontal: 6,
+    paddingVertical: 10,
   },
-  recentName: { color: '#e4e4e7', fontSize: 15, fontFamily: geist.regular },
-  recentPath: { color: '#71717a', fontSize: 12, fontFamily: geist.regular, marginTop: 3 },
+  recentName: { color: '#e4e4e7', fontSize: 14, fontFamily: geist.regular },
+  recentPath: { color: '#71717a', fontSize: 12, fontFamily: geist.regular, marginTop: 2 },
   recentTime: { color: '#71717a', fontSize: 12, fontFamily: geist.regular },
 
   loading: { alignItems: 'center', paddingTop: 48, gap: 12 },
   loadingText: { color: '#a1a1aa', fontSize: 14, fontFamily: geist.regular },
 
-  empty: { alignItems: 'center', paddingTop: 72, gap: 8 },
-  emptyText: { color: '#e4e4e7', fontSize: 17, fontFamily: geist.medium },
-  emptySub: { color: '#a1a1aa', fontSize: 14, fontFamily: geist.regular },
+  empty: { alignItems: 'center', paddingTop: 72, gap: 8, paddingHorizontal: 32 },
+  emptyText: { color: '#e4e4e7', fontSize: 16, fontFamily: geist.medium, textAlign: 'center' },
+  emptySub: { color: '#a1a1aa', fontSize: 13, fontFamily: geist.regular, textAlign: 'center' },
 
   errorBanner: {
-    marginHorizontal: 16, marginBottom: 12, padding: 14, borderRadius: 10,
+    marginHorizontal: 16, marginBottom: 8, padding: 14, borderRadius: 10,
     backgroundColor: 'rgba(217,112,112,0.12)',
     borderWidth: 1, borderColor: 'rgba(217,112,112,0.3)',
   },
   errorText: { color: '#f0b0b0', fontSize: 14, fontFamily: geist.regular },
 
-  footer: { paddingHorizontal: 20, paddingBottom: 20, paddingTop: 12 },
-  unpairBtn: {
-    borderWidth: 1, borderColor: '#27272a', borderRadius: 12,
-    paddingVertical: 16, alignItems: 'center', backgroundColor: '#0f0f11',
+  menuBackdrop: {
+    position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
-  unpairText: { color: '#e4e4e7', fontSize: 15, fontFamily: geist.medium, letterSpacing: 0.2 },
+  menuCard: {
+    position: 'absolute', right: 20, bottom: 96,
+    minWidth: 200,
+    backgroundColor: '#0f0f11',
+    borderWidth: 1, borderColor: '#27272a',
+    borderRadius: 12,
+    paddingVertical: 6,
+    shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 16, shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
+  menuItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 12, paddingHorizontal: 14,
+  },
+  menuItemPressed: { backgroundColor: '#18181b' },
+  menuItemText: { color: '#e4e4e7', fontSize: 14, fontFamily: geist.medium },
+  menuDivider: { height: 1, backgroundColor: '#27272a', marginHorizontal: 6, marginVertical: 4 },
+
+  confirmCard: {
+    position: 'absolute', left: 24, right: 24, top: '35%',
+    backgroundColor: '#0f0f11',
+    borderWidth: 1, borderColor: '#27272a',
+    borderRadius: 14,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 20, shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
+  },
+  confirmTitle: { color: '#fafafa', fontSize: 17, fontFamily: geist.semibold, letterSpacing: -0.2 },
+  confirmBody:  { color: '#a1a1aa', fontSize: 14, fontFamily: geist.regular, lineHeight: 20 },
+  confirmActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 8 },
+  confirmBtn: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8 },
+  confirmBtnGhost: { backgroundColor: '#18181b', borderWidth: 1, borderColor: '#27272a' },
+  confirmBtnGhostText: { color: '#e4e4e7', fontSize: 14, fontFamily: geist.medium },
+  confirmBtnDanger: { backgroundColor: '#7a2a2a' },
+  confirmBtnDangerText: { color: '#fafafa', fontSize: 14, fontFamily: geist.semibold },
+
+  fab: {
+    position: 'absolute', right: 20, bottom: 28,
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: '#fafafa',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  fabPlus: { color: '#09090b', fontSize: 28, fontFamily: geist.medium, marginTop: -2 },
 });

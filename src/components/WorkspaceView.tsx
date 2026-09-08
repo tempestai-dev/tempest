@@ -1591,7 +1591,10 @@ export function WorkspaceView({ zen, name, path }: Props) {
     const remaining = sessions.filter((s) => !closeSet.has(s.id));
     setSessions(remaining);
     if (activeSessionId && closeSet.has(activeSessionId)) {
-      setActiveSessionId(remaining.length > 0 ? remaining[remaining.length - 1].id : null);
+      // Tab bar hides sub-sessions (parentSessionId set); ignore them when
+      // picking the fallback so we don't focus an invisible pane.
+      const tabRemaining = remaining.filter((s) => !s.parentSessionId);
+      setActiveSessionId(tabRemaining.length > 0 ? tabRemaining[tabRemaining.length - 1].id : null);
     }
   }
 
