@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { TerminalSquare, Bot, Monitor, Menu, Plus, LogOut } from 'lucide-react-native';
+import { TerminalSquare, Bot, Monitor, Menu, Plus, LogOut, Bell, CheckCircle2 } from 'lucide-react-native';
 import { startRpcClient } from '../lib/rpc';
 import SessionScreen from './SessionScreen';
 
@@ -686,15 +686,23 @@ function WorkingRing({ color }) {
   );
 }
 
+// Mirror desktop's SessionBadges: attention (waiting/needsPermission) → bell,
+// working → spinner, done → green check, idle → nothing. Closed ghosts keep
+// the hollow ring so a stopped session is still legible in the list.
 function StatusGlyph({ session }) {
   if (session.closed) {
     return <View style={[styles.dot, { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#3a3a40' }]} />;
   }
+  if (session.needsPermission || session.status === 'waiting') {
+    return <Bell size={13} color={STATUS_COLOR.waiting} strokeWidth={2} />;
+  }
   if (session.status === 'working') {
     return <WorkingRing color={STATUS_COLOR.working} />;
   }
-  const color = STATUS_COLOR[session.status] || STATUS_COLOR.idle;
-  return <View style={[styles.dot, { backgroundColor: color }]} />;
+  if (session.status === 'done') {
+    return <CheckCircle2 size={14} color={STATUS_COLOR.done} strokeWidth={2} />;
+  }
+  return null;
 }
 
 function SessionIcon({ session, size = 16 }) {
@@ -744,10 +752,12 @@ function SessionRow({ session, reopening, onPress, onLongPress }) {
       {session.queueLength > 0 ? (
         <Text style={styles.sessionMeta}>{session.queueLength} queued</Text>
       ) : null}
+      <View style={styles.statusSlot}>
+        <StatusGlyph session={session} />
+      </View>
       {session.createdAt ? (
         <Text style={styles.sessionMeta}>{timeAgo(session.createdAt)}</Text>
       ) : null}
-      {session.needsPermission ? <View style={styles.approvalDot} /> : null}
       {reopening ? <ActivityIndicator size="small" color="#a1a1aa" /> : null}
     </Pressable>
   );
@@ -938,6 +948,7 @@ const styles = StyleSheet.create({
     color: '#a1a1aa', fontSize: 12, fontFamily: geist.regular, letterSpacing: 0.1,
   },
   approvalDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#e0c46c' },
+  statusSlot: { width: 16, alignItems: 'center', justifyContent: 'center' },
 
   kindDivider: {
     paddingLeft: 40, paddingRight: 20,
