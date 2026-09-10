@@ -163,6 +163,10 @@
   body {
     @apply bg-background text-foreground;
   }
+  html,
+  body {
+    overflow-x: clip;
+  }
   html {
     font-family: var(--font-geist-sans), system-ui, sans-serif;
     scroll-behavior: smooth;
@@ -176,3 +180,63 @@
     color: #83ede0;
   }
 }
+
+.prose-landing {
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 300;
+  font-size: 15px;
+  line-height: 1.7;
+}
+.prose-landing h1,
+.prose-landing h2,
+.prose-landing h3,
+.prose-landing h4 {
+  font-family: var(--font-geist-pixel), var(--font-geist-sans), system-ui, sans-serif;
+  color: #fff;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  font-weight: 400;
+}
+.prose-landing h1 { font-size: 2.25rem; margin: 2.5rem 0 1rem; }
+.prose-landing h2 { font-size: 1.75rem; margin: 2rem 0 1rem; }
+.prose-landing h3 { font-size: 1.35rem; margin: 1.75rem 0 0.75rem; }
+.prose-landing h4 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; }
+.prose-landing p { margin: 0 0 1rem; }
+.prose-landing a { color: #fff; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgba(255,255,255,0.3); }
+.prose-landing a:hover { text-decoration-color: rgba(255,255,255,0.7); }
+.prose-landing strong { color: #fff; font-weight: 500; }
+.prose-landing ul, .prose-landing ol { margin: 0 0 1rem 1.25rem; padding: 0; }
+.prose-landing li { margin: 0.25rem 0; }
+.prose-landing code {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.9em;
+  background: rgba(255,255,255,0.06);
+  padding: 0.15em 0.4em;
+  border: 1px dashed rgba(255,255,255,0.15);
+}
+.prose-landing pre {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.85rem;
+  background: rgba(0,0,0,0.4);
+  border: 1px dashed rgba(255,255,255,0.15);
+  padding: 1rem;
+  margin: 1rem 0;
+  overflow-x: auto;
+}
+.prose-landing pre code { background: transparent; padding: 0; border: 0; }
+.prose-landing blockquote {
+  border-left: 2px dashed rgba(255,255,255,0.25);
+  padding-left: 1rem;
+  margin: 1rem 0;
+  color: rgba(255,255,255,0.6);
+  font-style: italic;
+}
+.prose-landing hr {
+  border: 0;
+  border-top: 1px dashed rgba(255,255,255,0.15);
+  margin: 2rem 0;
+}
+.prose-landing img { border: 1px dashed rgba(255,255,255,0.15); }
+.prose-landing table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem; }
+.prose-landing th, .prose-landing td { border: 1px dashed rgba(255,255,255,0.15); padding: 0.6rem 0.8rem; text-align: left; }
+.prose-landing th { color: #fff; font-family: var(--font-geist-mono), monospace; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 500; }

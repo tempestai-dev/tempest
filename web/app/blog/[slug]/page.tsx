@@ -1,42 +1,43 @@
-import type { Metadata } from 'next'
-import type { ComponentPropsWithoutRef } from 'react'
-import { notFound } from 'next/navigation'
-import { MDXRemote } from 'next-mdx-remote/rsc'
-import Image from 'next/image'
-import Link from 'next/link'
-import fs from 'fs'
-import path from 'path'
-import { ArrowLeft, ArrowRight } from 'lucide-react'
-import { Container } from '@/components/layout/container'
-import { formatDate } from '@/lib/format-date'
-import { getAllPosts, getPostBySlug, getPostContent } from '@/lib/mdx'
-import type { BlogPost } from '@/lib/mdx'
-import { SITE_URL } from '@/lib/constants/site'
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { MDXRemote } from "next-mdx-remote/rsc";
+import Image from "next/image";
+import Link from "next/link";
+import fs from "fs";
+import path from "path";
+import { ArrowLeft, ArrowRight } from "lucide-react";
+import { formatDate } from "@/lib/format-date";
+import { getAllPosts, getPostBySlug, getPostContent } from "@/lib/mdx";
+import type { BlogPost } from "@/lib/mdx";
+import { SITE_URL } from "@/lib/constants/site";
+import { Container } from "@/components/landing/container";
+import { ProseShell } from "@/components/landing/prose-shell";
+import { Button } from "@/components/landing/button";
 
 export async function generateStaticParams() {
-  return getAllPosts().map((post) => ({ slug: post.slug }))
+  return getAllPosts().map((post) => ({ slug: post.slug }));
 }
 
 function getCoverPathForMeta(slug: string): string | null {
-  const dir = path.join(process.cwd(), 'public', 'blog-pics', slug)
-  for (const ext of ['webp', 'png', 'jpg']) {
-    if (fs.existsSync(path.join(dir, `cover.${ext}`))) return `/blog-pics/${slug}/cover.${ext}`
+  const dir = path.join(process.cwd(), "public", "blog-pics", slug);
+  for (const ext of ["webp", "png", "jpg"]) {
+    if (fs.existsSync(path.join(dir, `cover.${ext}`))) return `/blog-pics/${slug}/cover.${ext}`;
   }
-  return null
+  return null;
 }
 
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ slug: string }>
+  params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
-  const { slug } = await params
-  const post = getPostBySlug(slug)
-  if (!post) return {}
-  const cover = getCoverPathForMeta(slug)
+  const { slug } = await params;
+  const post = getPostBySlug(slug);
+  if (!post) return {};
+  const cover = getCoverPathForMeta(slug);
   const ogImage = cover
     ? { url: `${SITE_URL}${cover}`, alt: post.title }
-    : { url: '/og-image.webp', width: 1280, height: 640, alt: post.title }
+    : { url: "/og-image.webp", width: 1280, height: 640, alt: post.title };
   return {
     title: `${post.title} — Tempest`,
     description: post.description,
@@ -44,7 +45,7 @@ export async function generateMetadata({
     openGraph: {
       title: post.title,
       description: post.description,
-      type: 'article',
+      type: "article",
       url: `${SITE_URL}/blog/${slug}`,
       publishedTime: post.date,
       authors: [post.author],
@@ -52,103 +53,68 @@ export async function generateMetadata({
       images: [ogImage],
     },
     twitter: {
-      card: 'summary_large_image',
+      card: "summary_large_image",
       title: post.title,
       description: post.description,
       images: [cover ? `${SITE_URL}${cover}` : `${SITE_URL}/og-image.webp`],
     },
-  }
+  };
 }
 
-function typeLabel(type: BlogPost['type']): string {
-  if (type === 'dev-log') return 'Dev Log'
-  if (type === 'release-notes') return 'Release Notes'
-  return 'Blog'
-}
-
-const mdxComponents = {
-  h1: ({ children }: ComponentPropsWithoutRef<'h1'>) => (
-    <h1 className="text-2xl font-normal text-foreground mt-12 mb-4 first:mt-0">{children}</h1>
-  ),
-  h2: ({ children }: ComponentPropsWithoutRef<'h2'>) => (
-    <h2 className="text-xl font-normal text-foreground mt-12 mb-4 pt-10 border-t border-foreground/[0.08]">{children}</h2>
-  ),
-  h3: ({ children }: ComponentPropsWithoutRef<'h3'>) => (
-    <h3 className="text-base font-medium text-foreground mt-8 mb-3">{children}</h3>
-  ),
-  p: ({ children }: ComponentPropsWithoutRef<'p'>) => (
-    <p className="text-base text-foreground leading-8 mb-6 text-justify">{children}</p>
-  ),
-  ul: ({ children }: ComponentPropsWithoutRef<'ul'>) => (
-    <ul className="mb-6 flex flex-col gap-3">{children}</ul>
-  ),
-  li: ({ children }: ComponentPropsWithoutRef<'li'>) => (
-    <li className="flex gap-3 text-base text-foreground leading-relaxed">
-      <span className="mt-[0.6rem] size-1.5 rounded-full bg-foreground/25 shrink-0" />
-      <span>{children}</span>
-    </li>
-  ),
-  code: ({ children }: ComponentPropsWithoutRef<'code'>) => (
-    <code className="font-mono text-[13px] bg-foreground/[0.06] border border-foreground/[0.08] rounded px-1.5 py-0.5">{children}</code>
-  ),
-  pre: ({ children }: ComponentPropsWithoutRef<'pre'>) => (
-    <pre className="bg-foreground/[0.04] border border-foreground/[0.08] rounded p-5 overflow-x-auto mb-6 text-[13px] font-mono leading-6 [&_code]:bg-transparent [&_code]:border-none [&_code]:p-0">{children}</pre>
-  ),
-  a: ({ href, children }: ComponentPropsWithoutRef<'a'>) => (
-    <a
-      href={href}
-      className="text-foreground underline underline-offset-4 decoration-foreground/25 hover:decoration-foreground transition-colors"
-      target={href?.startsWith('http') ? '_blank' : undefined}
-      rel={href?.startsWith('http') ? 'noopener noreferrer' : undefined}
-    >
-      {children}
-    </a>
-  ),
-  strong: ({ children }: ComponentPropsWithoutRef<'strong'>) => (
-    <strong className="font-semibold text-foreground">{children}</strong>
-  ),
-  blockquote: ({ children }: ComponentPropsWithoutRef<'blockquote'>) => (
-    <blockquote className="border-l-2 border-foreground/20 pl-5 my-6 [&_p]:text-muted-foreground [&_p]:mb-0">{children}</blockquote>
-  ),
-  hr: () => <hr className="border-foreground/[0.08] my-12" />,
+function typeLabel(type: BlogPost["type"]): string {
+  if (type === "dev-log") return "Dev Log";
+  if (type === "release-notes") return "Release Notes";
+  return "Blog";
 }
 
 export default async function BlogPostPage({
   params,
 }: {
-  params: Promise<{ slug: string }>
+  params: Promise<{ slug: string }>;
 }) {
-  const { slug } = await params
-  const post = getPostBySlug(slug)
-  if (!post) notFound()
+  const { slug } = await params;
+  const post = getPostBySlug(slug);
+  if (!post) notFound();
 
-  const content = getPostContent(slug)
+  const content = getPostContent(slug);
   const coverPath = (() => {
-    const dir = path.join(process.cwd(), 'public', 'blog-pics', slug)
-    for (const ext of ['webp', 'png', 'jpg']) {
-      if (fs.existsSync(path.join(dir, `cover.${ext}`))) return `/blog-pics/${slug}/cover.${ext}`
+    const dir = path.join(process.cwd(), "public", "blog-pics", slug);
+    for (const ext of ["webp", "png", "jpg"]) {
+      if (fs.existsSync(path.join(dir, `cover.${ext}`))) return `/blog-pics/${slug}/cover.${ext}`;
     }
-    return null
-  })()
+    return null;
+  })();
 
   return (
-    <main>
+    <main className="relative mx-auto w-full max-w-[1380px] pb-24">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
           __html: JSON.stringify({
-            '@context': 'https://schema.org',
-            '@type': 'BlogPosting',
+            "@context": "https://schema.org",
+            "@type": "BlogPosting",
             headline: post.title,
             description: post.description,
             datePublished: post.date,
             dateModified: post.date,
             mainEntityOfPage: `${SITE_URL}/blog/${slug}`,
-            image: { '@type': 'ImageObject', url: coverPath ? `${SITE_URL}${coverPath}` : `${SITE_URL}/og-image.webp`, width: 1280, height: 640 },
-            author: { '@type': 'Organization', name: 'Tempest', url: SITE_URL },
+            image: {
+              "@type": "ImageObject",
+              url: coverPath ? `${SITE_URL}${coverPath}` : `${SITE_URL}/og-image.webp`,
+              width: 1280,
+              height: 640,
+            },
+            author: { "@type": "Organization", name: "Tempest", url: SITE_URL },
             publisher: {
-              '@type': 'Organization', name: 'Tempest', url: SITE_URL,
-              logo: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.webp`, width: 1280, height: 640 },
+              "@type": "Organization",
+              name: "Tempest",
+              url: SITE_URL,
+              logo: {
+                "@type": "ImageObject",
+                url: `${SITE_URL}/og-image.webp`,
+                width: 1280,
+                height: 640,
+              },
             },
           }),
         }}
@@ -157,13 +123,13 @@ export default async function BlogPostPage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{
           __html: JSON.stringify({
-            '@context': 'https://schema.org',
-            '@type': 'BreadcrumbList',
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
             itemListElement: [
-              { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
-              { '@type': 'ListItem', position: 2, name: 'Blog', item: `${SITE_URL}/blog` },
+              { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
+              { "@type": "ListItem", position: 2, name: "Blog", item: `${SITE_URL}/blog` },
               {
-                '@type': 'ListItem',
+                "@type": "ListItem",
                 position: 3,
                 name: post.title,
                 item: `${SITE_URL}/blog/${slug}`,
@@ -173,70 +139,59 @@ export default async function BlogPostPage({
         }}
       />
 
-      <Container className="py-16 min-[1000px]:py-24">
-        <Link
-          href="/blog"
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-12"
-        >
-          <ArrowLeft size={14} />
-          All posts
-        </Link>
-
-        <div className="max-w-2xl mx-auto">
-          <div className="relative w-full aspect-video rounded overflow-hidden bg-foreground/[0.06] mb-10">
-            {coverPath && (
-              <Image
-                src={coverPath}
-                alt={post.title}
-                fill
-                priority
-                className="object-cover"
-              />
-            )}
+      <Container className="mt-24 px-0 min-[476px]:px-0 min-[1000px]:px-0 border border-dashed border-muted-foreground/30">
+        <div className="flex flex-col gap-6 px-6 py-10 sm:px-10 sm:py-14 lg:px-14">
+          <Link
+            href="/blog"
+            className="inline-flex w-fit items-center gap-1.5 text-[12px] font-mono uppercase tracking-[0.12em] text-white/60 transition-colors hover:text-white"
+          >
+            <ArrowLeft size={12} />
+            All posts
+          </Link>
+          <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.12em] text-white/50">
+            <span className="border border-dashed border-white/20 bg-white/[0.03] px-2 py-1">
+              {typeLabel(post.type)}
+            </span>
+            <time dateTime={post.date}>{formatDate(post.date)}</time>
+            <span className="size-1 rounded-full bg-white/25" />
+            <span>{post.author}</span>
           </div>
-
-          <article>
-            <div className="flex items-center gap-2 mb-4">
-              <span className="text-xs text-muted-foreground px-2 py-0.5 rounded-full border border-foreground/[0.1]">
-                {typeLabel(post.type)}
-              </span>
-              <time dateTime={post.date} className="text-sm text-muted-foreground">
-                {formatDate(post.date)}
-              </time>
-              <span className="size-1 rounded-full bg-foreground/20" />
-              <span className="text-sm text-muted-foreground">{post.author}</span>
-            </div>
-
-            <h1 className="text-3xl min-[700px]:text-4xl font-normal leading-snug">{post.title}</h1>
-            <p className="text-lg text-muted-foreground leading-relaxed mt-4">{post.description}</p>
-
-            <hr className="border-foreground/[0.08] mt-8 mb-10" />
-
-            <MDXRemote source={content} components={mdxComponents} />
-
-            <div className="border-t border-foreground/[0.08] mt-12 pt-8 flex flex-wrap items-center justify-between gap-4">
-              <div className="flex flex-wrap gap-2">
-                {post.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="text-xs px-2.5 py-1 rounded-full bg-foreground/[0.06] text-muted-foreground"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-
-              <Link
-                href="/download"
-                className="inline-flex items-center gap-1.5 text-sm bg-foreground text-background px-4 py-2 rounded-full hover:opacity-90 transition-opacity"
-              >
-                Download Tempest
-                <ArrowRight size={14} />
-              </Link>
-            </div>
-          </article>
+          <h1 className="max-w-3xl font-pixel text-[32px] leading-[1.05] tracking-[-0.02em] text-white sm:text-[42px] md:text-[52px]">
+            {post.title}
+          </h1>
+          <p className="max-w-2xl text-[15px] font-light leading-[1.6] text-white/70 sm:text-[17px]">
+            {post.description}
+          </p>
         </div>
+        {coverPath && (
+          <div className="relative aspect-video w-full overflow-hidden border-t border-dashed border-white/15 bg-white/[0.04]">
+            <Image src={coverPath} alt={post.title} fill priority className="object-cover" />
+          </div>
+        )}
       </Container>
+
+      <ProseShell>
+        <MDXRemote source={content} />
+        <hr />
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-4 not-prose">
+          <div className="flex flex-wrap gap-2">
+            {post.tags.map((tag) => (
+              <span
+                key={tag}
+                className="border border-dashed border-white/20 bg-white/[0.03] px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-white/60"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+          <Button asChild compact mono className="h-11 gap-2.5 px-4 text-[13px] font-semibold">
+            <Link href="/download">
+              Download Tempest
+              <ArrowRight data-icon="inline-end" />
+            </Link>
+          </Button>
+        </div>
+      </ProseShell>
     </main>
-  )
+  );
 }

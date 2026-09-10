@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Geist_Pixel } from "next/font/google";
 import { Providers } from "@/provider/theme-provider";
-import { Header } from "@/components/layout/header";
-import { Footer } from "@/components/layout/footer";
+import { Header } from "@/components/landing/header";
+import { Footer } from "@/components/landing/footer";
 import { CookieBanner } from "@/components/cookie-banner";
 import { ProgressiveBlur } from "@/components/global/progressive-blur";
 import { Analytics } from "@vercel/analytics/next";

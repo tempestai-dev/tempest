@@ -1,112 +1,162 @@
-import type { Metadata } from 'next'
-import { Container } from '@/components/layout/container'
-import Link from 'next/link'
-import { ArrowRight } from 'lucide-react'
-import { formatDate } from '@/lib/format-date'
-import { SITE_URL } from '@/lib/constants/site'
+import type { Metadata } from "next";
+import Link from "next/link";
+import { ArrowRight, ArrowUpRight } from "lucide-react";
+import { formatDate } from "@/lib/format-date";
+import { SITE_URL } from "@/lib/constants/site";
+import { PageHero } from "@/components/landing/page-hero";
+import { SectionShell } from "@/components/landing/section-shell";
+import { Button } from "@/components/landing/button";
 
 export const metadata: Metadata = {
-  title: 'Tempest Release Notes — AI Agent Runner Changelog',
-  description: 'Every version, every improvement. Full changelog and release history for Tempest.',
+  title: "Tempest Release Notes — AI Agent Runner Changelog",
+  description:
+    "Every version, every improvement. Full changelog and release history for Tempest.",
   alternates: { canonical: `${SITE_URL}/release-notes` },
   openGraph: {
-    title: 'Tempest Release Notes — AI Agent Runner Changelog',
-    description: 'Every version, every improvement. Full changelog and release history for Tempest.',
-    type: 'website',
+    title: "Tempest Release Notes — AI Agent Runner Changelog",
+    description:
+      "Every version, every improvement. Full changelog and release history for Tempest.",
+    type: "website",
     url: `${SITE_URL}/release-notes`,
-    images: [{ url: '/og-image.webp', width: 1280, height: 640, alt: 'Tempest Release Notes' }],
+    images: [{ url: "/og-image.webp", width: 1280, height: 640, alt: "Tempest Release Notes" }],
   },
   twitter: {
-    card: 'summary_large_image',
-    title: 'Tempest Release Notes — AI Agent Runner Changelog',
-    description: 'Every version, every improvement. Full changelog and release history for Tempest.',
-    images: ['/og-image.webp'],
+    card: "summary_large_image",
+    title: "Tempest Release Notes — AI Agent Runner Changelog",
+    description:
+      "Every version, every improvement. Full changelog and release history for Tempest.",
+    images: ["/og-image.webp"],
   },
-}
+};
 
-export const revalidate = 43200
+export const revalidate = 43200;
 
 type GitHubRelease = {
-  id: number
-  tag_name: string
-  name: string
-  published_at: string
-  prerelease: boolean
-  draft: boolean
-}
+  id: number;
+  tag_name: string;
+  name: string;
+  published_at: string;
+  prerelease: boolean;
+  draft: boolean;
+};
 
 export default async function ReleaseNotesPage() {
-  let releases: GitHubRelease[] = []
+  let releases: GitHubRelease[] = [];
 
   try {
     const headers: Record<string, string> = {
-      'User-Agent': 'tempest-website',
-      Accept: 'application/vnd.github+json',
-    }
-    if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`
-    const res = await fetch('https://api.github.com/repos/tempestai-dev/tempest/releases', {
+      "User-Agent": "tempest-website",
+      Accept: "application/vnd.github+json",
+    };
+    if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+    const res = await fetch("https://api.github.com/repos/tempestai-dev/tempest/releases", {
       headers,
       next: { revalidate: 43200 },
-    })
+    });
     if (res.ok) {
-      const all: GitHubRelease[] = await res.json()
-      releases = all.filter((r) => !r.draft)
+      const all: GitHubRelease[] = await res.json();
+      releases = all.filter((r) => !r.draft);
     }
   } catch {}
 
   return (
-    <main>
-      <Container className="py-16 min-[1000px]:py-24">
-        <div className="mb-12">
-          <p className="text-sm text-muted-foreground uppercase tracking-widest mb-3">Release Notes</p>
-          <h1 className="text-3xl min-[700px]:text-4xl font-normal">
-            What&apos;s new in Tempest
-          </h1>
-          <p className="text-muted-foreground mt-4 max-w-lg">
-            Every version, every improvement. Track what we ship.
-          </p>
-        </div>
-
-        {releases.length === 0 ? (
-          <div className="rounded border border-foreground/[0.08] bg-foreground/[0.02] p-8 flex flex-col items-start gap-3">
-            <p className="text-sm text-foreground">Release notes are temporarily unavailable.</p>
+    <main className="relative mx-auto w-full max-w-[1380px] pb-24">
+      <PageHero
+        eyebrow="Release notes"
+        headline="What's new in Tempest."
+        headlineMuted="Every version, every improvement."
+        subhead="Full changelog and release history for the desktop app."
+        actions={
+          <Button
+            asChild
+            compact
+            mono
+            variant="secondary"
+            className="h-11 gap-2.5 px-4 text-[13px] font-semibold"
+          >
             <a
               href="https://github.com/tempestai-dev/tempest/releases"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              View releases on GitHub <ArrowRight size={13} />
+              GitHub releases
+              <ArrowUpRight data-icon="inline-end" />
             </a>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 min-[700px]:grid-cols-2 min-[1000px]:grid-cols-3 gap-4">
-            {releases.map((release) => (
-              <Link
-                key={release.id}
-                href={`/release-notes/${release.tag_name}`}
-                className="group rounded border border-foreground/[0.08] bg-foreground/[0.02] hover:bg-foreground/[0.04] hover:border-foreground/20 transition-colors p-6 flex flex-col gap-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-lg font-normal">{release.tag_name}</span>
-                    <span className="text-xs text-muted-foreground">{formatDate(release.published_at)}</span>
-                  </div>
-                  {release.prerelease && (
-                    <span className="text-xs text-muted-foreground px-2 py-0.5 rounded-full border border-foreground/[0.1] shrink-0">
-                      pre
-                    </span>
-                  )}
-                </div>
+          </Button>
+        }
+      />
 
-                <span className="flex items-center gap-1 text-sm text-muted-foreground group-hover:text-foreground transition-colors mt-auto">
-                  Read notes <ArrowRight size={13} />
-                </span>
-              </Link>
-            ))}
+      {releases.length === 0 ? (
+        <SectionShell eyebrow="Unavailable">
+          <div className="flex flex-col items-start gap-3 px-6 py-10 sm:px-10 sm:py-12">
+            <p className="text-[15px] font-light text-white/70">
+              Release notes are temporarily unavailable.
+            </p>
+            <Button
+              asChild
+              compact
+              mono
+              variant="secondary"
+              className="h-10 gap-2 px-3 text-[12px] font-semibold"
+            >
+              <a
+                href="https://github.com/tempestai-dev/tempest/releases"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                View on GitHub
+                <ArrowRight data-icon="inline-end" />
+              </a>
+            </Button>
           </div>
-        )}
-      </Container>
+        </SectionShell>
+      ) : (
+        <SectionShell eyebrow="History" title={`${releases.length} release${releases.length === 1 ? "" : "s"}`}>
+          <div className="grid grid-cols-1 divide-y divide-dashed divide-white/15 min-[700px]:grid-cols-2 min-[700px]:divide-y-0 min-[1000px]:grid-cols-3">
+            {releases.map((release, i) => {
+              const smCol = i % 2;
+              const lgCol = i % 3;
+              return (
+                <Link
+                  key={release.id}
+                  href={`/release-notes/${release.tag_name}`}
+                  className={
+                    "group flex flex-col justify-between gap-6 p-6 sm:p-8 border-dashed border-white/15 transition-colors hover:bg-white/[0.02] " +
+                    (smCol > 0 ? "min-[700px]:border-l " : "") +
+                    (i >= 2 && lgCol === 0 ? "min-[1000px]:border-t " : "") +
+                    (i >= 2 && lgCol > 0 ? "min-[1000px]:border-t min-[1000px]:border-l " : "") +
+                    (i < 2 && lgCol > 0 ? "min-[1000px]:border-l " : "")
+                  }
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex flex-col gap-2">
+                      <span className="font-pixel text-[22px] leading-none tracking-[-0.02em] text-white">
+                        {release.tag_name}
+                      </span>
+                      <span className="text-[11px] uppercase tracking-[0.12em] text-white/50">
+                        {formatDate(release.published_at)}
+                      </span>
+                    </div>
+                    {release.prerelease && (
+                      <span className="shrink-0 border border-dashed border-white/25 bg-white/[0.03] px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white/60">
+                        pre
+                      </span>
+                    )}
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 text-[12px] uppercase tracking-[0.12em] text-white/50 group-hover:text-white">
+                    Read notes
+                    <ArrowRight
+                      size={13}
+                      strokeWidth={2}
+                      className="transition-transform group-hover:translate-x-0.5"
+                    />
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        </SectionShell>
+      )}
     </main>
-  )
+  );
 }

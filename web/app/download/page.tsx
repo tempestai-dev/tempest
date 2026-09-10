@@ -1,5 +1,4 @@
 import type { Metadata } from "next"
-import { Container } from "@/components/layout/container"
 import { DownloadContent } from "@/components/download-content"
 import { formatDate } from "@/lib/format-date"
 import { SITE_URL } from '@/lib/constants/site'
@@ -107,7 +106,7 @@ export default async function DownloadPage() {
           }),
         }}
       />
-      <Container className="py-16 min-[1000px]:py-24">
+      <main className="relative mx-auto w-full max-w-[1380px] pb-24">
         <DownloadContent
           version={version}
           date={date}
@@ -115,7 +114,7 @@ export default async function DownloadPage() {
           linuxAssets={linuxAssets}
           macAssets={macAssets}
         />
-      </Container>
+      </main>
     </>
   )
 }

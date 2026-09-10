@@ -6,7 +6,7 @@ import { Button } from "@/components/landing/button";
 
 export function ScreenshotSection() {
   return (
-    <Container className="mt-16 px-0 min-[476px]:px-0 min-[1000px]:px-0 border border-dashed border-muted-foreground/30 min-h-screen">
+    <Container className="mt-16 px-0 min-[476px]:px-0 min-[1000px]:px-0 border border-dashed border-muted-foreground/30">
       <div className="relative w-full">
         <div className="relative z-10 p-6 sm:p-8">
           <h2 className="font-pixel text-[28px] leading-[1.05] tracking-[-0.02em] sm:text-[34px]">

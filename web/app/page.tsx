@@ -3,8 +3,6 @@ import { Download } from "lucide-react";
 import { getAllPosts } from "@/lib/mdx";
 import { SITE_URL } from "@/lib/constants/site";
 import { GithubIcon } from "@/components/icons/github";
-import { Header } from "@/components/landing/header";
-import { Footer } from "@/components/landing/footer";
 import { Button } from "@/components/landing/button";
 import { AgentCycle } from "@/components/landing/agent-cycle";
 import { ScreenshotSection } from "@/components/sections/landing/screenshot";
@@ -62,9 +60,6 @@ export default function HomePage() {
 
   return (
     <>
-      {/* ponytail: hide site chrome via global CSS while on /. Same links live
-          in the new-landing header/footer, so no internal-linking loss. */}
-      <style>{`header:not(.nl-header), footer:not(.nl-footer) { display: none !important; } html, body { overflow-x: clip; }`}</style>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredDataSchema) }}
@@ -74,7 +69,6 @@ export default function HomePage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
       />
       <main className="relative mx-auto w-full max-w-[1380px]">
-        <Header />
         <section className="relative h-[100dvh] w-full">
           <div className="absolute top-0 left-1/2 h-full w-screen -translate-x-1/2 overflow-hidden">
             <video
@@ -149,7 +143,6 @@ export default function HomePage() {
         <BlogSection posts={posts} />
         <FaqSection />
         <CtaSection />
-        <Footer />
       </main>
     </>
   );

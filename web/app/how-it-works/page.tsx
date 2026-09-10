@@ -1,7 +1,10 @@
-import type { Metadata } from "next"
-import Link from "next/link"
-import { Container } from "@/components/layout/container"
-import { SITE_URL } from '@/lib/constants/site'
+import type { Metadata } from "next";
+import Link from "next/link";
+import { Download, ArrowRight } from "lucide-react";
+import { SITE_URL } from "@/lib/constants/site";
+import { PageHero } from "@/components/landing/page-hero";
+import { SectionShell } from "@/components/landing/section-shell";
+import { Button } from "@/components/landing/button";
 
 export const metadata: Metadata = {
   title: "How Tempest Works — Git Worktrees, Token Intelligence, Parallel Agents",
@@ -23,7 +26,7 @@ export const metadata: Metadata = {
       "Tempest uses git worktrees for agent isolation and a local code-knowledge graph (Token Intelligence) to share context across sessions.",
     images: ["/og-image.webp"],
   },
-}
+};
 
 const steps = [
   {
@@ -56,11 +59,20 @@ const steps = [
     title: "Sessions persist between visits",
     body: "Close a tab and the session is saved exactly as it is — conversation history, branch state, worktree contents. Reopen it and the agent picks up where it left off. Nothing is lost between sessions.",
   },
-]
+];
+
+const underTheHood: [string, string][] = [
+  ["Framework", "Tauri 2.x — Rust backend, React + TypeScript frontend"],
+  ["Terminal", "Native PTY sessions per agent, ANSI-compatible"],
+  ["Isolation", "Git worktrees — separate working directories per session"],
+  ["Token Intelligence", "Atlas local semantic code graph, MCP protocol"],
+  ["Persistence", "JSON state file per workspace, survives restarts"],
+  ["License", "Apache 2.0 — free for commercial use"],
+];
 
 export default function HowItWorksPage() {
   return (
-    <main>
+    <main className="relative mx-auto w-full max-w-[1380px] pb-24">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
@@ -87,72 +99,84 @@ export default function HowItWorksPage() {
             "@type": "BreadcrumbList",
             itemListElement: [
               { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
-              { "@type": "ListItem", position: 2, name: "How It Works", item: `${SITE_URL}/how-it-works` },
+              {
+                "@type": "ListItem",
+                position: 2,
+                name: "How It Works",
+                item: `${SITE_URL}/how-it-works`,
+              },
             ],
           }),
         }}
       />
 
-      <Container className="pt-16 min-[1000px]:pt-24 pb-24">
-        <div className="max-w-2xl">
-          <p className="text-sm text-muted-foreground font-semibold mb-4">HOW IT WORKS</p>
-          <h1 className="text-3xl min-[1000px]:text-4xl font-normal leading-snug mb-6">
-            <span className="text-foreground">Two primitives.</span>{" "}
-            <span className="text-muted-foreground">Git worktrees for isolation. Token Intelligence for shared context.</span>
-          </h1>
-          <p className="text-base text-muted-foreground leading-relaxed mb-16 max-w-xl">
-            Tempest is a Tauri desktop app — Rust backend, React frontend, native WebView. Everything runs on your machine. No cloud, no servers, no data leaving your environment.
-          </p>
+      <PageHero
+        eyebrow="How it works"
+        headline="Two primitives."
+        headlineMuted="Git worktrees for isolation. Token Intelligence for shared context."
+        subhead="Tempest is a Tauri desktop app — Rust backend, React frontend, native WebView. Everything runs on your machine. No cloud, no servers, no data leaving your environment."
+        actions={
+          <>
+            <Button asChild compact mono className="h-11 gap-2.5 px-4 text-[13px] font-semibold">
+              <Link href="/download">
+                Download Now
+                <Download data-icon="inline-end" />
+              </Link>
+            </Button>
+            <Button
+              asChild
+              compact
+              mono
+              variant="secondary"
+              className="h-11 gap-2.5 px-4 text-[13px] font-semibold"
+            >
+              <Link href="/parallel-ai-agents">
+                Parallel agents deep dive
+                <ArrowRight data-icon="inline-end" />
+              </Link>
+            </Button>
+          </>
+        }
+      />
 
-          <div className="flex flex-col gap-12">
-            {steps.map((step) => (
-              <div key={step.num} className="flex gap-6">
-                <div className="shrink-0 w-8 pt-0.5">
-                  <span className="text-sm text-muted-foreground/50 font-mono">{step.num}</span>
-                </div>
-                <div>
-                  <h2 className="text-base font-medium text-foreground mb-2">{step.title}</h2>
-                  <p className="text-base text-muted-foreground leading-relaxed">{step.body}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-16 p-6 rounded border border-foreground/[0.08] bg-foreground/[0.02]">
-            <p className="text-sm font-medium text-foreground mb-3">Under the hood</p>
-            <div className="flex flex-col gap-2.5">
-              {[
-                ["Framework", "Tauri 2.x — Rust backend, React + TypeScript frontend"],
-                ["Terminal", "Native PTY sessions per agent, ANSI-compatible"],
-                ["Isolation", "Git worktrees — separate working directories per session"],
-                ["Token Intelligence", "Atlas local semantic code graph, MCP protocol"],
-                ["Persistence", "JSON state file per workspace, survives restarts"],
-                ["License", "Apache 2.0 — free for commercial use"],
-              ].map(([label, value]) => (
-                <div key={label} className="grid grid-cols-[120px_1fr] gap-3 text-sm">
-                  <span className="text-muted-foreground/60">{label}</span>
-                  <span className="text-muted-foreground">{value}</span>
-                </div>
-              ))}
+      <SectionShell eyebrow="Six steps" title="From clone to commit," titleMuted="one agent at a time.">
+        <div className="grid grid-cols-1 divide-y divide-dashed divide-white/15 min-[700px]:grid-cols-2 min-[700px]:divide-y-0">
+          {steps.map((step, i) => (
+            <div
+              key={step.num}
+              className={
+                "flex flex-col gap-4 p-6 sm:p-8 border-dashed border-white/15 " +
+                (i % 2 > 0 ? "min-[700px]:border-l " : "") +
+                (i >= 2 ? "min-[700px]:border-t " : "")
+              }
+            >
+              <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-white/40">
+                {step.num}
+              </span>
+              <h3 className="font-pixel text-[20px] leading-[1.1] tracking-[-0.02em] text-white">
+                {step.title}
+              </h3>
+              <p className="text-[14px] font-light leading-[1.6] text-white/60">{step.body}</p>
             </div>
-          </div>
-
-          <div className="mt-12 flex flex-wrap gap-3">
-            <Link
-              href="/download"
-              className="inline-flex items-center justify-center h-[41px] px-5 rounded-full bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity"
-            >
-              Download free
-            </Link>
-            <Link
-              href="/parallel-ai-agents"
-              className="inline-flex items-center justify-center h-[41px] px-5 rounded-full border border-foreground/20 text-foreground text-sm font-medium hover:bg-foreground/[0.06] transition-colors"
-            >
-              Parallel AI agents deep dive
-            </Link>
-          </div>
+          ))}
         </div>
-      </Container>
+      </SectionShell>
+
+      <SectionShell eyebrow="Under the hood" title="What ships in the binary.">
+        <div className="divide-y divide-dashed divide-white/15">
+          {underTheHood.map(([label, value]) => (
+            <div
+              key={label}
+              className="grid grid-cols-1 gap-2 px-6 py-5 sm:grid-cols-[200px_1fr] sm:gap-6 sm:px-10 sm:py-6 lg:px-14"
+            >
+              <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-white/50">
+                {label}
+              </span>
+              <span className="text-[14px] font-light leading-[1.6] text-white/70">{value}</span>
+            </div>
+          ))}
+        </div>
+      </SectionShell>
     </main>
-  )
+  );
 }
