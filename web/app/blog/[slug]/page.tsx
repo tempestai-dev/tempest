@@ -172,8 +172,10 @@ export default async function BlogPostPage({
 
       <ProseShell>
         <MDXRemote source={content} />
-        <hr />
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-4 not-prose">
+      </ProseShell>
+
+      <Container className="mt-16 px-0 min-[476px]:px-0 min-[1000px]:px-0 border border-dashed border-muted-foreground/30">
+        <div className="flex flex-wrap items-center justify-between gap-4 p-6 sm:p-8 lg:p-10">
           <div className="flex flex-wrap gap-2">
             {post.tags.map((tag) => (
               <span
@@ -184,14 +186,14 @@ export default async function BlogPostPage({
               </span>
             ))}
           </div>
-          <Button asChild compact mono className="h-11 gap-2.5 px-4 text-[13px] font-semibold">
+          <Button asChild compact mono>
             <Link href="/download">
               Download Tempest
               <ArrowRight data-icon="inline-end" />
             </Link>
           </Button>
         </div>
-      </ProseShell>
+      </Container>
     </main>
   );
 }
