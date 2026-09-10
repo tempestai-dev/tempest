@@ -8,22 +8,22 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: "Tempest vs AgentsRoom — Free Open-Source Multi-Agent Development",
   description:
-    "Both support Windows and parallel agents. Tempest adds Apache 2.0, no project limits, and a shared knowledge graph that cuts token usage by up to 64%.",
+    "Both support Windows and parallel agents. Tempest adds Apache 2.0, no project limits, and a shared knowledge graph that cuts token usage by up to 86%.",
   alternates: { canonical: `${SITE_URL}/tempest-vs-agentsroom` },
   openGraph: {
     title: "Tempest vs AgentsRoom — Free Open-Source Multi-Agent Development",
     description:
-      "Both support Windows and parallel agents. Tempest adds Apache 2.0, no project limits, and a shared knowledge graph that cuts token usage by up to 64%.",
+      "Both support Windows and parallel agents. Tempest adds Apache 2.0, no project limits, and a shared knowledge graph that cuts token usage by up to 86%.",
     type: "website",
     url: `${SITE_URL}/tempest-vs-agentsroom`,
-    images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Tempest vs AgentsRoom" }],
+    images: [{ url: "/og-image.webp", width: 1280, height: 640, alt: "Tempest vs AgentsRoom" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Tempest vs AgentsRoom — Free Open-Source Multi-Agent Development",
     description:
-      "Both support Windows and parallel agents. Tempest adds Apache 2.0, no project limits, and a shared knowledge graph that cuts token usage by up to 64%.",
-    images: ["/og-image.png"],
+      "Both support Windows and parallel agents. Tempest adds Apache 2.0, no project limits, and a shared knowledge graph that cuts token usage by up to 86%.",
+    images: ["/og-image.webp"],
   },
   keywords: [
     "agentsroom alternative",
@@ -45,8 +45,8 @@ type Row = {
 
 const rows: Row[] = [
   { label: "Shared knowledge graph",    tempest: "Yes — indexed once, shared across all agents",  other: "I did not find an equivalent documented",          tempestYes: true,  otherYes: null  },
-  { label: "Token efficiency",          tempest: "Up to 64% fewer",                               other: "I did not find equivalent claims",                  tempestYes: true,  otherYes: null  },
-  { label: "Fewer tool calls",          tempest: "Up to 58% fewer",                               other: "I did not find equivalent claims",                  tempestYes: true,  otherYes: null  },
+  { label: "Token efficiency",          tempest: "Up to 86% fewer",                               other: "I did not find equivalent claims",                  tempestYes: true,  otherYes: null  },
+  { label: "Fewer tool calls",          tempest: "Up to 92% fewer",                               other: "I did not find equivalent claims",                  tempestYes: true,  otherYes: null  },
   { label: "Git worktree isolation",    tempest: "Per agent session",                             other: "—",                                                tempestYes: true,  otherYes: null  },
   { label: "Parallel agents",          tempest: "Unlimited",                                     other: "Yes — multi-project cockpit view",                  tempestYes: true,  otherYes: true  },
   { label: "Specialist agent roles",   tempest: "—",                                             other: "Yes — 14 specialist roles",                        tempestYes: null,  otherYes: true  },
@@ -65,7 +65,7 @@ const features = [
   {
     icon: Coins,
     title: "Free means all your spend goes to the API",
-    body: "Tempest has no project limit and no subscription — the only cost is the model API you already have. The shared knowledge graph then cuts that API cost by up to 64%.",
+    body: "Tempest has no project limit and no subscription — the only cost is the model API you already have. The shared knowledge graph then cuts that API cost by up to 86%.",
   },
   {
     icon: GitBranch,
@@ -99,14 +99,14 @@ export default function TempestVsAgentsRoomPage() {
             '@context': 'https://schema.org',
             '@type': 'Article',
             headline: 'Tempest vs AgentsRoom — Free Open-Source Multi-Agent Development',
-            description: 'Both support Windows and parallel agents. Tempest adds Apache 2.0, no project limits, and a shared knowledge graph that cuts token usage by up to 64%.',
+            description: 'Both support Windows and parallel agents. Tempest adds Apache 2.0, no project limits, and a shared knowledge graph that cuts token usage by up to 86%.',
             url: `${SITE_URL}/tempest-vs-agentsroom`,
             author: { '@type': 'Organization', name: 'Tempest', url: SITE_URL },
             publisher: {
               '@type': 'Organization', name: 'Tempest', url: SITE_URL,
-              logo: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
+              logo: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.webp`, width: 1280, height: 640 },
             },
-            image: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
+            image: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.webp`, width: 1280, height: 640 },
           }),
         }}
       />
@@ -133,7 +133,7 @@ export default function TempestVsAgentsRoomPage() {
           </h1>
           <p className="mt-4 text-base text-muted-foreground max-w-xl leading-relaxed">
             Token Intelligence is Tempest&apos;s core feature: a local knowledge graph indexed once
-            and shared across every parallel agent session — up to 64% fewer tokens, up to 58%
+            and shared across every parallel agent session — up to 86% fewer tokens, up to 92%
             fewer tool calls. The more agents you run in parallel, the more you save. AgentsRoom
             has no documented equivalent. AgentsRoom wins on mobile, voice, sketch annotation,
             and 14 specialist roles. Tempest wins on token efficiency, git isolation, Apache 2.0,
@@ -212,8 +212,8 @@ export default function TempestVsAgentsRoomPage() {
           Pick Tempest if your API bill is the constraint. Without Token Intelligence, every
           agent reads your repository from scratch — and that cost multiplies with every
           parallel session you add. Token Intelligence indexes your codebase once. Every agent
-          then queries the shared graph instead of re-reading files. Up to 64% fewer tokens.
-          Up to 58% fewer tool calls. That is the number that moves your monthly bill, and no
+          then queries the shared graph instead of re-reading files. Up to 86% fewer tokens.
+          Up to 92% fewer tool calls. That is the number that moves your monthly bill, and no
           other tool in this category has a documented equivalent.
         </p>
       </Container>
@@ -265,7 +265,7 @@ export default function TempestVsAgentsRoomPage() {
           <p className="text-sm text-muted-foreground font-semibold">AGENTSROOM ALTERNATIVE — FREE AND OPEN SOURCE</p>
 
           <h2 className="text-3xl min-[1000px]:text-4xl font-normal text-foreground leading-snug max-w-xl">
-            64% fewer tokens.{" "}
+            86% fewer tokens.{" "}
             <span className="text-muted-foreground">Every parallel session. Free.</span>
           </h2>
           <Link

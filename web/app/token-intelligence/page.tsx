@@ -4,24 +4,24 @@ import { Container } from "@/components/layout/container"
 import { SITE_URL } from '@/lib/constants/site'
 
 export const metadata: Metadata = {
-  title: "Token Intelligence — Cut AI Agent Token Costs by Up to 64%",
+  title: "Token Intelligence — Cut AI Agent Token Costs by Up to 86%",
   description:
-    "Tempest builds a local code-knowledge graph shared across all parallel agent sessions. Agents query the graph instead of re-reading files — up to 64% fewer tokens, 58% fewer tool calls.",
+    "Tempest builds a local code-knowledge graph shared across all parallel agent sessions. Agents query the graph instead of re-reading files — up to 86% fewer tokens, 92% fewer tool calls.",
   alternates: { canonical: `${SITE_URL}/token-intelligence` },
   openGraph: {
-    title: "Token Intelligence — Cut AI Agent Token Costs by Up to 64%",
+    title: "Token Intelligence — Cut AI Agent Token Costs by Up to 86%",
     description:
-      "Tempest builds a local code-knowledge graph shared across all parallel agent sessions. Agents query the graph instead of re-reading files — up to 64% fewer tokens, 58% fewer tool calls.",
+      "Tempest builds a local code-knowledge graph shared across all parallel agent sessions. Agents query the graph instead of re-reading files — up to 86% fewer tokens, 92% fewer tool calls.",
     type: "website",
     url: `${SITE_URL}/token-intelligence`,
-    images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Token Intelligence — Tempest" }],
+    images: [{ url: "/og-image.webp", width: 1280, height: 640, alt: "Token Intelligence — Tempest" }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Token Intelligence — Cut AI Agent Token Costs by Up to 64%",
+    title: "Token Intelligence — Cut AI Agent Token Costs by Up to 86%",
     description:
-      "Tempest builds a local code-knowledge graph shared across all parallel agent sessions. Agents query the graph instead of re-reading files — up to 64% fewer tokens, 58% fewer tool calls.",
-    images: ["/og-image.png"],
+      "Tempest builds a local code-knowledge graph shared across all parallel agent sessions. Agents query the graph instead of re-reading files — up to 86% fewer tokens, 92% fewer tool calls.",
+    images: ["/og-image.webp"],
   },
 }
 
@@ -34,18 +34,18 @@ export default function TokenIntelligencePage() {
           __html: JSON.stringify({
             "@context": "https://schema.org",
             "@type": "Article",
-            headline: "Token Intelligence — Cut AI Agent Token Costs by Up to 64%",
+            headline: "Token Intelligence — Cut AI Agent Token Costs by Up to 86%",
             description:
-              "Tempest builds a local code-knowledge graph shared across all parallel agent sessions. Agents query the graph instead of re-reading files — up to 64% fewer tokens, 58% fewer tool calls.",
+              "Tempest builds a local code-knowledge graph shared across all parallel agent sessions. Agents query the graph instead of re-reading files — up to 86% fewer tokens, 92% fewer tool calls.",
             url: `${SITE_URL}/token-intelligence`,
             author: { "@type": "Organization", name: "Tempest", url: SITE_URL },
             publisher: {
               "@type": "Organization",
               name: "Tempest",
               url: SITE_URL,
-              logo: { "@type": "ImageObject", url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
+              logo: { "@type": "ImageObject", url: `${SITE_URL}/og-image.webp`, width: 1280, height: 640 },
             },
-            image: { "@type": "ImageObject", url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
+            image: { "@type": "ImageObject", url: `${SITE_URL}/og-image.webp`, width: 1280, height: 640 },
           }),
         }}
       />
@@ -76,11 +76,11 @@ export default function TokenIntelligencePage() {
 
           <div className="grid grid-cols-2 gap-4 mb-14">
             <div className="rounded border border-foreground/[0.08] bg-foreground/[0.02] p-5">
-              <p className="text-3xl font-light text-foreground">64%</p>
+              <p className="text-3xl font-light text-foreground">86%</p>
               <p className="text-sm text-muted-foreground mt-1.5">reduction in context token consumption across parallel sessions</p>
             </div>
             <div className="rounded border border-foreground/[0.08] bg-foreground/[0.02] p-5">
-              <p className="text-3xl font-light text-foreground">58%</p>
+              <p className="text-3xl font-light text-foreground">92%</p>
               <p className="text-sm text-muted-foreground mt-1.5">fewer tool calls per agent session on indexed codebases</p>
             </div>
           </div>

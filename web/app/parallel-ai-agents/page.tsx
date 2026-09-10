@@ -6,22 +6,22 @@ import { SITE_URL } from '@/lib/constants/site'
 export const metadata: Metadata = {
   title: "Parallel AI Agents — Run Multiple Coding Agents Without Conflicts",
   description:
-    "Run Claude Code, Aider, Cline, and more in parallel — each on its own git worktree, never colliding. Up to 64% fewer tokens with shared context. Free, open source.",
+    "Run Claude Code, Aider, Cline, and more in parallel — each on its own git worktree, never colliding. Up to 86% fewer tokens with shared context. Free, open source.",
   alternates: { canonical: `${SITE_URL}/parallel-ai-agents` },
   openGraph: {
     title: "Parallel AI Agents — Run Multiple Coding Agents Without Conflicts",
     description:
-      "Run Claude Code, Aider, Cline, and more in parallel — each on its own git worktree, never colliding. Up to 64% fewer tokens with shared context.",
+      "Run Claude Code, Aider, Cline, and more in parallel — each on its own git worktree, never colliding. Up to 86% fewer tokens with shared context.",
     type: "website",
     url: `${SITE_URL}/parallel-ai-agents`,
-    images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Parallel AI Agents — Tempest" }],
+    images: [{ url: "/og-image.webp", width: 1280, height: 640, alt: "Parallel AI Agents — Tempest" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Parallel AI Agents — Run Multiple Coding Agents Without Conflicts",
     description:
-      "Run Claude Code, Aider, Cline, and more in parallel — each on its own git worktree, never colliding. Up to 64% fewer tokens with shared context.",
-    images: ["/og-image.png"],
+      "Run Claude Code, Aider, Cline, and more in parallel — each on its own git worktree, never colliding. Up to 86% fewer tokens with shared context.",
+    images: ["/og-image.webp"],
   },
 }
 
@@ -36,16 +36,16 @@ export default function ParallelAIAgentsPage() {
             "@type": "Article",
             headline: "Parallel AI Agents — Run Multiple Coding Agents Without Conflicts",
             description:
-              "Run Claude Code, Aider, Cline, and more in parallel — each on its own git worktree, never colliding. Up to 64% fewer tokens with shared context. Free, open source.",
+              "Run Claude Code, Aider, Cline, and more in parallel — each on its own git worktree, never colliding. Up to 86% fewer tokens with shared context. Free, open source.",
             url: `${SITE_URL}/parallel-ai-agents`,
             author: { "@type": "Organization", name: "Tempest", url: SITE_URL },
             publisher: {
               "@type": "Organization",
               name: "Tempest",
               url: SITE_URL,
-              logo: { "@type": "ImageObject", url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
+              logo: { "@type": "ImageObject", url: `${SITE_URL}/og-image.webp`, width: 1280, height: 640 },
             },
-            image: { "@type": "ImageObject", url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
+            image: { "@type": "ImageObject", url: `${SITE_URL}/og-image.webp`, width: 1280, height: 640 },
           }),
         }}
       />
@@ -109,11 +109,11 @@ export default function ParallelAIAgentsPage() {
               </p>
               <div className="mt-6 grid grid-cols-2 gap-4">
                 <div className="rounded border border-foreground/[0.08] bg-foreground/[0.02] p-4">
-                  <p className="text-2xl font-light text-foreground">64%</p>
+                  <p className="text-2xl font-light text-foreground">86%</p>
                   <p className="text-sm text-muted-foreground mt-1">fewer context tokens across parallel sessions</p>
                 </div>
                 <div className="rounded border border-foreground/[0.08] bg-foreground/[0.02] p-4">
-                  <p className="text-2xl font-light text-foreground">58%</p>
+                  <p className="text-2xl font-light text-foreground">92%</p>
                   <p className="text-sm text-muted-foreground mt-1">fewer tool calls per agent session</p>
                 </div>
               </div>

@@ -28,7 +28,7 @@ const tabs: Tab[] = [
     title: "Feed each agent the exact context it needs",
     body: "Drop chats, files, and notes onto a canvas. Every agent sees only what matters for its task — no more re-pasting requirements into five terminals.",
     image: {
-      src: "/screenshots/landing-dark.png",
+      src: "/screenshots/landing-dark.webp",
       alt: "Threads canvas feeding parallel agents",
     },
   },
@@ -38,7 +38,7 @@ const tabs: Tab[] = [
     title: "Review, stage, commit, push — without leaving Tempest",
     body: "A live diff viewer shows every change as it happens. Stage the hunks you want, commit, push, and open a PR — the full git workflow inside one window.",
     image: {
-      src: "/screenshots/landing-dark.png",
+      src: "/screenshots/landing-dark.webp",
       alt: "Live diff viewer with stage and commit",
     },
   },
@@ -48,7 +48,7 @@ const tabs: Tab[] = [
     title: "A full PTY in every session",
     body: "ANSI color, in-session search, clickable links, shell history. Not a wrapper, not a log viewer — the same terminal you already use, embedded per agent.",
     image: {
-      src: "/screenshots/landing-dark.png",
+      src: "/screenshots/landing-dark.webp",
       alt: "Embedded PTY terminal",
     },
   },
@@ -58,7 +58,7 @@ const tabs: Tab[] = [
     title: "Watch your dev server update in real time",
     body: "Point Tempest at your dev server URL and every code change from any agent appears in the preview instantly. See the app before you review the diff.",
     image: {
-      src: "/screenshots/landing-dark.png",
+      src: "/screenshots/landing-dark.webp",
       alt: "Live dev-server preview panel",
     },
   },

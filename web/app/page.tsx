@@ -78,8 +78,8 @@ export default function HomePage() {
         <section className="relative h-[100dvh] w-full">
           <div className="absolute top-0 left-1/2 h-full w-screen -translate-x-1/2 overflow-hidden">
             <video
-              src="/video/hero-bg.mp4"
-              poster="/video/hero-bg.png"
+              src="/video/hero-bg.webm"
+              poster="/video/hero-bg.webp"
               autoPlay
               loop
               muted

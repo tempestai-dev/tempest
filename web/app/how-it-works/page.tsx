@@ -14,14 +14,14 @@ export const metadata: Metadata = {
       "Tempest uses git worktrees for agent isolation and a local code-knowledge graph (Token Intelligence) to share context across sessions.",
     type: "website",
     url: `${SITE_URL}/how-it-works`,
-    images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "How Tempest Works" }],
+    images: [{ url: "/og-image.webp", width: 1280, height: 640, alt: "How Tempest Works" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "How Tempest Works — Git Worktrees, Token Intelligence, Parallel Agents",
     description:
       "Tempest uses git worktrees for agent isolation and a local code-knowledge graph (Token Intelligence) to share context across sessions.",
-    images: ["/og-image.png"],
+    images: ["/og-image.webp"],
   },
 }
 
@@ -44,7 +44,7 @@ const steps = [
   {
     num: "04",
     title: "Token Intelligence indexes your codebase",
-    body: "Atlas (the local code-knowledge graph) runs in the background on first open. It builds a semantic index of every symbol, import, and cross-file relationship in your project. Once indexed, every parallel session queries the graph instead of reading files from scratch — up to 64% fewer tokens across sessions.",
+    body: "Atlas (the local code-knowledge graph) runs in the background on first open. It builds a semantic index of every symbol, import, and cross-file relationship in your project. Once indexed, every parallel session queries the graph instead of reading files from scratch — up to 86% fewer tokens across sessions.",
   },
   {
     num: "05",

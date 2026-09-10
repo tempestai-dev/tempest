@@ -8,22 +8,22 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: "Tempest vs Superset — Local Multi-Agent Development, Token-Efficient",
   description:
-    "Superset is macOS-only and ELv2-licensed. Tempest is Apache 2.0, runs on Windows today, with a shared knowledge graph cutting token usage by up to 64%.",
+    "Superset is macOS-only and ELv2-licensed. Tempest is Apache 2.0, runs on Windows today, with a shared knowledge graph cutting token usage by up to 86%.",
   alternates: { canonical: `${SITE_URL}/tempest-vs-superset` },
   openGraph: {
     title: "Tempest vs Superset — Local Multi-Agent Development, Token-Efficient",
     description:
-      "Superset is macOS-only and ELv2-licensed. Tempest is Apache 2.0, runs on Windows today, with a shared knowledge graph cutting token usage by up to 64%.",
+      "Superset is macOS-only and ELv2-licensed. Tempest is Apache 2.0, runs on Windows today, with a shared knowledge graph cutting token usage by up to 86%.",
     type: "website",
     url: `${SITE_URL}/tempest-vs-superset`,
-    images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Tempest vs Superset" }],
+    images: [{ url: "/og-image.webp", width: 1280, height: 640, alt: "Tempest vs Superset" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Tempest vs Superset — Local Multi-Agent Development, Token-Efficient",
     description:
-      "Superset is macOS-only and ELv2-licensed. Tempest is Apache 2.0, runs on Windows today, with a shared knowledge graph cutting token usage by up to 64%.",
-    images: ["/og-image.png"],
+      "Superset is macOS-only and ELv2-licensed. Tempest is Apache 2.0, runs on Windows today, with a shared knowledge graph cutting token usage by up to 86%.",
+    images: ["/og-image.webp"],
   },
   keywords: [
     "superset alternative",
@@ -45,8 +45,8 @@ type Row = {
 
 const rows: Row[] = [
   { label: "Shared knowledge graph",  tempest: "Yes — indexed once, shared across all agents",  other: "I did not find an equivalent documented",       tempestYes: true,  otherYes: null  },
-  { label: "Token efficiency",        tempest: "Up to 64% fewer",                               other: "I did not find equivalent claims",               tempestYes: true,  otherYes: null  },
-  { label: "Fewer tool calls",        tempest: "Up to 58% fewer",                               other: "I did not find equivalent claims",               tempestYes: true,  otherYes: null  },
+  { label: "Token efficiency",        tempest: "Up to 86% fewer",                               other: "I did not find equivalent claims",               tempestYes: true,  otherYes: null  },
+  { label: "Fewer tool calls",        tempest: "Up to 92% fewer",                               other: "I did not find equivalent claims",               tempestYes: true,  otherYes: null  },
   { label: "Git worktree isolation",  tempest: "Per agent session",                             other: "Yes — isolated per workspace",                  tempestYes: true,  otherYes: true  },
   { label: "Parallel agents",        tempest: "Unlimited",                                     other: "Yes — 10+ parallel agents",                     tempestYes: true,  otherYes: true  },
   { label: "Windows binaries",       tempest: "Yes",                                           other: "No — macOS only (Windows/Linux coming soon)",   tempestYes: true,  otherYes: false },
@@ -95,14 +95,14 @@ export default function TempestVsSupersetPage() {
             '@context': 'https://schema.org',
             '@type': 'Article',
             headline: 'Tempest vs Superset — Local Multi-Agent Development, Token-Efficient',
-            description: 'Superset is macOS-only and ELv2-licensed. Tempest is Apache 2.0, runs on Windows today, with a shared knowledge graph cutting token usage by up to 64%.',
+            description: 'Superset is macOS-only and ELv2-licensed. Tempest is Apache 2.0, runs on Windows today, with a shared knowledge graph cutting token usage by up to 86%.',
             url: `${SITE_URL}/tempest-vs-superset`,
             author: { '@type': 'Organization', name: 'Tempest', url: SITE_URL },
             publisher: {
               '@type': 'Organization', name: 'Tempest', url: SITE_URL,
-              logo: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
+              logo: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.webp`, width: 1280, height: 640 },
             },
-            image: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
+            image: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.webp`, width: 1280, height: 640 },
           }),
         }}
       />
@@ -129,7 +129,7 @@ export default function TempestVsSupersetPage() {
           </h1>
           <p className="mt-4 text-base text-muted-foreground max-w-xl leading-relaxed">
             Token Intelligence is Tempest&apos;s core feature: a local knowledge graph built once
-            and shared across every parallel agent session — up to 64% fewer tokens, up to 58%
+            and shared across every parallel agent session — up to 86% fewer tokens, up to 92%
             fewer tool calls. No other tool in this category documents an equivalent. Superset
             ships remote workspaces, automations, and 27 MCP tools that Tempest doesn&apos;t — but
             none of those reduce what you pay per agent run. Tempest also runs on Windows today;
@@ -207,7 +207,7 @@ export default function TempestVsSupersetPage() {
           Pick Tempest if your API bill is the constraint. Every agent you run normally pays
           the full cost of reading your repository — file by file, tool call by tool call.
           Token Intelligence builds a local knowledge graph once and every parallel agent draws
-          from it instead. Up to 64% fewer tokens. Up to 58% fewer tool calls. The savings
+          from it instead. Up to 86% fewer tokens. Up to 92% fewer tool calls. The savings
           compound with every session you add. You also get Windows binaries today and
           Apache 2.0 — not ELv2.
         </p>
@@ -259,7 +259,7 @@ export default function TempestVsSupersetPage() {
         <div className="rounded-2xl bg-foreground/[0.04] border border-foreground/[0.06] flex flex-col items-center text-center px-8 py-16 gap-6">
           <p className="text-sm text-muted-foreground font-semibold">SUPERSET ALTERNATIVE — FREE AND OPEN SOURCE</p>
           <h2 className="text-3xl min-[1000px]:text-4xl font-normal text-foreground leading-snug max-w-xl">
-            64% fewer tokens.{" "}
+            86% fewer tokens.{" "}
             <span className="text-muted-foreground">Every parallel session.</span>
           </h2>
           <Link

@@ -18,14 +18,14 @@ export const metadata: Metadata = {
       "How to reach the Tempest team: GitHub Issues for bugs and feature requests, email for support, and a dedicated address for coordinated security disclosure.",
     type: "website",
     url: `${SITE_URL}/contact`,
-    images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Contact Tempest" }],
+    images: [{ url: "/og-image.webp", width: 1280, height: 640, alt: "Contact Tempest" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Contact Tempest — Support, Bugs & Security",
     description:
       "How to reach the Tempest team: GitHub Issues for bugs and feature requests, email for support, and a dedicated address for coordinated security disclosure.",
-    images: ["/og-image.png"],
+    images: ["/og-image.webp"],
   },
 }
 

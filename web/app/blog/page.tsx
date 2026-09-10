@@ -28,13 +28,13 @@ export const metadata: Metadata = {
       'Writing about parallel AI agents, token efficiency, open-source tooling, and how we build Tempest.',
     type: 'website',
     url: `${SITE_URL}/blog`,
-    images: [{ url: '/og-image.png', width: 1280, height: 640, alt: 'Tempest Blog' }],
+    images: [{ url: '/og-image.webp', width: 1280, height: 640, alt: 'Tempest Blog' }],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'AI Agent Engineering Blog — Tempest',
     description: 'Writing about parallel AI agents, token efficiency, open-source tooling, and how we build Tempest.',
-    images: ['/og-image.png'],
+    images: ['/og-image.webp'],
   },
 }
 

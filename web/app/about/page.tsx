@@ -14,14 +14,14 @@ export const metadata: Metadata = {
       "Tempest is an open-source desktop app for running AI coding agents in parallel. Built with Tauri and React, Apache 2.0, local-first by design.",
     type: "website",
     url: `${SITE_URL}/about`,
-    images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "About Tempest" }],
+    images: [{ url: "/og-image.webp", width: 1280, height: 640, alt: "About Tempest" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "About Tempest — Open-Source AI Agent Runner",
     description:
       "Tempest is an open-source desktop app for running AI coding agents in parallel. Built with Tauri and React, Apache 2.0, local-first by design.",
-    images: ["/og-image.png"],
+    images: ["/og-image.webp"],
   },
 }
 
@@ -64,7 +64,7 @@ export default function AboutPage() {
                 Tempest solves both. Each agent session runs on its own git worktree — a separate
                 working directory linked to your repo. Token Intelligence builds a local knowledge
                 graph of your codebase once and shares it across every parallel session, cutting
-                context consumption by up to 64%.
+                context consumption by up to 86%.
               </p>
             </section>
 

@@ -11,25 +11,25 @@ type Persona = {
 
 const personas: Persona[] = [
   {
-    image: "/personas/solo-builders.jpg",
+    image: "/personas/solo-builders.webp",
     title: "Solo developers",
     body: "You run three agents on a side project after dinner. You want fewer merge conflicts, a lower API bill, and one window instead of nine.",
     chips: ["Open source", "Local-first", "Apache 2.0"],
   },
   {
-    image: "/personas/students.jpg",
+    image: "/personas/students.webp",
     title: "Startup teams",
     body: "You are shipping five features a week with a team of four. Every dev runs parallel agents. Token spend is a real line item.",
     chips: ["Shared graph", "DB branches", "One binary"],
   },
   {
-    image: "/personas/freelancers.jpg",
+    image: "/personas/freelancers.webp",
     title: "Agencies & consultancies",
     body: "You touch a dozen client repos a month. You need isolation you can trust, on Windows and macOS, without a per-seat subscription eating your margin.",
     chips: ["Apache 2.0", "Cross-platform", "No per-seat cost"],
   },
   {
-    image: "/personas/enterprise.jpg",
+    image: "/personas/enterprise.webp",
     title: "Enterprise",
     body: "Your code cannot leave the machine, your agents cannot corrupt each other, and your compliance team has already said no to cloud. Tempest is on-machine and sandboxed.",
     chips: ["Hephaestus sandbox", "Self-hosted", "Audit-friendly"],

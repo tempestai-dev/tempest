@@ -171,7 +171,7 @@ export function HeroSection({ initialOS }: { initialOS?: string }) {
 
           <p className="mt-4 text-base text-muted-foreground max-w-xl leading-relaxed">
             The open-source, token-efficient way to run Claude Code,
-            Aider, and more AI coding agents in parallel — up to 64%
+            Aider, and more AI coding agents in parallel — up to 86%
             fewer tokens, each agent on its own git branch: zero merge
             conflicts, live status, built-in diff and PR.
           </p>
@@ -182,7 +182,7 @@ export function HeroSection({ initialOS }: { initialOS?: string }) {
 
       <Container className="mt-2 pb-12">
         <Image
-          src="/screenshots/landing-light.png"
+          src="/screenshots/landing-light.webp"
           alt="Tempest screenshot"
           width={1920}
           height={1080}
@@ -193,7 +193,7 @@ export function HeroSection({ initialOS }: { initialOS?: string }) {
         />
 
         <Image
-          src="/screenshots/landing-dark.png"
+          src="/screenshots/landing-dark.webp"
           alt="Tempest screenshot"
           width={1920}
           height={1080}

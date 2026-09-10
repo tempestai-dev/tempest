@@ -17,7 +17,7 @@ const organizationSchema = {
   url: SITE_URL,
   logo: {
     "@type": "ImageObject",
-    url: `${SITE_URL}/og-image.png`,
+    url: `${SITE_URL}/og-image.webp`,
     width: 1280,
     height: 640,
   },
@@ -86,14 +86,14 @@ export const metadata: Metadata = {
       "Run AI coding agents in parallel — each isolated, none colliding. Claude Code, Aider, OpenCode, and more, all from one interface, each on its own branch.",
     type: "website",
     url: SITE_URL,
-    images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Tempest — Run Claude Code, Aider & AI Agents in Parallel" }],
+    images: [{ url: "/og-image.webp", width: 1280, height: 640, alt: "Tempest — Run Claude Code, Aider & AI Agents in Parallel" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Tempest — Run Claude Code, Aider & AI Agents in Parallel",
     description:
       "Run AI coding agents in parallel — each isolated, none colliding. Claude Code, Aider, OpenCode, and more, all from one interface, each on its own branch.",
-    images: ["/og-image.png"],
+    images: ["/og-image.webp"],
   },
 };
 

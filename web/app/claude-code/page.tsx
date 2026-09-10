@@ -6,22 +6,22 @@ import { SITE_URL } from '@/lib/constants/site'
 export const metadata: Metadata = {
   title: "Run Claude Code in Parallel — Multiple Sessions, Zero Conflicts",
   description:
-    "Tempest lets you run multiple Claude Code sessions simultaneously, each isolated in its own git worktree. Token Intelligence cuts token costs by up to 64% across sessions.",
+    "Tempest lets you run multiple Claude Code sessions simultaneously, each isolated in its own git worktree. Token Intelligence cuts token costs by up to 86% across sessions.",
   alternates: { canonical: `${SITE_URL}/claude-code` },
   openGraph: {
     title: "Run Claude Code in Parallel — Multiple Sessions, Zero Conflicts",
     description:
-      "Tempest lets you run multiple Claude Code sessions simultaneously, each isolated in its own git worktree. Token Intelligence cuts token costs by up to 64% across sessions.",
+      "Tempest lets you run multiple Claude Code sessions simultaneously, each isolated in its own git worktree. Token Intelligence cuts token costs by up to 86% across sessions.",
     type: "website",
     url: `${SITE_URL}/claude-code`,
-    images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Run Claude Code in Parallel — Tempest" }],
+    images: [{ url: "/og-image.webp", width: 1280, height: 640, alt: "Run Claude Code in Parallel — Tempest" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Run Claude Code in Parallel — Multiple Sessions, Zero Conflicts",
     description:
-      "Tempest lets you run multiple Claude Code sessions simultaneously, each isolated in its own git worktree. Token Intelligence cuts token costs by up to 64% across sessions.",
-    images: ["/og-image.png"],
+      "Tempest lets you run multiple Claude Code sessions simultaneously, each isolated in its own git worktree. Token Intelligence cuts token costs by up to 86% across sessions.",
+    images: ["/og-image.webp"],
   },
 }
 
@@ -36,16 +36,16 @@ export default function ClaudeCodePage() {
             "@type": "Article",
             headline: "Run Claude Code in Parallel — Multiple Sessions, Zero Conflicts",
             description:
-              "Tempest lets you run multiple Claude Code sessions simultaneously, each isolated in its own git worktree. Token Intelligence cuts token costs by up to 64% across sessions.",
+              "Tempest lets you run multiple Claude Code sessions simultaneously, each isolated in its own git worktree. Token Intelligence cuts token costs by up to 86% across sessions.",
             url: `${SITE_URL}/claude-code`,
             author: { "@type": "Organization", name: "Tempest", url: SITE_URL },
             publisher: {
               "@type": "Organization",
               name: "Tempest",
               url: SITE_URL,
-              logo: { "@type": "ImageObject", url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
+              logo: { "@type": "ImageObject", url: `${SITE_URL}/og-image.webp`, width: 1280, height: 640 },
             },
-            image: { "@type": "ImageObject", url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
+            image: { "@type": "ImageObject", url: `${SITE_URL}/og-image.webp`, width: 1280, height: 640 },
           }),
         }}
       />
@@ -71,7 +71,7 @@ export default function ClaudeCodePage() {
             <span className="text-muted-foreground">Each on its own branch. None colliding.</span>
           </h1>
           <p className="text-base text-muted-foreground leading-relaxed mb-12 max-w-xl">
-            Claude Code is the most capable AI coding agent available. Tempest is the environment designed to run multiple Claude Code sessions in parallel — without merge conflicts, without losing context, and with up to 64% fewer tokens across sessions.
+            Claude Code is the most capable AI coding agent available. Tempest is the environment designed to run multiple Claude Code sessions in parallel — without merge conflicts, without losing context, and with up to 86% fewer tokens across sessions.
           </p>
 
           <div className="flex flex-col gap-14">
@@ -106,11 +106,11 @@ export default function ClaudeCodePage() {
               </p>
               <div className="mt-6 grid grid-cols-2 gap-4">
                 <div className="rounded border border-foreground/[0.08] bg-foreground/[0.02] p-4">
-                  <p className="text-2xl font-light text-foreground">64%</p>
+                  <p className="text-2xl font-light text-foreground">86%</p>
                   <p className="text-sm text-muted-foreground mt-1">fewer context tokens across parallel Claude Code sessions</p>
                 </div>
                 <div className="rounded border border-foreground/[0.08] bg-foreground/[0.02] p-4">
-                  <p className="text-2xl font-light text-foreground">58%</p>
+                  <p className="text-2xl font-light text-foreground">92%</p>
                   <p className="text-sm text-muted-foreground mt-1">fewer tool calls per Claude Code session</p>
                 </div>
               </div>

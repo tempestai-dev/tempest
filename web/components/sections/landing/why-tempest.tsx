@@ -16,7 +16,7 @@ const pillars: Pillar[] = [
     title: "Total isolation",
     body: "A git worktree per session keeps every agent on its own branch, and Hephaestus wraps each process in an OS-level sandbox — Job Objects on Windows, sandbox-exec on macOS, bubblewrap on Linux. Nothing escapes.",
     image: {
-      src: "/new-landing/total-isolation.png",
+      src: "/new-landing/total-isolation.webp",
       alt: "Parent repo shielded by Hephaestus, branching into isolated agent sandboxes",
       width: 1312,
       height: 1199,
@@ -27,7 +27,7 @@ const pillars: Pillar[] = [
     title: "Token intelligence",
     body: "A local code-knowledge graph lives on your machine and is shared across every session. Agents pull from it instead of scanning files on their own — up to 86% less context, up to 92% fewer tool calls.",
     image: {
-      src: "/new-landing/token-intelligence.png",
+      src: "/new-landing/token-intelligence.webp",
       alt: "Shared code-knowledge graph feeding parallel agent sessions",
       width: 1536,
       height: 1024,
@@ -38,7 +38,7 @@ const pillars: Pillar[] = [
     title: "Continuity anywhere",
     body: "Kick off a session on your desktop and pick it up on your phone. The mobile app streams the same agents live, so you review, reply, and ship from wherever you are.",
     image: {
-      src: "/new-landing/continuity-anywhere.png",
+      src: "/new-landing/continuity-anywhere.webp",
       alt: "Desktop and mobile sharing a single live agent session",
       width: 2000,
       height: 2000,

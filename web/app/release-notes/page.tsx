@@ -14,13 +14,13 @@ export const metadata: Metadata = {
     description: 'Every version, every improvement. Full changelog and release history for Tempest.',
     type: 'website',
     url: `${SITE_URL}/release-notes`,
-    images: [{ url: '/og-image.png', width: 1280, height: 640, alt: 'Tempest Release Notes' }],
+    images: [{ url: '/og-image.webp', width: 1280, height: 640, alt: 'Tempest Release Notes' }],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Tempest Release Notes — AI Agent Runner Changelog',
     description: 'Every version, every improvement. Full changelog and release history for Tempest.',
-    images: ['/og-image.png'],
+    images: ['/og-image.webp'],
   },
 }
 

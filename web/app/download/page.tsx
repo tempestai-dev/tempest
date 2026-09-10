@@ -13,13 +13,13 @@ export const metadata: Metadata = {
     description: "Download Tempest for Windows, macOS, or Linux. Free, open source, no account required.",
     type: "website",
     url: `${SITE_URL}/download`,
-    images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Download Tempest" }],
+    images: [{ url: "/og-image.webp", width: 1280, height: 640, alt: "Download Tempest" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Download Tempest — Free, Open Source",
     description: "Download Tempest for Windows, macOS, or Linux. Free, open source, no account required.",
-    images: ["/og-image.png"],
+    images: ["/og-image.webp"],
   },
 }
 

@@ -14,14 +14,14 @@ export const metadata: Metadata = {
       "Side-by-side comparison of Tempest with every major AI agent runner. Isolation model, token costs, license, platform support, and pricing — all in one place.",
     type: "website",
     url: `${SITE_URL}/compare`,
-    images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Compare AI Agent Runners" }],
+    images: [{ url: "/og-image.webp", width: 1280, height: 640, alt: "Compare AI Agent Runners" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Compare AI Agent Runners — Tempest vs Alternatives",
     description:
       "Side-by-side comparison of Tempest with every major AI agent runner. Isolation model, token costs, license, platform support, and pricing.",
-    images: ["/og-image.png"],
+    images: ["/og-image.webp"],
   },
 }
 
@@ -55,7 +55,7 @@ const rows = [
   },
   {
     feature: "Token cost reduction",
-    tempest: "Up to 64%",
+    tempest: "Up to 86%",
     conductor: "—",
     superset: "—",
     emdash: "—",

@@ -36,7 +36,7 @@ export async function generateMetadata({
   const cover = getCoverPathForMeta(slug)
   const ogImage = cover
     ? { url: `${SITE_URL}${cover}`, alt: post.title }
-    : { url: '/og-image.png', width: 1280, height: 640, alt: post.title }
+    : { url: '/og-image.webp', width: 1280, height: 640, alt: post.title }
   return {
     title: `${post.title} — Tempest`,
     description: post.description,
@@ -55,7 +55,7 @@ export async function generateMetadata({
       card: 'summary_large_image',
       title: post.title,
       description: post.description,
-      images: [cover ? `${SITE_URL}${cover}` : `${SITE_URL}/og-image.png`],
+      images: [cover ? `${SITE_URL}${cover}` : `${SITE_URL}/og-image.webp`],
     },
   }
 }
@@ -144,11 +144,11 @@ export default async function BlogPostPage({
             datePublished: post.date,
             dateModified: post.date,
             mainEntityOfPage: `${SITE_URL}/blog/${slug}`,
-            image: { '@type': 'ImageObject', url: coverPath ? `${SITE_URL}${coverPath}` : `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
+            image: { '@type': 'ImageObject', url: coverPath ? `${SITE_URL}${coverPath}` : `${SITE_URL}/og-image.webp`, width: 1280, height: 640 },
             author: { '@type': 'Organization', name: 'Tempest', url: SITE_URL },
             publisher: {
               '@type': 'Organization', name: 'Tempest', url: SITE_URL,
-              logo: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
+              logo: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.webp`, width: 1280, height: 640 },
             },
           }),
         }}

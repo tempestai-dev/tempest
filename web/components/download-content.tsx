@@ -30,7 +30,7 @@ function detectOS(): DetectedOS {
 }
 
 const CAROUSEL_IMAGES = [
-  { src: "/screenshots/landing-light.png", darkSrc: "/screenshots/landing-dark.png", alt: "Tempest" },
+  { src: "/screenshots/landing-light.webp", darkSrc: "/screenshots/landing-dark.webp", alt: "Tempest" },
 ]
 
 function AppleLogo({ className }: { className?: string }) {

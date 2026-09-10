@@ -8,7 +8,7 @@ export function CtaSection() {
       <div className="rounded-2xl overflow-hidden bg-background">
         <div className="flex flex-col items-center text-center px-8 pt-16 pb-0 gap-6">
           <h2 className="text-3xl min-[1000px]:text-4xl font-normal text-foreground leading-snug max-w-xl">
-            Cut context tokens up to 64%. Run every agent in parallel.{" "}
+            Cut context tokens up to 86%. Run every agent in parallel.{" "}
             <span>Download Tempest free.</span>
           </h2>
           <Link
@@ -22,7 +22,7 @@ export function CtaSection() {
         <div className="relative overflow-hidden max-h-[520px]">
           <div className="absolute top-0 inset-x-0 h-24 bg-gradient-to-b from-background to-transparent z-10 pointer-events-none" />
           <Image
-            src="/screenshots/cta-light.png"
+            src="/screenshots/cta-light.webp"
             alt="Tempest running parallel AI coding agents"
             width={3840}
             height={2160}
@@ -30,7 +30,7 @@ export function CtaSection() {
             className="block dark:hidden w-full h-auto object-top"
           />
           <Image
-            src="/screenshots/cta-dark.png"
+            src="/screenshots/cta-dark.webp"
             alt="Tempest running parallel AI coding agents"
             width={3840}
             height={2160}

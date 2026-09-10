@@ -21,7 +21,7 @@ export function ScreenshotSection() {
           </Button>
           <div className="mt-6 relative aspect-[16/9] w-full overflow-hidden border border-white/20">
             <Image
-              src="/screenshots/landing-dark.png"
+              src="/screenshots/landing-dark.webp"
               alt="Tempest workspace"
               fill
               sizes="(min-width: 1000px) 1280px, 100vw"

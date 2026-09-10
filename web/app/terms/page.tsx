@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     description: "Terms of service for tempestai.dev and the Tempest desktop application.",
     type: "website",
     url: `${SITE_URL}/terms`,
-    images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Tempest Terms of Service" }],
+    images: [{ url: "/og-image.webp", width: 1280, height: 640, alt: "Tempest Terms of Service" }],
   },
 }
 

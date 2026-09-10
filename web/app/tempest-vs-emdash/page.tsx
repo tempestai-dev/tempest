@@ -8,22 +8,22 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: "Tempest vs Emdash — Shared Knowledge Graph for Parallel AI Agents",
   description:
-    "Both local-first, free, open source. Tempest's shared knowledge graph cuts token usage by up to 64% across parallel sessions. Emdash leads on integrations.",
+    "Both local-first, free, open source. Tempest's shared knowledge graph cuts token usage by up to 86% across parallel sessions. Emdash leads on integrations.",
   alternates: { canonical: `${SITE_URL}/tempest-vs-emdash` },
   openGraph: {
     title: "Tempest vs Emdash — Shared Knowledge Graph for Parallel AI Agents",
     description:
-      "Both local-first, free, open source. Tempest's shared knowledge graph cuts token usage by up to 64% across parallel sessions. Emdash leads on integrations.",
+      "Both local-first, free, open source. Tempest's shared knowledge graph cuts token usage by up to 86% across parallel sessions. Emdash leads on integrations.",
     type: "website",
     url: `${SITE_URL}/tempest-vs-emdash`,
-    images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Tempest vs Emdash" }],
+    images: [{ url: "/og-image.webp", width: 1280, height: 640, alt: "Tempest vs Emdash" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Tempest vs Emdash — Shared Knowledge Graph for Parallel AI Agents",
     description:
-      "Both local-first, free, open source. Tempest's shared knowledge graph cuts token usage by up to 64% across parallel sessions. Emdash leads on integrations.",
-    images: ["/og-image.png"],
+      "Both local-first, free, open source. Tempest's shared knowledge graph cuts token usage by up to 86% across parallel sessions. Emdash leads on integrations.",
+    images: ["/og-image.webp"],
   },
   keywords: [
     "emdash alternative",
@@ -45,8 +45,8 @@ type Row = {
 
 const rows: Row[] = [
   { label: "Shared knowledge graph",    tempest: "Yes — indexed once, shared across all agents",  other: "I did not find an equivalent documented",         tempestYes: true,  otherYes: null  },
-  { label: "Token efficiency",          tempest: "Up to 64% fewer",                               other: "I did not find equivalent claims",                 tempestYes: true,  otherYes: null  },
-  { label: "Fewer tool calls",          tempest: "Up to 58% fewer",                               other: "I did not find equivalent claims",                 tempestYes: true,  otherYes: null  },
+  { label: "Token efficiency",          tempest: "Up to 86% fewer",                               other: "I did not find equivalent claims",                 tempestYes: true,  otherYes: null  },
+  { label: "Fewer tool calls",          tempest: "Up to 92% fewer",                               other: "I did not find equivalent claims",                 tempestYes: true,  otherYes: null  },
   { label: "Git worktree isolation",    tempest: "Per agent session",                             other: "Yes",                                             tempestYes: true,  otherYes: true  },
   { label: "Parallel agents",          tempest: "Unlimited",                                     other: "Yes — 25+ agents supported",                      tempestYes: true,  otherYes: true  },
   { label: "Windows support",          tempest: "Yes",                                           other: "Yes",                                             tempestYes: true,  otherYes: true  },
@@ -68,7 +68,7 @@ const features = [
   {
     icon: Coins,
     title: "The one thing Emdash doesn't have",
-    body: "Emdash is genuinely feature-rich. But each agent session still reads your repository independently. Tempest builds one shared knowledge graph and every session draws from it — that's where the 64% token reduction comes from. It compounds as you add parallel agents.",
+    body: "Emdash is genuinely feature-rich. But each agent session still reads your repository independently. Tempest builds one shared knowledge graph and every session draws from it — that's where the 86% token reduction comes from. It compounds as you add parallel agents.",
   },
   {
     icon: GitBranch,
@@ -102,14 +102,14 @@ export default function TempestVsEmdashPage() {
             '@context': 'https://schema.org',
             '@type': 'Article',
             headline: 'Tempest vs Emdash — Shared Knowledge Graph for Parallel AI Agents',
-            description: "Both local-first, free, open source. Tempest's shared knowledge graph cuts token usage by up to 64% across parallel sessions. Emdash leads on integrations.",
+            description: "Both local-first, free, open source. Tempest's shared knowledge graph cuts token usage by up to 86% across parallel sessions. Emdash leads on integrations.",
             url: `${SITE_URL}/tempest-vs-emdash`,
             author: { '@type': 'Organization', name: 'Tempest', url: SITE_URL },
             publisher: {
               '@type': 'Organization', name: 'Tempest', url: SITE_URL,
-              logo: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
+              logo: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.webp`, width: 1280, height: 640 },
             },
-            image: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
+            image: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.webp`, width: 1280, height: 640 },
           }),
         }}
       />
@@ -136,7 +136,7 @@ export default function TempestVsEmdashPage() {
           </h1>
           <p className="mt-4 text-base text-muted-foreground max-w-xl leading-relaxed">
             Token Intelligence is Tempest&apos;s core feature: a local knowledge graph built once,
-            shared across every parallel agent session — up to 64% fewer tokens, up to 58%
+            shared across every parallel agent session — up to 86% fewer tokens, up to 92%
             fewer tool calls. Every agent you add benefits from the same index instead of
             reading your codebase from scratch. Emdash has no documented equivalent. Both
             tools are free, open-source, and local-first — Emdash pulls ahead on SSH remote
@@ -215,8 +215,8 @@ export default function TempestVsEmdashPage() {
           Pick Tempest if your API bill is the constraint. Without Token Intelligence, every
           agent you run in parallel pays the full file-read cost independently — that cost
           scales linearly with session count. Token Intelligence indexes your repository once.
-          Every agent draws from that shared graph instead. The result: up to 64% fewer tokens
-          and up to 58% fewer tool calls, compounding across every session you run in parallel.
+          Every agent draws from that shared graph instead. The result: up to 86% fewer tokens
+          and up to 92% fewer tool calls, compounding across every session you run in parallel.
           If getting more done for less is the job, that is what Token Intelligence is built for.
         </p>
       </Container>
@@ -267,7 +267,7 @@ export default function TempestVsEmdashPage() {
         <div className="rounded-2xl bg-foreground/[0.04] border border-foreground/[0.06] flex flex-col items-center text-center px-8 py-16 gap-6">
           <p className="text-sm text-muted-foreground font-semibold">EMDASH ALTERNATIVE — LOCAL-FIRST, APACHE 2.0</p>
           <h2 className="text-3xl min-[1000px]:text-4xl font-normal text-foreground leading-snug max-w-xl">
-            64% fewer tokens.{" "}
+            86% fewer tokens.{" "}
             <span className="text-muted-foreground">Every parallel session.</span>
           </h2>
           <Link

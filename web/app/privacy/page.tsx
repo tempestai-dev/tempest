@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     description: "Tempest is local-first. Your code never leaves your machine.",
     type: "website",
     url: `${SITE_URL}/privacy`,
-    images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Tempest Privacy Policy" }],
+    images: [{ url: "/og-image.webp", width: 1280, height: 640, alt: "Tempest Privacy Policy" }],
   },
 }
 

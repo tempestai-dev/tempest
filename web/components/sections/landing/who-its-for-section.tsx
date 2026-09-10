@@ -14,22 +14,22 @@ export function WhoItsForSection() {
         {[
           {
             title: "Solo builders",
-            image: "/personas/solo-builders.jpg",
+            image: "/personas/solo-builders.webp",
             body: "Run five agents in parallel and build five features at once. Ship a week of work in a day, and keep every thread straight.",
           },
           {
             title: "Freelancers",
-            image: "/personas/freelancers.jpg",
+            image: "/personas/freelancers.webp",
             body: "Client A, B, and C — each agent on its own branch and worktree. Switch context without the chaos or the merge conflicts.",
           },
           {
             title: "Open source contributors",
-            image: "/personas/open-source-contributors.jpg",
+            image: "/personas/open-source-contributors.webp",
             body: "Try three approaches to the same issue at once. Drop the ones that fail, merge the one that works. No stash juggling.",
           },
           {
             title: "Teams",
-            image: "/personas/students.jpg",
+            image: "/personas/students.webp",
             body: "Every teammate's agent runs isolated in its own worktree, so automated sessions never cause merge conflicts. Review diffs, push, and open PRs inside Tempest.",
           },
         ].map(({ title, image, body }) => (

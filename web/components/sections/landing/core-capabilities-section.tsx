@@ -40,13 +40,13 @@ export function CoreCapabilitiesSection() {
             </div>
           </div>
           <div className="rounded overflow-hidden bg-foreground/[0.06]">
-            <Image src="/screenshots/parallel.png" alt="Parallel sessions" width={1312} height={1040} className="w-full h-auto" />
+            <Image src="/screenshots/parallel.webp" alt="Parallel sessions" width={1312} height={1040} className="w-full h-auto" />
           </div>
         </div>
 
         <div className="overflow-hidden grid grid-cols-1 min-[700px]:grid-cols-2">
           <div className="rounded overflow-hidden bg-foreground/[0.06]">
-            <Image src="/screenshots/diff-viewer.png" alt="Diff viewer" width={1312} height={1040} className="w-full h-auto" />
+            <Image src="/screenshots/diff-viewer.webp" alt="Diff viewer" width={1312} height={1040} className="w-full h-auto" />
           </div>
           <div className="p-8 min-[1000px]:p-10 flex flex-col justify-center gap-10">
             <div className="flex flex-col gap-3">
@@ -100,7 +100,7 @@ export function CoreCapabilitiesSection() {
             </div>
           </div>
           <div className="rounded overflow-hidden bg-foreground/[0.06]">
-            <Image src="/screenshots/live-preview.png" alt="Live preview" width={1312} height={1040} className="w-full h-auto" />
+            <Image src="/screenshots/live-preview.webp" alt="Live preview" width={1312} height={1040} className="w-full h-auto" />
           </div>
         </div>
 

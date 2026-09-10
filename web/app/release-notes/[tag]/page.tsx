@@ -26,13 +26,13 @@ export async function generateMetadata({
       description,
       type: 'article',
       url: `${SITE_URL}/release-notes/${encodeURIComponent(tag)}`,
-      images: [{ url: '/og-image.png', width: 1280, height: 640, alt: title }],
+      images: [{ url: '/og-image.webp', width: 1280, height: 640, alt: title }],
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description,
-      images: ['/og-image.png'],
+      images: ['/og-image.webp'],
     },
   }
 }
@@ -220,11 +220,11 @@ export default async function ReleaseNotesPostPage({
             headline: pageTitle,
             description: `What's new in Tempest ${release.tag_name}. Full changelog, downloads, and release details.`,
             datePublished: release.published_at,
-            image: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
+            image: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.webp`, width: 1280, height: 640 },
             author: { '@type': 'Organization', name: 'Tempest', url: SITE_URL },
             publisher: {
               '@type': 'Organization', name: 'Tempest', url: SITE_URL,
-              logo: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
+              logo: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.webp`, width: 1280, height: 640 },
             },
             mainEntityOfPage: `${SITE_URL}/release-notes/${encodeURIComponent(release.tag_name)}`,
           }),

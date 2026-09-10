@@ -8,24 +8,24 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: "Tempest vs Conductor — Token-Efficient Multi-Agent Development",
   description:
-    "Tempest indexes your repository once and shares it across every agent. Result: up to 64% fewer tokens, 58% fewer tool calls, full git worktree isolation.",
+    "Tempest indexes your repository once and shares it across every agent. Result: up to 86% fewer tokens, 92% fewer tool calls, full git worktree isolation.",
   alternates: {
     canonical: `${SITE_URL}/tempest-vs-conductor`,
   },
   openGraph: {
     title: "Tempest vs Conductor — Token-Efficient Multi-Agent Development",
     description:
-      "Tempest indexes your repository once and shares it across every agent. Result: up to 64% fewer tokens, 58% fewer tool calls, full git worktree isolation.",
+      "Tempest indexes your repository once and shares it across every agent. Result: up to 86% fewer tokens, 92% fewer tool calls, full git worktree isolation.",
     type: "website",
     url: `${SITE_URL}/tempest-vs-conductor`,
-    images: [{ url: "/og-image.png", width: 1280, height: 640, alt: "Tempest vs Conductor" }],
+    images: [{ url: "/og-image.webp", width: 1280, height: 640, alt: "Tempest vs Conductor" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Tempest vs Conductor — Token-Efficient Multi-Agent Development",
     description:
-      "Tempest indexes your repository once and shares it across every agent. Result: up to 64% fewer tokens, 58% fewer tool calls, full git worktree isolation.",
-    images: ["/og-image.png"],
+      "Tempest indexes your repository once and shares it across every agent. Result: up to 86% fewer tokens, 92% fewer tool calls, full git worktree isolation.",
+    images: ["/og-image.webp"],
   },
   keywords: [
     "conductor alternative",
@@ -50,8 +50,8 @@ type Row = {
 
 const rows: Row[] = [
   { label: "Shared repository context",  tempest: "Yes — indexed once",    conductor: "Per-agent",          tempestYes: true,  conductorYes: false },
-  { label: "Token efficiency",           tempest: "Up to 64% fewer",       conductor: "See documentation",  tempestYes: true,  conductorYes: null  },
-  { label: "Fewer tool calls",           tempest: "Up to 58% fewer",       conductor: "See documentation",  tempestYes: true,  conductorYes: null  },
+  { label: "Token efficiency",           tempest: "Up to 86% fewer",       conductor: "See documentation",  tempestYes: true,  conductorYes: null  },
+  { label: "Fewer tool calls",           tempest: "Up to 92% fewer",       conductor: "See documentation",  tempestYes: true,  conductorYes: null  },
   { label: "Knowledge graph",            tempest: "Local, per project",     conductor: "See documentation",  tempestYes: true,  conductorYes: null  },
   { label: "Git worktree isolation",     tempest: "Per agent session",      conductor: "Implementation differs", tempestYes: true, conductorYes: null },
   { label: "Parallel agents",           tempest: "Unlimited",              conductor: "Supported",          tempestYes: true,  conductorYes: true  },
@@ -63,7 +63,7 @@ const features = [
   {
     icon: Coins,
     title: "Index once, share everywhere",
-    body: "Tempest builds a local knowledge graph of your repository on first run. Every agent session draws from that graph instead of rediscovering files independently. That single shared index is why token usage drops by up to 64% and tool calls drop by up to 58% — the work is done once, not once per agent.",
+    body: "Tempest builds a local knowledge graph of your repository on first run. Every agent session draws from that graph instead of rediscovering files independently. That single shared index is why token usage drops by up to 86% and tool calls drop by up to 92% — the work is done once, not once per agent.",
   },
   {
     icon: GitBranch,
@@ -105,14 +105,14 @@ export default function TempestVsConductorPage() {
             '@context': 'https://schema.org',
             '@type': 'Article',
             headline: 'Tempest vs Conductor — Token-Efficient Multi-Agent Development',
-            description: 'Tempest indexes your repository once and shares it across every agent. Result: up to 64% fewer tokens, 58% fewer tool calls, full git worktree isolation.',
+            description: 'Tempest indexes your repository once and shares it across every agent. Result: up to 86% fewer tokens, 92% fewer tool calls, full git worktree isolation.',
             url: `${SITE_URL}/tempest-vs-conductor`,
             author: { '@type': 'Organization', name: 'Tempest', url: SITE_URL },
             publisher: {
               '@type': 'Organization', name: 'Tempest', url: SITE_URL,
-              logo: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
+              logo: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.webp`, width: 1280, height: 640 },
             },
-            image: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.png`, width: 1280, height: 640 },
+            image: { '@type': 'ImageObject', url: `${SITE_URL}/og-image.webp`, width: 1280, height: 640 },
           }),
         }}
       />
@@ -147,8 +147,8 @@ export default function TempestVsConductorPage() {
           </h1>
           <p className="mt-4 text-base text-muted-foreground max-w-xl leading-relaxed">
             Tempest indexes your repository once and shares that understanding
-            across every running AI agent. The result is up to 64% fewer tokens
-            consumed and up to 58% fewer tool calls — without changing how you
+            across every running AI agent. The result is up to 86% fewer tokens
+            consumed and up to 92% fewer tool calls — without changing how you
             work.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
@@ -289,8 +289,8 @@ export default function TempestVsConductorPage() {
         <p className="text-sm text-muted-foreground font-semibold mb-4">WHEN TO PICK TEMPEST</p>
         <p className="text-base text-foreground max-w-2xl leading-relaxed">
           Pick Tempest if your API bill is the constraint. Token Intelligence indexes your
-          repository once and shares that index across every parallel agent session — up to 64%
-          fewer tokens, up to 58% fewer tool calls. The savings compound as you add more sessions.
+          repository once and shares that index across every parallel agent session — up to 86%
+          fewer tokens, up to 92% fewer tool calls. The savings compound as you add more sessions.
           Tempest is free, Apache 2.0, and runs entirely on your machine — your code never leaves it.
         </p>
       </Container>
