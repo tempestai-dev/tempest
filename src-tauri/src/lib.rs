@@ -144,6 +144,8 @@ fn hooks_paths() -> HookPaths {
 /// Dev builds: src-tauri/resources/atlas/node_modules/@usetempest/atlas/
 /// Release builds: <exe>/resources/atlas/node_modules/@usetempest/atlas/
 /// (macOS: Tempest.app/Contents/Resources/resources/atlas/...)
+/// (Linux .deb: /usr/lib/<productName>/resources/atlas/... — resolved via Tauri
+/// because the exe lives in /usr/bin/, not next to resources.)
 fn atlas_resource_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     #[cfg(debug_assertions)]
     {
@@ -157,7 +159,6 @@ fn atlas_resource_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, Stri
     }
     #[cfg(not(debug_assertions))]
     {
-        let _ = app;
         // Use current_exe() instead of Tauri's resource_dir(): on Windows,
         // resource_dir() can return a drive-relative path (e.g. "D:resources\...")
         // instead of an absolute path ("D:\resources\..."), which causes Node to
@@ -168,11 +169,27 @@ fn atlas_resource_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, Stri
         // macOS .app bundles split executable (Contents/MacOS/) from resources
         // (Contents/Resources/); other platforms keep them side-by-side.
         #[cfg(target_os = "macos")]
-        let base = exe_dir.parent()
-            .ok_or_else(|| "Cannot determine Contents directory".to_string())?
-            .join("Resources");
-        #[cfg(not(target_os = "macos"))]
-        let base = exe_dir.to_path_buf();
+        let base = {
+            let _ = app;
+            exe_dir.parent()
+                .ok_or_else(|| "Cannot determine Contents directory".to_string())?
+                .join("Resources")
+        };
+        // Linux .deb installs exe to /usr/bin/ and resources to
+        // /usr/lib/<productName>/, so exe_dir-relative resolution points at the
+        // wrong tree. Tauri's resource_dir() knows the packaging layout; the
+        // Windows drive-relative quirk that made us avoid it does not apply here.
+        #[cfg(target_os = "linux")]
+        let base = {
+            let _ = exe_dir;
+            use tauri::Manager;
+            app.path().resource_dir().map_err(|e| e.to_string())?
+        };
+        #[cfg(all(not(target_os = "macos"), not(target_os = "linux")))]
+        let base = {
+            let _ = app;
+            exe_dir.to_path_buf()
+        };
         Ok(base.join("resources").join("atlas").join("node_modules").join("@usetempest").join("atlas"))
     }
 }
