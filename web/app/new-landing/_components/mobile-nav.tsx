@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import { Button } from "./button";
 
 const NAV_LINKS = [
   { label: "Docs", href: "https://docs.tempestai.dev" },
@@ -43,15 +44,18 @@ export function MobileNav() {
   }, [open]);
 
   return (
-    <div className="flex items-center gap-3 min-[1000px]:hidden">
-      <button
+    <>
+      <Button
+        type="button"
+        variant="secondary"
+        size="icon"
+        compact
         onClick={() => setOpen(!open)}
         aria-label={open ? "Close menu" : "Open menu"}
         aria-expanded={open}
-        className="relative flex h-[41px] w-[41px] items-center justify-center rounded-lg bg-foreground/[0.06]"
       >
         <BurgerIcon open={open} />
-      </button>
+      </Button>
 
       {open &&
         createPortal(
@@ -63,13 +67,16 @@ export function MobileNav() {
               <Link href="/" onClick={() => setOpen(false)} className="shrink-0 text-lg font-semibold tracking-tight">
                 Tempest
               </Link>
-              <button
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                compact
                 onClick={() => setOpen(false)}
                 aria-label="Close menu"
-                className="relative flex h-[41px] w-[41px] items-center justify-center rounded-lg bg-foreground/[0.06]"
               >
                 <BurgerIcon open={true} />
-              </button>
+              </Button>
             </div>
 
             <nav className="flex flex-col flex-1 px-5 min-[476px]:px-8 pt-6 gap-1">
@@ -86,17 +93,15 @@ export function MobileNav() {
             </nav>
 
             <div className="px-5 min-[476px]:px-8 pb-10">
-              <Link
-                href="/download"
-                onClick={() => setOpen(false)}
-                className="inline-flex w-full items-center justify-center rounded-lg bg-foreground text-background text-sm font-medium py-3 leading-none transition-opacity duration-200 hover:opacity-90"
-              >
-                Download
-              </Link>
+              <Button asChild compact uppercase mono className="w-full">
+                <Link href="/download" onClick={() => setOpen(false)}>
+                  Download
+                </Link>
+              </Button>
             </div>
           </div>,
           document.body
         )}
-    </div>
+    </>
   );
 }

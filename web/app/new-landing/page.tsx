@@ -4,9 +4,16 @@ import { Header } from "./_components/header";
 import { Button } from "./_components/button";
 import { AgentCycle } from "./_components/agent-cycle";
 import { ScreenshotSection } from "./_sections/screenshot";
+import { ProductTourSection } from "./_sections/product-tour";
 import { HowItWorksSection } from "./_sections/how-it-works";
 import { WhyTempestSection } from "./_sections/why-tempest";
 import { FeatureGridSection } from "./_sections/feature-grid";
+import { CompareSection } from "./_sections/compare";
+import { WhoItsForSection } from "./_sections/who-its-for";
+import { BlogSection } from "./_sections/blog";
+import { FaqSection } from "./_sections/faq";
+import { CtaSection } from "./_sections/cta";
+import { Footer } from "./_components/footer";
 import { GithubIcon } from "@/components/icons/github";
 
 export const metadata = {
@@ -16,21 +23,21 @@ export const metadata = {
 
 // Locked section order:
 //    1. Hero (video)                         ✓ done
-//    2. Tabbed product tour                  TODO — placeholders + TODO comments
+//    2. Tabbed product tour                  ✓ first draft — image swap per tab
 //    3. How It Works                         ✓ done
 //    4. Why Tempest                          ✓ done
-//    5. Feature grid — 3 rows × N cols       TODO — image/gif per slot
-//    6. Compare table (→ /tempest-vs-*)      TODO
-//    7. Who it's for                         TODO
-//    8. Blog                                 TODO
-//    9. FAQ                                  TODO
-//   10. CTA                                  TODO
+//    5. Feature grid — 3 rows × N cols       ✓ done
+//    6. Compare table (→ /tempest-vs-*)      ✓ first draft
+//    7. Who it's for                         ✓ first draft
+//    8. Blog                                 ✓ first draft — static 3 posts
+//    9. FAQ                                  ✓ first draft
+//   10. CTA                                  ✓ first draft
 
 export default function NewLandingPage() {
   return (
     <main className="relative mx-auto w-full max-w-[1380px]">
       <Header />
-      <section className="relative h-screen w-full">
+      <section className="relative h-[100dvh] w-full">
         <div className="absolute top-0 left-1/2 h-full w-screen -translate-x-1/2 overflow-hidden">
           <video
             src="/video/hero-bg.mp4"
@@ -96,9 +103,16 @@ export default function NewLandingPage() {
         </div>
       </section>
       <ScreenshotSection />
+      {/* <ProductTourSection /> */}
       <HowItWorksSection />
       <WhyTempestSection />
       <FeatureGridSection />
+      <CompareSection />
+      <WhoItsForSection />
+      <BlogSection />
+      <FaqSection />
+      <CtaSection />
+      <Footer />
     </main>
   );
 }

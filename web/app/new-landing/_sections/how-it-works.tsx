@@ -9,7 +9,7 @@ import { AgentsIllustration } from "@/components/sections/landing/agents-illustr
 const steps = [
   {
     title: "Download Tempest",
-    body: "Install the desktop app in seconds on Windows, macOS, or Linux. No account, no subscription, no sign-up.",
+    body: "Install the desktop app in seconds on Windows, macOS, or Linux.",
   },
   {
     title: "Open your repo",
@@ -37,13 +37,13 @@ export function HowItWorksSection() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 border-t border-dashed border-white/15">
+      <div className="grid grid-cols-1 md:grid-cols-3 border-t border-dashed border-white/15">
         {steps.map(({ title, body }, i) => (
           <div
             key={title}
             className={
               i > 0
-                ? "flex flex-col border-l border-dashed border-white/15"
+                ? "flex flex-col border-t border-dashed border-white/15 md:border-t-0 md:border-l"
                 : "flex flex-col"
             }
           >

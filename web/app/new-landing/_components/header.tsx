@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { GithubIcon } from "@/components/icons/github";
 import { TempestLogo } from "@/components/icons/tempest-logo";
-import { MobileNav } from "@/components/layout/mobile-nav";
+import { MobileNav } from "./mobile-nav";
 import { Container } from "./container";
 import { Button } from "./button";
 
@@ -87,7 +87,12 @@ export function Header() {
           </Button>
         </div>
 
-        <MobileNav />
+        <div className="flex items-center gap-3 min-[1000px]:hidden">
+          <Button asChild compact uppercase mono>
+            <Link href="/download">Download</Link>
+          </Button>
+          <MobileNav />
+        </div>
       </Container>
     </header>
   );

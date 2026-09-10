@@ -60,7 +60,15 @@ export function Header() {
           </Link>
         </div>
 
-        <MobileNav />
+        <div className="flex items-center gap-3 min-[1000px]:hidden">
+          <Link
+            href="/download"
+            className="inline-flex items-center justify-center h-[41px] px-5 rounded-full bg-foreground text-background text-sm font-medium transition-opacity duration-200 hover:opacity-90"
+          >
+            Download
+          </Link>
+          <MobileNav />
+        </div>
       </Container>
     </header>
   );
