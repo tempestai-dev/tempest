@@ -1,8 +1,0 @@
-{
-  "name": "@tempest/eve-runtime",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "eve": "0.30.6"
-  }
-}
