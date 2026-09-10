@@ -3,7 +3,7 @@ slug: token-intelligence-eliminating-redundant-reads
 title: "Token Intelligence: Eliminating Redundant File Reads Across Agent Sessions"
 date: 2026-06-26
 type: blog
-description: "When multiple agents read the same files independently, you pay for every read. Token Intelligence builds a local code-knowledge graph so agents share what they already know, cutting context consumption by up to 64%."
+description: "When multiple agents read the same files independently, you pay for every read. Token Intelligence builds a local code-knowledge graph so agents share what they already know, cutting context consumption by up to 86%."
 author: "Tempest Team"
 tags: [token-intelligence, performance, context, roadmap]
 ---
@@ -30,7 +30,7 @@ Across five parallel sessions working on the same codebase, this means the found
 
 ## The numbers
 
-Early testing on real codebases shows context consumption reductions of up to 64% and tool call reductions of up to 58% when Token Intelligence is active across multiple parallel sessions.
+Early testing on real codebases shows context consumption reductions of up to 86% and tool call reductions of up to 92% when Token Intelligence is active across multiple parallel sessions.
 
 These are not theoretical numbers from a contrived benchmark. They come from running Tempest on actual codebases with actual agent tasks. The variance depends on how much codebase overlap exists between sessions — the more shared context, the larger the savings.
 

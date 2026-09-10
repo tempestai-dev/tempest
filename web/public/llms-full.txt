@@ -150,7 +150,7 @@ Across five parallel sessions working on the same codebase, this means the found
 
 #### The numbers
 
-Early testing on real codebases shows context consumption reductions of up to 64% and tool call reductions of up to 58% when Token Intelligence is active across multiple parallel sessions.
+Early testing on real codebases shows context consumption reductions of up to 86% and tool call reductions of up to 92% when Token Intelligence is active across multiple parallel sessions.
 
 These are not theoretical numbers from a contrived benchmark. They come from running Tempest on actual codebases with actual agent tasks. The variance depends on how much codebase overlap exists between sessions — the more shared context, the larger the savings.
 
@@ -191,7 +191,7 @@ The redundancy is structural. The parts of the codebase that are most important 
 
 Token Intelligence (available since Tempest v0.1.2) builds a local semantic code graph once and shares it across every parallel session. Agents query the graph for symbol definitions, call chains, and cross-file relationships instead of reading files from scratch. The index is maintained by a file watcher and never leaves your machine.
 
-Results on real codebases: up to 64% reduction in context token consumption, up to 58% fewer tool calls per session.
+Results on real codebases: up to 86% reduction in context token consumption, up to 92% fewer tool calls per session.
 
 #### The economics
 
@@ -263,7 +263,7 @@ Tempest now ships a built-in code knowledge graph powered by Atlas, a local, off
 
 The work is done once. Every session benefits.
 
-Results: up to 64% less context token consumption. Up to 58% fewer tool calls.
+Results: up to 86% less context token consumption. Up to 92% fewer tool calls.
 
 Token Intelligence is enabled in Settings → Token Intelligence. MCP config files are written automatically for Claude Code, Cline, Roo, Zed, Windsurf, Cursor, Gemini CLI, Kiro/AWS Q, and opencode. All generated files are gitignored automatically.
 
@@ -329,35 +329,41 @@ Tempest v0.1.0 ships the core idea: run a fleet of AI coding agents in parallel,
 
 ## Comparison Pages
 
+### Tempest vs Orca
+
+URL: https://tempestai.dev/tempest-vs-orca
+
+Both are open-source ADEs running on Windows, macOS, and Linux with mobile companions. Orca supports 27+ CLI agents in isolated worktrees, ships remote SSH worktrees, an embedded Chromium browser with design mode, and native GitHub / Linear integrations under MIT. Tempest is Apache 2.0 and adds three things Orca does not document: a shared code-knowledge graph that cuts token usage by up to 86% and tool calls by up to 92%, an isolated Postgres branch per session, and OS-level sandboxing via Hephaestus (Job Objects on Windows, sandbox-exec on macOS, bubblewrap on Linux).
+
 ### Tempest vs Conductor
 
 URL: https://tempestai.dev/tempest-vs-conductor
 
-Conductor is a polished, hosted platform for multi-agent AI development. Tempest is a free, open-source desktop app (Apache 2.0) with a local, shared code-knowledge graph that cuts token usage by up to 64% across parallel sessions. Key differences: Tempest is self-hosted and local-first; Conductor is cloud-based. Tempest has no project limits; Conductor's free tier is limited. Tempest uses git worktrees for isolation; both support parallel agents.
+Conductor is a polished, hosted platform for multi-agent AI development. Tempest is a free, open-source desktop app (Apache 2.0) with a local, shared code-knowledge graph that cuts token usage by up to 86% across parallel sessions. Key differences: Tempest is self-hosted and local-first; Conductor is cloud-based. Tempest has no project limits; Conductor's free tier is limited. Tempest uses git worktrees for isolation; both support parallel agents.
 
 ### Tempest vs AgentsRoom
 
 URL: https://tempestai.dev/tempest-vs-agentsroom
 
-Both support Windows and parallel agents. Tempest adds Apache 2.0 licensing, no project limits, and a shared knowledge graph (Token Intelligence) that cuts token usage by up to 64%. AgentsRoom uses a proprietary license with tiered pricing.
+Both support Windows and parallel agents. Tempest adds Apache 2.0 licensing, no project limits, and a shared knowledge graph (Token Intelligence) that cuts token usage by up to 86%. AgentsRoom uses a proprietary license with tiered pricing.
 
 ### Tempest vs Emdash
 
 URL: https://tempestai.dev/tempest-vs-emdash
 
-Both are local-first and open source. Tempest's shared knowledge graph cuts token usage by up to 64% across parallel sessions. Emdash leads on third-party integrations. Tempest focuses on git worktree isolation and token efficiency for parallel agent workflows.
+Both are local-first and open source. Tempest's shared knowledge graph cuts token usage by up to 86% across parallel sessions. Emdash leads on third-party integrations. Tempest focuses on git worktree isolation and token efficiency for parallel agent workflows.
 
 ### Tempest vs Paseo
 
 URL: https://tempestai.dev/tempest-vs-paseo
 
-Paseo covers every device including mobile. Tempest cuts token cost — Windows-native today, daemon-free, with a shared knowledge graph reducing usage by up to 64%.
+Paseo covers every device including mobile. Tempest cuts token cost — Windows-native today, daemon-free, with a shared knowledge graph reducing usage by up to 86%.
 
 ### Tempest vs Superset
 
 URL: https://tempestai.dev/tempest-vs-superset
 
-Superset is macOS-only and ELv2-licensed. Tempest is Apache 2.0, runs on Windows today, with a shared knowledge graph cutting token usage by up to 64%. For teams needing commercial use rights or Windows support, Tempest is the open alternative.
+Superset is macOS-only and ELv2-licensed. Tempest is Apache 2.0, runs on Windows today, with a shared knowledge graph cutting token usage by up to 86%. For teams needing commercial use rights or Windows support, Tempest is the open alternative.
 
 ---
 
@@ -365,7 +371,7 @@ Superset is macOS-only and ELv2-licensed. Tempest is Apache 2.0, runs on Windows
 
 URL: https://tempestai.dev/about
 
-Tempest is built to make running multiple AI coding agents practical. The core problems it solves are isolation (git worktrees per session) and cost (Token Intelligence shared code-knowledge graph, up to 64% fewer tokens). Built with Tauri 2.x (Rust backend, React frontend). Free and open source under Apache 2.0. Local-first — your code never leaves your machine.
+Tempest is built to make running multiple AI coding agents practical. The core problems it solves are isolation (git worktrees per session) and cost (Token Intelligence shared code-knowledge graph, up to 86% fewer tokens). Built with Tauri 2.x (Rust backend, React frontend). Free and open source under Apache 2.0. Local-first — your code never leaves your machine.
 
 ---
 

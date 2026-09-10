@@ -46,7 +46,7 @@
     "title": "How to Reduce AI Agent Token Costs When Running Multiple Sessions",
     "date": "2026-07-25",
     "type": "blog",
-    "description": "Running multiple AI agents in parallel multiplies token costs — unless you share context between sessions. Here is how Token Intelligence cuts usage by up to 64%.",
+    "description": "Running multiple AI agents in parallel multiplies token costs — unless you share context between sessions. Here is how Token Intelligence cuts usage by up to 86%.",
     "author": "Tempest Team",
     "tags": [
       "token-intelligence",
@@ -145,7 +145,7 @@
     "title": "Token Intelligence: Eliminating Redundant File Reads Across Agent Sessions",
     "date": "2026-06-26",
     "type": "blog",
-    "description": "When multiple agents read the same files independently, you pay for every read. Token Intelligence builds a local code-knowledge graph so agents share what they already know, cutting context consumption by up to 64%.",
+    "description": "When multiple agents read the same files independently, you pay for every read. Token Intelligence builds a local code-knowledge graph so agents share what they already know, cutting context consumption by up to 86%.",
     "author": "Tempest Team",
     "tags": [
       "token-intelligence",

@@ -29,6 +29,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE}/blog`, lastModified: new Date('2026-07-25') },
     { url: `${BASE}/download`, lastModified: new Date('2026-07-25') },
     { url: `${BASE}/release-notes`, lastModified: new Date('2026-07-25') },
+    { url: `${BASE}/tempest-vs-orca`, lastModified: new Date('2026-09-10') },
     { url: `${BASE}/tempest-vs-conductor`, lastModified: new Date('2026-07-25') },
     { url: `${BASE}/tempest-vs-superset`, lastModified: new Date('2026-07-25') },
     { url: `${BASE}/tempest-vs-emdash`, lastModified: new Date('2026-07-25') },

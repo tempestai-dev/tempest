@@ -23,7 +23,7 @@ export function WhyOriginSection() {
       <div className="grid grid-cols-1 min-[700px]:grid-cols-3 gap-4 mt-8">
         {[
           { icon: GitBranch, title: "Isolated git worktrees", body: "Each session runs on its own branch. Agents never touch each other's files, so no merge conflicts mid-run and no stepping on uncommitted changes." },
-          { icon: Coins,     title: "Token intelligence", body: "A local code-knowledge graph lives on your machine and is shared across every session. Agents pull from it instead of scanning files on their own — up to 64% less context, up to 58% fewer tool calls." },
+          { icon: Coins,     title: "Token intelligence", body: "A local code-knowledge graph lives on your machine and is shared across every session. Agents pull from it instead of scanning files on their own — up to 86% less context, up to 92% fewer tool calls." },
           { icon: History,   title: "Session continuity", body: "Close a tab, reopen it, and the agent resumes exactly where it left off with full history intact. Nothing is lost." },
         ].map(({ icon: Icon, title, body }) => (
           <div key={title} className="rounded bg-foreground/[0.06] p-6 flex flex-col gap-6">

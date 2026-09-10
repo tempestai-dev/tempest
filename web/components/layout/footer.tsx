@@ -64,6 +64,7 @@ export function Footer() {
             <p className="text-sm font-medium">Compare</p>
             <nav className="flex flex-col gap-2.5">
               <Link href="/compare" className="text-sm text-muted-foreground hover:text-foreground transition-colors w-fit">All Comparisons</Link>
+              <Link href="/tempest-vs-orca" className="text-sm text-muted-foreground hover:text-foreground transition-colors w-fit">vs Orca</Link>
               <Link href="/tempest-vs-conductor" className="text-sm text-muted-foreground hover:text-foreground transition-colors w-fit">vs Conductor</Link>
               <Link href="/tempest-vs-superset" className="text-sm text-muted-foreground hover:text-foreground transition-colors w-fit">vs Superset</Link>
               <Link href="/tempest-vs-emdash" className="text-sm text-muted-foreground hover:text-foreground transition-colors w-fit">vs Emdash</Link>

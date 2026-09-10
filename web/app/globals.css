@@ -167,4 +167,12 @@
     font-family: var(--font-geist-sans), system-ui, sans-serif;
     scroll-behavior: smooth;
   }
+  ::selection {
+    background: #042f2e;
+    color: #83ede0;
+  }
+  ::-moz-selection {
+    background: #042f2e;
+    color: #83ede0;
+  }
 }

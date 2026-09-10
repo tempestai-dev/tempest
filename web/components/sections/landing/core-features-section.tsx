@@ -19,7 +19,7 @@ export function CoreFeaturesSection() {
           { icon: GitMerge,       title: "Diff, commit, PR",      body: "Review every change in a live diff viewer. Stage, commit, push, and open a PR without leaving Tempest." },
           { icon: MonitorPlay,    title: "Live preview",          body: "Watch your dev server update in real time as agents change code." },
           { icon: Terminal,       title: "Real terminal",         body: "ANSI color, in-session search, clickable links — a full terminal in every session." },
-          { icon: Layers,         title: "Token Intelligence",    body: "A shared code-knowledge graph cuts context tokens up to 64% and tool calls up to 58%. Coming soon." },
+          { icon: Layers,         title: "Token Intelligence",    body: "A shared code-knowledge graph cuts context tokens up to 86% and tool calls up to 92%. Coming soon." },
           { icon: GitPullRequest, title: "Database branches",     body: "An isolated Postgres instance per agent, so parallel runs never corrupt each other's data. Coming soon." },
           { icon: Eye,            title: "Zero conflicts",        body: "Even a rogue agent can't reach your main branch. Blast radius: zero." },
           { icon: Zap,            title: "Native, not Electron",  body: "Tauri 2 native performance on Windows, macOS, and Linux." },

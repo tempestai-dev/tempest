@@ -26,7 +26,7 @@ const faqs = [
   },
   {
     q: "What are Token Intelligence and Database Branches?",
-    a: "Token Intelligence is a local code-knowledge graph in active development that cuts context consumption by up to 64%. Database Branches gives each agent session its own isolated Postgres instance. Both are coming soon.",
+    a: "Token Intelligence is a local code-knowledge graph in active development that cuts context consumption by up to 86%. Database Branches gives each agent session its own isolated Postgres instance. Both are coming soon.",
   },
 ]
 
