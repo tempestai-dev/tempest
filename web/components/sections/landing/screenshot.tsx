@@ -1,8 +1,8 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Download } from "lucide-react";
-import { Container } from "../_components/container";
-import { Button } from "../_components/button";
+import { Container } from "@/components/landing/container";
+import { Button } from "@/components/landing/button";
 
 export function ScreenshotSection() {
   return (

@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { Shield, Coins, Smartphone } from "lucide-react";
-import { Container } from "../_components/container";
-import { Aurora } from "../_components/aurora";
+import { Container } from "@/components/landing/container";
+import { Aurora } from "@/components/landing/aurora";
 
 type Pillar = {
   icon: typeof Shield;
@@ -25,7 +25,7 @@ const pillars: Pillar[] = [
   {
     icon: Coins,
     title: "Token intelligence",
-    body: "A local code-knowledge graph lives on your machine and is shared across every session. Agents pull from it instead of scanning files on their own — up to 64% less context, up to 58% fewer tool calls.",
+    body: "A local code-knowledge graph lives on your machine and is shared across every session. Agents pull from it instead of scanning files on their own — up to 86% less context, up to 92% fewer tool calls.",
     image: {
       src: "/new-landing/token-intelligence.png",
       alt: "Shared code-knowledge graph feeding parallel agent sessions",

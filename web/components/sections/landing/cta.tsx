@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Download } from "lucide-react";
-import { Container } from "../_components/container";
-import { Button } from "../_components/button";
+import { Container } from "@/components/landing/container";
+import { Button } from "@/components/landing/button";
 import { GithubIcon } from "@/components/icons/github";
 
 export function CtaSection() {

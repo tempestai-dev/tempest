@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Check, X, ArrowUpRight } from "lucide-react";
-import { Container } from "../_components/container";
-import { Aurora } from "../_components/aurora";
+import { Container } from "@/components/landing/container";
+import { Aurora } from "@/components/landing/aurora";
 
 type Cell = boolean | string;
 

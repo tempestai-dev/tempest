@@ -14,8 +14,8 @@ import {
   Shield,
   Zap,
 } from "lucide-react";
-import { Container } from "../_components/container";
-import { Aurora } from "../_components/aurora";
+import { Container } from "@/components/landing/container";
+import { Aurora } from "@/components/landing/aurora";
 import {
   OneWindowVisual,
   WorktreesVisual,
@@ -29,7 +29,7 @@ import {
   DatabaseBranchesVisual,
   SandboxVisual,
   NativeVisual,
-} from "../_components/feature-visuals";
+} from "@/components/landing/feature-visuals";
 
 type Feature = {
   icon: typeof Bot;
@@ -62,11 +62,11 @@ export function FeatureGridSection() {
           className="absolute inset-0"
           colors={[
             "#000000",
-            "#0ea5e9",
+            "#10b981",
             "#000000",
-            "#22d3ee",
+            "#84cc16",
             "#000000",
-            "#a5f3fc",
+            "#14b8a6",
             "#000000",
           ]}
         />

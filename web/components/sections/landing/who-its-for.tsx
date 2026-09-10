@@ -1,9 +1,9 @@
-import { User, Users, Building2, Rocket } from "lucide-react";
-import { Container } from "../_components/container";
-import { Aurora } from "../_components/aurora";
+import Image from "next/image";
+import { Container } from "@/components/landing/container";
+import { Aurora } from "@/components/landing/aurora";
 
 type Persona = {
-  icon: typeof User;
+  image: string;
   title: string;
   body: string;
   chips: string[];
@@ -11,25 +11,25 @@ type Persona = {
 
 const personas: Persona[] = [
   {
-    icon: User,
+    image: "/personas/solo-builders.jpg",
     title: "Solo developers",
     body: "You run three agents on a side project after dinner. You want fewer merge conflicts, a lower API bill, and one window instead of nine.",
     chips: ["Open source", "Local-first", "Apache 2.0"],
   },
   {
-    icon: Rocket,
+    image: "/personas/students.jpg",
     title: "Startup teams",
     body: "You are shipping five features a week with a team of four. Every dev runs parallel agents. Token spend is a real line item.",
     chips: ["Shared graph", "DB branches", "One binary"],
   },
   {
-    icon: Users,
+    image: "/personas/freelancers.jpg",
     title: "Agencies & consultancies",
     body: "You touch a dozen client repos a month. You need isolation you can trust, on Windows and macOS, without a per-seat subscription eating your margin.",
     chips: ["Apache 2.0", "Cross-platform", "No per-seat cost"],
   },
   {
-    icon: Building2,
+    image: "/personas/enterprise.jpg",
     title: "Enterprise",
     body: "Your code cannot leave the machine, your agents cannot corrupt each other, and your compliance team has already said no to cloud. Tempest is on-machine and sandboxed.",
     chips: ["Hephaestus sandbox", "Self-hosted", "Audit-friendly"],
@@ -70,14 +70,14 @@ export function WhoItsForSection() {
       </div>
 
       <div className="grid grid-cols-1 border-t border-dashed border-white/15 sm:grid-cols-2 lg:grid-cols-4">
-        {personas.map(({ icon: Icon, title, body, chips }, i) => {
+        {personas.map(({ image, title, body, chips }, i) => {
           const smCol = i % 2;
           const lgCol = i % 4;
           return (
             <div
               key={title}
               className={[
-                "flex flex-col p-6 sm:p-8 border-dashed border-white/15",
+                "flex flex-col border-dashed border-white/15",
                 i > 0 && "border-t",
                 i < 2 && "sm:border-t-0",
                 smCol > 0 && "sm:border-l",
@@ -87,24 +87,33 @@ export function WhoItsForSection() {
                 .filter(Boolean)
                 .join(" ")}
             >
-              <div className="flex h-10 w-10 items-center justify-center border border-dashed border-white/25 bg-white/[0.04]">
-                <Icon size={16} className="text-white" strokeWidth={1.5} />
+              <div className="relative aspect-[4/5] w-full overflow-hidden bg-white/[0.04]">
+                <Image
+                  src={image}
+                  alt={title}
+                  fill
+                  sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
+                  className="object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
               </div>
-              <p className="mt-5 font-pixel text-[20px] leading-[1.1] tracking-[-0.02em] text-white">
-                {title}
-              </p>
-              <p className="mt-3 text-[13px] font-light leading-[1.6] text-white/60">
-                {body}
-              </p>
-              <div className="mt-5 flex flex-wrap gap-1.5">
-                {chips.map((c) => (
-                  <span
-                    key={c}
-                    className="border border-dashed border-white/20 bg-white/[0.03] px-2 py-1 text-[11px] uppercase tracking-[0.1em] text-white/60"
-                  >
-                    {c}
-                  </span>
-                ))}
+              <div className="flex flex-col p-6 sm:p-8">
+                <p className="font-pixel text-[20px] leading-[1.1] tracking-[-0.02em] text-white">
+                  {title}
+                </p>
+                <p className="mt-3 text-[13px] font-light leading-[1.6] text-white/60">
+                  {body}
+                </p>
+                <div className="mt-5 flex flex-wrap gap-1.5">
+                  {chips.map((c) => (
+                    <span
+                      key={c}
+                      className="border border-dashed border-white/20 bg-white/[0.03] px-2 py-1 text-[11px] uppercase tracking-[0.1em] text-white/60"
+                    >
+                      {c}
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
           );

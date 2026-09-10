@@ -1,6 +1,6 @@
 import { FolderOpen } from "lucide-react";
-import { Container } from "../_components/container";
-import { Aurora } from "../_components/aurora";
+import { Container } from "@/components/landing/container";
+import { Aurora } from "@/components/landing/aurora";
 import { WindowsLogo } from "@/components/icons/windows";
 import { TuxIcon } from "@/components/icons/linux";
 import { AppleLogo } from "@/components/icons/apple";
