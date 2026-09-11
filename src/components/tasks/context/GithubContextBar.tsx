@@ -1,4 +1,5 @@
 import { Icon } from "../icons";
+import { SpSelect } from "../../ui/SpSelect";
 import type { GhKind, GhPreset, GhRepo, TasksState } from "../types";
 
 const PRESETS: { id: GhPreset; label: string }[] = [
@@ -36,24 +37,23 @@ export function GithubContextBar({
     ? "All"
     : repos.find((r) => r.full === state.ghRepo || r.id === state.ghRepo)?.full ?? state.ghRepo;
 
+  const repoOptions = [
+    { value: "all", label: "All repos" },
+    ...repos.map((r) => ({ value: r.full, label: r.full })),
+    ...(reposHasMore ? [{ value: LOAD_MORE_REPOS, label: "Load more repos…" }] : []),
+  ];
+
   return (
     <>
       <div className="ctx-row">
-        <select
-          className="picker picker-select"
+        <SpSelect
           value={state.ghRepo}
-          onChange={(e) => {
-            if (e.target.value === LOAD_MORE_REPOS) { onLoadMoreRepos(); return; }
-            patch({ ghRepo: e.target.value });
+          options={repoOptions}
+          onChange={(v) => {
+            if (v === LOAD_MORE_REPOS) { onLoadMoreRepos(); return; }
+            patch({ ghRepo: v });
           }}
-          title="Repo"
-        >
-          <option value="all">All repos</option>
-          {repos.map((r) => (
-            <option key={r.full} value={r.full}>{r.full}</option>
-          ))}
-          {reposHasMore && <option value={LOAD_MORE_REPOS}>Load more repos…</option>}
-        </select>
+        />
         <div className="segmented">
           {KINDS.map((k) => (
             <button
