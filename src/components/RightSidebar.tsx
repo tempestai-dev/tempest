@@ -626,15 +626,13 @@ export function RightSidebar({ cwd, rootPath, open, gitRevision, noGit, onOpenDi
                 <span className="rs-tab-pill-badge">{dbBranches.length}</span>
               )}
             </button>
-            <span className="rs-btab-sep">|</span>
-            <button
+<button
               className={`rs-btab${bottomTab === "run" ? " rs-btab--active" : ""}`}
               onClick={() => setBottomTab("run")}
             >
               <Play size={11} /> Run
             </button>
-            <span className="rs-btab-sep">|</span>
-            <button
+<button
               className={`rs-btab${bottomTab === "terminal" ? " rs-btab--active" : ""}`}
               onClick={() => setBottomTab("terminal")}
             >

@@ -182,27 +182,29 @@
 .rs-btab {
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
-  padding: 0 4px 2px;
+  border-radius: 999px;
+  padding: 3px 10px;
   font-size: 11px;
   font-family: inherit;
   font-weight: 450;
   color: var(--tempest-fg-subtle);
   cursor: pointer;
-  transition: color 0.12s, border-color 0.12s;
+  transition: background 0.12s, color 0.12s;
   display: flex;
   align-items: center;
   gap: 5px;
 }
 
 .rs-btab:hover {
+  background: var(--tempest-bg-hover);
   color: var(--tempest-fg-default);
 }
 
-.rs-btab--active {
+.rs-btab--active,
+.rs-btab--active:hover {
+  background: var(--tempest-ui-tab-active);
   color: var(--tempest-fg-default);
   font-weight: 500;
-  border-bottom-color: var(--tempest-accent-blue);
 }
 
 .rs-btab-sep {
