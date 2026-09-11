@@ -178,7 +178,7 @@ function FileTreeNodes({
 
 const MIN_WIDTH = 180;
 const MAX_WIDTH = 560;
-const DEFAULT_WIDTH = 260;
+const DEFAULT_WIDTH = 300;
 
 export function RightSidebar({ cwd, rootPath, open, gitRevision, noGit, onOpenDiff, onOpenFile }: Props) {
   const [activeTab, setActiveTab] = useState<RightTab>("files");
