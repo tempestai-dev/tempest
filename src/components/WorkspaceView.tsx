@@ -2402,6 +2402,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
                   // rather than restarting the app under the user.
                   update={updateProps ? { ...updateProps, onUpdate: () => setUpdateConfirm({ installing: false, error: null }) } : undefined}
                   sandboxed={activeSession?.sandboxed}
+                  activeAgentHint={activeSession?.agent}
                   atlasEnabled={atlasEnabled && activeProjectPath ? true : undefined}
                   atlasIndexed={atlasEnabled && isAtlasIndexed ? true : undefined}
                   atlasIndexing={atlasEnabled && isAtlasIndexing ? true : undefined}

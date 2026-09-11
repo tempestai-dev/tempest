@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Shield, Cpu, RefreshCw } from "lucide-react";
 import { Tooltip } from "./Tooltip";
 import { UpdateNotice } from "./UpdateNotice";
+import { AgentQuotaStrip } from "./AgentQuotaStrip";
 
 /// How long each row is held before the track rotates to the other one.
 const CYCLE_MS = 7000;
@@ -23,12 +24,15 @@ interface Props {
   atlasIndexing?: boolean;
   atlasEnabled?: boolean;
   onSyncAtlas?: () => void;
+  /// Hint of the agent driving the active session — feeds the quota strip's
+  /// "active only" mode. Omitted for non-agent tabs (diff, terminal, editor).
+  activeAgentHint?: string;
   /// When set, the badge row rotates between the badges and an update line.
   /// Absent (the usual case) leaves the bar exactly as it was.
   update?: StatusBarUpdate;
 }
 
-export function StatusBar({ sandboxed, atlasIndexed, atlasIndexing, atlasEnabled, onSyncAtlas, update }: Props) {
+export function StatusBar({ sandboxed, atlasIndexed, atlasIndexing, atlasEnabled, onSyncAtlas, activeAgentHint, update }: Props) {
   const showShield = sandboxed !== undefined;
   const showAtlas = atlasEnabled !== undefined;
 
@@ -106,16 +110,25 @@ export function StatusBar({ sandboxed, atlasIndexed, atlasIndexing, atlasEnabled
     </>
   );
 
+  const stripRow = (
+    <>
+      <AgentQuotaStrip activeAgentHint={activeAgentHint} />
+      <span className="status-bar-spacer" />
+      {badges}
+    </>
+  );
+
   if (!update) {
-    return <div className="status-bar" role="status">{badges}</div>;
+    return <div className="status-bar" role="status">{stripRow}</div>;
   }
 
   return (
     <div className="status-bar" role="status">
       <div className="status-bar-cycle">
         <div className={`status-bar-cycle-track${showUpdate ? " status-bar-cycle-track--alt" : ""}`}>
-          <div className="status-bar-cycle-row">{badges}</div>
+          <div className="status-bar-cycle-row">{stripRow}</div>
           <div className="status-bar-cycle-row">
+            <span className="status-bar-spacer" />
             <UpdateNotice
               version={update.version}
               onNotes={update.onNotes}

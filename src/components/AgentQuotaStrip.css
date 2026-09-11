@@ -1,0 +1,197 @@
+/* Agent quota strip — sits next to Indexed / Isolated on the canvas footer.
+   Shows each provider's peak window as an icon + thin bar + % remaining.
+   Modes: scrolling marquee, all-compact, or active-only. */
+
+.agent-quota-strip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 50%;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.aqs-mode-btn {
+  height: 16px;
+  width: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s;
+}
+.aqs-mode-btn:hover {
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
+}
+.aqs-mode-btn:disabled { cursor: default; opacity: 0.7; }
+@keyframes aqs-spin { to { transform: rotate(360deg); } }
+.aqs-mode-btn--spin svg { animation: aqs-spin 1s linear infinite; }
+
+.aqs-item--muted { opacity: 0.55; }
+.aqs-item--muted:hover { opacity: 1; }
+
+/* ── menu ─────────────────────────────────────────────────────────────── */
+.aqs-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  min-width: 140px;
+  padding: 4px;
+  background: var(--tempest-bg-elevated, var(--tempest-bg-sidebar));
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 20;
+}
+.aqs-menu-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--tempest-fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 6px 2px;
+}
+.aqs-menu-title--sub { margin-top: 4px; border-top: 1px solid var(--tempest-border-subtle); }
+.aqs-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--tempest-fg-default);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.aqs-menu-item:hover { background: var(--tempest-bg-hover); }
+.aqs-menu-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid var(--tempest-fg-muted);
+}
+.aqs-menu-item--on .aqs-menu-dot {
+  background: var(--tempest-accent-blue, currentColor);
+  border-color: transparent;
+}
+
+/* ── item (bar + compact share icon + pct) ────────────────────────────── */
+.aqs-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  color: var(--tempest-fg-default);
+}
+.aqs-icon {
+  width: 12px;
+  height: 12px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.aqs-icon--fallback { color: var(--tempest-fg-muted); }
+
+/* codex.svg is a monochrome currentColor glyph rendered as <img>, so it locks
+   to black. Invert under dark themes so it reads against the dark ground. */
+[data-theme="dark"] .aqs-icon[data-agent="codex"] { filter: invert(1); }
+
+.aqs-bar-track {
+  width: 44px;
+  height: 4px;
+  background: var(--tempest-bg-hover, rgba(255,255,255,0.08));
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.aqs-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  transition: width 300ms ease;
+}
+.aqs-bar-fill--ok   { background: var(--tempest-accent-green,  #22c55e); }
+.aqs-bar-fill--warn { background: var(--tempest-accent-orange, #f59e0b); }
+.aqs-bar-fill--crit { background: var(--tempest-accent-red,    #ef4444); }
+
+.aqs-pct {
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  color: var(--tempest-fg-muted);
+  min-width: 26px;
+  text-align: right;
+}
+.aqs-pct--warn { color: var(--tempest-accent-orange, #f59e0b); }
+.aqs-pct--crit { color: var(--tempest-accent-red, #ef4444); }
+
+/* ── scrolling marquee ────────────────────────────────────────────────── */
+.aqs-scroll {
+  overflow: hidden;
+  min-width: 0;
+  flex: 1 1 auto;
+  max-width: 100%;
+  mask-image: linear-gradient(90deg, transparent 0, #000 8%, #000 92%, transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 8%, #000 92%, transparent 100%);
+}
+.aqs-scroll-track {
+  display: inline-flex;
+  gap: 14px;
+  padding-right: 14px;
+  animation: aqs-marquee linear infinite;
+  will-change: transform;
+}
+.aqs-scroll:hover .aqs-scroll-track {
+  animation-play-state: paused;
+}
+@keyframes aqs-marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aqs-scroll-track { animation: none; }
+}
+
+/* ── compact row (all mode) ───────────────────────────────────────────── */
+.aqs-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow: hidden;
+}
+.aqs-compact-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.aqs-sep {
+  width: 1px;
+  height: 12px;
+  margin: 0 6px;
+  background: var(--tempest-fg-default);
+  opacity: 0.5;
+}
+.aqs-item--compact .aqs-pct { min-width: auto; }
+
+.aqs-chip {
+  font-size: 10px;
+  color: var(--tempest-fg-muted);
+  white-space: nowrap;
+}

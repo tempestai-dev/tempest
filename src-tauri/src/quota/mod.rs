@@ -7,6 +7,7 @@ pub mod claude;
 pub mod codex;
 pub mod copilot;
 pub mod cursor;
+pub mod grok;
 
 use serde::{Deserialize, Serialize};
 
@@ -186,5 +187,6 @@ pub fn quota_read_all() -> Vec<ProviderUsage> {
         codex::fetch(),
         copilot::fetch(),
         cursor::fetch(),
+        grok::fetch(),
     ]
 }
