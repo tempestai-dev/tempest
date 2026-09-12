@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updatedAt": "2026-08-20",
+  "updatedAt": "2026-09-12",
   "agents": [
     {
       "id": "agy",
@@ -183,6 +183,35 @@
         "session": ["--id", "{UUID}"],
         "resume": ["--continue"],
         "print": ["ask", "{PROMPT}"]
+      }
+    },
+    {
+      "id": "qwen",
+      "name": "Qwen Code",
+      "command": "qwen",
+      "adapter": "cli",
+      "icon": "qwen.svg",
+      "mono": true,
+      "downloadUrl": "https://github.com/QwenLM/qwen-code",
+      "clearCommand": "/clear",
+      "flags": {
+        "session": ["--session-id", "{UUID}"],
+        "resume": ["--resume", "{UUID}"],
+        "model": ["--model", "{MODEL}"],
+        "autoApprove": ["--yolo"],
+        "print": ["-p", "{PROMPT}"]
+      }
+    },
+    {
+      "id": "droid",
+      "name": "Droid",
+      "command": "droid",
+      "adapter": "cli",
+      "downloadUrl": "https://docs.factory.ai/cli/getting-started/quickstart",
+      "clearCommand": "/clear",
+      "flags": {
+        "model": ["--model", "{MODEL}"],
+        "print": ["exec", "{PROMPT}"]
       }
     },
     {

@@ -1416,6 +1416,21 @@
   margin: 6px 0 0;
 }
 
+/* Provider-preset status line — informational, so it drops the warn colour
+   while keeping the warn row's size and spacing. */
+.sp-agent-note {
+  color: var(--tempest-fg-subtle);
+}
+
+.sp-agent-link {
+  color: var(--tempest-accent-blue);
+  text-decoration: none;
+}
+
+.sp-agent-link:hover {
+  text-decoration: underline;
+}
+
 .sp-agent-custom {
   display: flex;
   flex-direction: column;

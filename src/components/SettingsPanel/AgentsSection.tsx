@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, ChevronDown, Trash2, Copy, Plus } from "lucide-react";
 import { useAgents, getCustomAgents, setCustomAgents } from "../../lib/agentRegistry";
 import type { AgentConfig } from "../../lib/agentManifest";
@@ -9,6 +9,9 @@ import {
 import { LUCIDE_ICON_NAMES, AgentIcon } from "../NewSessionMenu";
 import { Terminal, Bot, Code2, Command as CommandIcon, Cpu, Zap, Sparkles, Package, Rocket, Wrench, Ghost, Play } from "lucide-react";
 import { useSettings, updateSetting } from "../../store/appSettings";
+import { getProvidersForAgent } from "../../lib/providerRegistry";
+import { byokId, getSecret, setSecret, deleteSecret } from "../../lib/secrets";
+import { SpSelect } from "../ui/SpSelect";
 
 // Local copy of the picker's icon map. Kept in sync with LUCIDE_ICON_NAMES
 // (the single source of truth for which icon slugs are legal). Duplicated
@@ -135,10 +138,15 @@ function AgentRow({
   function commitDefaults() {
     const { env, warnings } = parseEnv(envText);
     setEnvWarnings(warnings);
-    setAgentConfig(agent.id, { args: parseArgs(argsText), env, subdir: subdir.trim() });
+    // Re-read `provider` rather than using the render-time `cfg`: the provider
+    // picker below writes it through setAgentConfig too, and this commit must
+    // not clobber a selection made since this row rendered.
+    const provider = getAgentConfig(agent.id).provider;
+    setAgentConfig(agent.id, { args: parseArgs(argsText), env, subdir: subdir.trim(), provider });
   }
 
-  const configured = cfg.args.length > 0 || Object.keys(cfg.env).length > 0 || !!cfg.subdir;
+  const configured =
+    cfg.args.length > 0 || Object.keys(cfg.env).length > 0 || !!cfg.subdir || !!cfg.provider;
 
   return (
     <div className={`sp-agent-row${open ? " sp-agent-row--open" : ""}`}>
@@ -156,6 +164,8 @@ function AgentRow({
           {agent.custom && <CustomAgentEditor agent={agent} />}
 
           <DisableToggle agent={agent} />
+
+          <ProviderPicker agent={agent} />
 
           <label className="sp-agent-label">
             Extra flags <span className="sp-agent-hint">one per line, appended to every launch</span>
@@ -205,6 +215,103 @@ function AgentRow({
         </div>
       )}
     </div>
+  );
+}
+
+/// Provider preset picker. Several vendors sell a coding plan with no CLI of
+/// their own: you keep the agent and redirect it with a handful of documented
+/// environment variables. This turns that into one choice plus a key, instead of
+/// hand-pasting vars into the Environment box below.
+///
+/// Renders NOTHING for agents with no verified recipe, which is most of them —
+/// the vars differ per CLI and a guessed recipe silently breaks auth.
+function ProviderPicker({ agent }: { agent: AgentConfig }) {
+  const presets = useMemo(() => getProvidersForAgent(agent.id), [agent.id]);
+  const [selected, setSelected] = useState(() => getAgentConfig(agent.id).provider ?? "");
+  const [apiKey, setApiKey] = useState("");
+  const [keyLoaded, setKeyLoaded] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const provider = presets.find((p) => p.id === selected);
+
+  // Load the stored key whenever the selection changes. The key lives in the OS
+  // keychain (shared per provider, so one MiniMax key serves every agent pointed
+  // at MiniMax) — never in the persisted agentConfigs blob.
+  useEffect(() => {
+    if (!provider) { setApiKey(""); setKeyLoaded(true); return; }
+    let live = true;
+    setKeyLoaded(false);
+    getSecret(byokId(provider.id))
+      .then((k) => { if (live) { setApiKey(k); setKeyLoaded(true); } })
+      .catch(() => { if (live) { setApiKey(""); setKeyLoaded(true); } });
+    return () => { live = false; };
+  }, [provider?.id]);
+
+  if (!presets.length) return null;
+
+  function choose(id: string) {
+    setSelected(id);
+    const cfg = getAgentConfig(agent.id);
+    setAgentConfig(agent.id, { ...cfg, provider: id || undefined });
+  }
+
+  async function commitKey() {
+    if (!provider) return;
+    const v = apiKey.trim();
+    if (v) await setSecret(byokId(provider.id), v);
+    else await deleteSecret(byokId(provider.id));
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1500);
+  }
+
+  const options = [
+    { value: "", label: "Default — the agent's own credentials" },
+    ...presets.map((p) => ({ value: p.id, label: p.label })),
+  ];
+
+  return (
+    <>
+      <label className="sp-agent-label">
+        Provider <span className="sp-agent-hint">point this agent at a different endpoint</span>
+      </label>
+      <SpSelect className="sp-drop--full" value={selected} options={options} onChange={choose} />
+
+      {provider && (
+        <>
+          <label className="sp-agent-label">
+            {provider.label} API key
+            {provider.keyUrl && (
+              <a
+                className="sp-agent-hint sp-agent-link"
+                href={provider.keyUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                get a key
+              </a>
+            )}
+          </label>
+          <input
+            className="sp-agent-input"
+            type="password"
+            value={keyLoaded ? apiKey : ""}
+            placeholder={keyLoaded ? "Paste your key" : "Loading…"}
+            disabled={!keyLoaded}
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(e) => setApiKey(e.target.value)}
+            onBlur={() => void commitKey()}
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+          <p className="sp-agent-warn sp-agent-note">
+            {apiKey.trim()
+              ? `Stored in your OS credential manager. New ${agent.name} sessions will use ${provider.label}.`
+              : `Add a key to activate — until then ${agent.name} keeps using its own credentials.`}
+            {saved && " Saved."}
+          </p>
+        </>
+      )}
+    </>
   );
 }
 

@@ -22,13 +22,18 @@ export interface PerAgentConfig {
   /// Working subdirectory entered relative to the session's worktree root.
   /// Empty string means the worktree root itself.
   subdir: string;
+  /// Selected provider preset id (see agentProviders.ts) — points this agent at
+  /// a third-party endpoint (MiniMax, Z.ai, …) via that vendor's documented env
+  /// recipe. Absent/empty = the agent's own credentials, unchanged. The API key
+  /// is NOT here: it lives in the OS keychain under `byok/<provider>`.
+  provider?: string;
 }
 
 export const EMPTY_AGENT_CONFIG: PerAgentConfig = { args: [], env: {}, subdir: "" };
 
 /// True when a config carries nothing — used to drop empty rows from the blob.
 export const isEmptyAgentConfig = (c: PerAgentConfig): boolean =>
-  !c.args.length && !Object.keys(c.env).length && !c.subdir;
+  !c.args.length && !Object.keys(c.env).length && !c.subdir && !c.provider;
 
 // ── text ⇄ structured, for the settings UI ───────────────────────────────────
 // Flags are one argument token per line, so a value that contains spaces stays a
