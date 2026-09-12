@@ -97,6 +97,7 @@ import { portForWorkspace, hostSlug, proxyUrl } from "../lib/servicePort";
 import { buildAgentArgs } from "../lib/agentArgs";
 import { getAgent } from "../lib/agentRegistry";
 import { getAgentConfig } from "../lib/runtimeState";
+import { resolveAgentProviderEnv } from "../lib/providerRegistry";
 import {
   type SplitDir,
   type SplitBranch,
@@ -960,6 +961,14 @@ export function WorkspaceView({ zen, name, path }: Props) {
         skip_permission_flags: AGENT_CONFIGS.flatMap((a) => a.autoApproveArgs ?? []),
       };
 
+      // A selected provider preset (Settings → Agents → Provider) points this
+      // agent at a third-party endpoint via that vendor's documented env recipe,
+      // with the API key read from the OS keychain. Resolved here rather than up
+      // with the other config reads: the keychain read is async, and everything
+      // above this point is deliberately synchronous so the tab renders instantly.
+      // `{}` whenever no preset applies, so the default path is unchanged.
+      const providerEnv = config ? await resolveAgentProviderEnv(config.id) : {};
+
       try {
         await invoke<void>("create_pty_session", {
           sessionId,
@@ -971,12 +980,17 @@ export function WorkspaceView({ zen, name, path }: Props) {
           sandbox: sandboxParam,
           policy: policyParam,
           dbIsolation: projectSettings.database.isolationEnabled,
-          // Env precedence, lowest → highest: per-agent global defaults, then the
-          // repo's tempest.yml (project-specific wins over the org default), then
-          // the reserved TEMPEST_SESSION. The last lets an installed agent hook
-          // (see src/lib/agentHooks) attribute its lifecycle POSTs back to this
-          // exact session, without touching the PTY spawn internals.
-          env: { ...(agentCfg?.env ?? {}), ...(tempestConfig.env ?? {}), TEMPEST_SESSION: sessionId },
+          // Env precedence, lowest → highest: the selected provider preset, then
+          // per-agent global defaults, then the repo's tempest.yml
+          // (project-specific wins over the org default), then the reserved
+          // TEMPEST_SESSION. The last lets an installed agent hook (see
+          // src/lib/agentHooks) attribute its lifecycle POSTs back to this exact
+          // session, without touching the PTY spawn internals.
+          //
+          // The preset sits LOWEST on purpose: it is a convenience for the common
+          // case, so a var the user set by hand — or the repo pinned in its
+          // tempest.yml — still overrides the vendor recipe.
+          env: { ...providerEnv, ...(agentCfg?.env ?? {}), ...(tempestConfig.env ?? {}), TEMPEST_SESSION: sessionId },
           onEvent: channel,
         });
       } catch (e) {

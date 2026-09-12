@@ -4,6 +4,8 @@ import { homeDir } from "@tauri-apps/api/path";
 import { computeNextRunAt } from "../lib/automationSchedule";
 import { getProjectPath } from "./sessions";
 import { getAgent } from "../lib/agentRegistry";
+import { getAgentConfig } from "../lib/runtimeState";
+import { resolveAgentProviderEnv } from "../lib/providerRegistry";
 import type { AgentConfig } from "../lib/agentManifest";
 import { getSettings } from "./appSettings";
 import { sessionManager } from "./sessionManager";
@@ -155,6 +157,17 @@ export async function runAutomationNow(a: Automation, triggeredBy: "manual" | "s
   const args = buildHeadlessArgs(cfg, a.prompt, a.model ?? undefined);
   _runMeta.set(runId, { automationId: a.id, triggeredBy });
 
+  // Per-agent launch defaults apply to headless runs too, on the same precedence
+  // as the workspace spawn (provider preset < per-agent env < TEMPEST_SESSION).
+  // Without this an automation ignores the agent's configured env entirely — so a
+  // Claude Code pointed at MiniMax in Settings would keep billing Anthropic on
+  // every scheduled run, which is a surprise in the wrong direction.
+  //
+  // `subdir` is deliberately NOT applied: an automation's cwd is its project root
+  // (or home for global ones) and is part of the automation's own definition.
+  const agentCfg = getAgentConfig(cfg.id);
+  const providerEnv = await resolveAgentProviderEnv(cfg.id);
+
   const channel = new Channel<{ session_id: string; data: string }>();
   try {
     await invoke<void>("create_pty_session", {
@@ -168,7 +181,7 @@ export async function runAutomationNow(a: Automation, triggeredBy: "manual" | "s
       // No policy for automations: creating the automation IS the opt-in.
       policy: null,
       dbIsolation: false,
-      env: { TEMPEST_SESSION: runId },
+      env: { ...providerEnv, ...agentCfg.env, TEMPEST_SESSION: runId },
       onEvent: channel,
     });
   } catch (e) {

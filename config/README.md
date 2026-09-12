@@ -5,10 +5,33 @@ Static files fetched by the app at startup, served from this repo via jsDelivr
 data change without cutting an app release. jsDelivr caches ~12h; purge with
 `curl https://purge.jsdelivr.net/gh/tempestai-dev/tempest@main/config/<file>`.
 
-| File | Signed? | Why |
-|------|---------|-----|
-| `models.json` | no | display data (model ids/labels/context sizes) |
-| `agents.json` | **yes** | describes a CLI command + flags that get **spawned** |
+| File | Fetched? | Signed? | Why |
+|------|----------|---------|-----|
+| `models.json` | yes | no | display data (model ids/labels/context sizes) |
+| `agents.json` | yes | **yes** | describes a CLI command + flags that get **spawned** |
+| `providers.json` | **no** | n/a | rewrites an agent's API base URL and carries its key |
+
+## `providers.json` — provider presets (bundled, NOT fetched)
+
+Vendors that sell a coding plan with no CLI of their own (MiniMax, Z.ai/GLM) are used by
+redirecting an existing agent with a handful of environment variables. This file holds each
+vendor's documented recipe, keyed by provider then by agent id, with `{API_KEY}` as the one
+substituted placeholder. Settings → Agents turns a selection plus a pasted key into that env
+at spawn; the key itself goes to the OS credential manager, never into this file or the
+persisted config blob.
+
+**It is deliberately bundle-only — there is no fetch.** A preset sets `ANTHROPIC_BASE_URL` and
+names the variable a user's API key is exported into, which is exactly the "endpoints,
+allowlists, commands" class that `src/lib/remoteConfig.ts` says must not ride the unsigned
+channel: whoever could edit a fetched `providers.json` could redirect every user's agent
+traffic — and their key — to their own endpoint. It lives here as data-not-code for
+reviewability, imported at build time like `agents.json`'s floor. Adding a preset is a
+release. If it ever needs out-of-band updates it joins `agents.json` under minisign, never
+`models.json`'s tier.
+
+Recipes must be copied from vendor documentation, not inferred — the variables differ per CLI,
+and a guessed one silently breaks authentication. `src/lib/agentProviders.check.ts` asserts
+every shipped recipe carries `{API_KEY}`, sets a base URL, and cites a `docsUrl`.
 
 ## `agents.json` — signed agent manifest
 

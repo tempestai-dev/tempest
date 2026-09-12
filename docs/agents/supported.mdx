@@ -479,46 +479,133 @@ If Codex CLI doesn't launch:
 | Cline | No | — | `~/.cline` | Yes (Anthropic) |
 | Cursor Agent | No | — | Cursor IDE config | Varies |
 | Goose | No | — | `~/.goose` | Varies |
+| Qwen Code | Yes (`--resume`) | `--yolo` | `~/.qwen` | Yes (DashScope / OpenAI-compatible) |
+| Droid | No (see note) | — (see note) | `~/.factory` | Yes (Factory) |
 | Amp, Hermes, Pi, fx, Grok | Manifest-defined | Per manifest | Per CLI | Per CLI |
+
+### Droid: why no resume or auto-approve
+
+Droid's `--auto <low\|medium\|high>` autonomy flag is **`droid exec`-only** — interactive
+mode sets autonomy through the `/model` and `/fast` slash commands instead. Tempest applies
+`flags.autoApprove` to the interactive spawn as well as the headless one, so declaring
+`--auto` there would break every interactive Droid launch whenever **Auto** is on. The entry
+therefore ships without it; set your preferred level per-agent under
+**Settings → Agents → Droid → Extra flags** if you only use Droid headlessly.
+
+`--resume [sessionId]` is likewise omitted: it takes an id that *Droid* minted, and with no
+value it resumes the last-modified session — which is not necessarily the one belonging to
+this worktree. Tempest's `flags.session` slot needs a CLI that accepts an id we supply on
+first run.
+
+## Provider presets
+
+Some vendors sell a coding plan with **no CLI of their own**: you keep using Claude Code (or
+Codex, or opencode) and redirect it at their endpoint with a handful of environment
+variables. MiniMax and Z.ai/GLM both work this way.
+
+Rather than have you paste those vars by hand, Tempest ships the vendors' documented recipes
+as presets. Pick one under **Settings → Agents → &lt;agent&gt; → Provider**, paste your API
+key, and new sessions of that agent use that provider.
+
+| Provider | Works with | Endpoint | Get a key |
+|----------|-----------|----------|-----------|
+| MiniMax | Claude Code | `https://api.minimax.io/anthropic` | [platform.minimax.io](https://platform.minimax.io/user-center/basic-information/interface-key) |
+| Z.ai (GLM) | Claude Code | `https://api.z.ai/api/anthropic` | [z.ai](https://z.ai/manage-apikey/apikey-list) |
+
+Notes:
+
+- **Keys live in your OS credential manager**, not in Tempest's config — the same store the
+  [API Keys](/settings/api-keys) section uses. One key per provider is shared by every agent
+  pointed at it.
+- **A preset with no key is inert.** Until you paste a key, the agent keeps using its own
+  credentials, rather than being pointed at the vendor with an empty token.
+- **Precedence**: a preset sits *below* everything you set explicitly. Your per-agent
+  `Environment` entries and the repo's `tempest.yml` env both override it.
+- A provider only appears for agents whose recipe has been verified against vendor docs. The
+  variables differ per CLI, so a guessed recipe would silently break authentication.
+- Presets are **bundled with the release**, not fetched. They rewrite an API base URL and
+  carry the variable your key is exported into, so they deliberately do not ride the unsigned
+  [`models.json`](https://github.com/tempestai-dev/tempest/blob/main/config/models.json)
+  patch channel. Adding one is a release.
+
+To point an agent somewhere that has no preset, use **Settings → Agents → &lt;agent&gt; →
+Environment** directly — a preset is only a shortcut for that same mechanism.
 
 ## Manifest-Driven Agents
 
 The full agent list ships as [`config/agents.json`](https://github.com/tempestai-dev/tempest/blob/main/config/agents.json). The `AgentConfig` fields on each entry — `hint`, `sessionIdArgs`, `resumeArgs`, `capturePattern`, `captureResumeArgs`, `autoApproveArgs`, `printArgs`, `modelArgs`, `clearCommand` — are what every surface in Tempest reads: the New Session menu, the [Automations](/automations/overview) headless runner, the [Chat pane](/chat/overview) bridges, and the [Message Queue's agent-aware clear](/agents/overview#agent-aware-clear).
 
-Agents added since this table was first written and driven entirely through the manifest: Antigravity, Codex CLI, Cursor Agent, Gemini CLI, Amp, Hermes, Pi, fx, Grok.
+Agents added since this table was first written and driven entirely through the manifest: Antigravity, Codex CLI, Cursor Agent, Gemini CLI, Amp, Hermes, Pi, fx, Grok, Qwen Code, Droid.
 
 Tempest periodically fetches an updated manifest from the tempestai-dev/tempest repository at startup — a new agent added upstream shows up in your workspace without needing to rebuild.
 
 ## Adding a New Agent
 
-To add support for a new agent to Tempest:
+Most agents need **no code** — just a manifest entry. Add one without rebuilding by using
+**Settings → Agents → Add** (see [custom agents](/agents/overview)); to ship one to everyone,
+open a PR against `config/agents.json`.
 
-1. **Add an entry to `config/agents.json`**:
-   ```json
+1. **Add an entry to `config/agents.json`.** Note the nesting: the flag templates live under
+   a `flags` object, and the CLI command is `command` (it becomes `AgentConfig.hint`
+   internally).
+
+   ```jsonc
    {
+     "id": "myagent",                 // stable key; also overrides a bundled agent of the same id
      "name": "My Agent",
-     "hint": "myagent",
-     "sessionIdArgs": ["--session-id", "{UUID}"],
-     "resumeArgs": ["--resume", "{UUID}"],
-     "capturePattern": "([0-9a-f-]{36})",
-     "captureResumeArgs": ["-s", "{UUID}"],
-     "autoApproveArgs": ["--my-skip-flag"],
-     "printArgs": ["-p", "{PROMPT}"],
-     "modelArgs": ["--model", "{MODEL}"],
-     "clearCommand": "/clear"
+     "command": "myagent",            // bare token, or a few e.g. "gh copilot"
+     "adapter": "cli",                // only "cli" is accepted
+     "icon": "myagent.svg",           // a file in config/agent-icons/, or a bundled key
+     "mono": true,                    // monochrome icon → inverted in dark mode
+     "downloadUrl": "https://…",      // https only; shown when the CLI isn't on PATH
+     "clearCommand": "/clear",        // REPL command the Message Queue's clear button sends
+     "flags": {
+       "session":     ["--session-id", "{UUID}"],  // first run; an id WE supply
+       "resume":      ["--resume", "{UUID}"],      // resuming a stored conversation
+       "model":       ["--model", "{MODEL}"],
+       "autoApprove": ["--yolo"],                  // applied only when the user's Auto is on
+       "print":       ["-p", "{PROMPT}"]           // headless; required for automations
+     },
+     "capture": {                     // only for agents that print their OWN session id
+       "pattern": "([0-9a-f-]{36})",
+       "flags": "i",
+       "resume": ["-s", "{UUID}"]
+     }
    }
    ```
 
-2. **Provide an icon** as an SVG file in `src/assets/agent-icons/` (or reference an existing one).
+   Placeholders substituted in every group: `{UUID}`, `{MODEL}`, `{PROMPT}`,
+   `{WORKSPACE_ID|NAME|SLUG|PATH}`, `{BRANCH}`, `{PORT}`. An unknown one passes through
+   verbatim and reaches the CLI literally, so `src/lib/agentsManifestFile.check.ts` rejects
+   typos.
 
-3. **Implement work-done detection** (if needed):
-   - Add title-based classification to `sessionManager.ts` `classifyTitle()` method if your agent sets a title
-   - Test that the agent's terminal output triggers the work-done state correctly
+2. **Commit the icon** to `config/agent-icons/` (not `src/assets/`, which holds only the
+   bundled built-ins). Icons are served from Tempest's own repo via jsDelivr, never a
+   third-party host. Omit `icon` and the agent renders a generic terminal glyph.
 
-4. **Test the agent** in Tempest:
-   - Launch a new session with your agent
-   - Verify the command is constructed correctly
-   - Confirm work-done detection fires at the right time
-   - Test resumption if your agent supports it
-   - Run it as a headless [automation](/automations/overview) if `printArgs` is set
+3. **Verify each flag against the CLI's own `--help` or docs.** Two traps worth calling out:
+   - `autoApprove` is applied to the **interactive** spawn as well as the headless one. A
+     flag that only exists on a headless subcommand (Droid's `--auto`, Crush's `--yolo`)
+     breaks every launch when Auto is on — leave it out.
+   - `session` needs a CLI that accepts an id *you* supply on first run. A `--resume` that
+     only takes an id the CLI minted belongs in `capture.resume` instead, or nowhere.
+
+4. **Run the checks**: `npm test`. `agentsManifestFile.check.ts` validates the shipped file —
+   every entry survives sanitization, ids are unique, icons resolve to a real file,
+   placeholders are known, and value-carrying slots actually reference their placeholder. A
+   malformed entry is otherwise dropped *silently*, which looks like "my agent never showed
+   up" rather than an error.
+
+5. **Optional — status detection.** Agents whose title conventions are taught to
+   `sessionManager.ts`'s `classifyTitle()` get busy/idle/needs-you states; the rest fall back
+   to the quiet timer and OSC/BEL signals. Lifecycle **hooks** (`src/lib/agentHooks/adapters/`)
+   give the most accurate status but need a bundled adapter, so they ship with a release.
+
+6. **Sign the manifest.** `config/agents.json` is delivered over a signed channel, so a new
+   entry reaches existing installs only once a key holder regenerates
+   `config/agents.json.minisig` (see [`config/README.md`](https://github.com/tempestai-dev/tempest/blob/main/config/README.md)).
+   Until then it ships in the bundled floor with the next release.
+
+7. **Test in Tempest**: launch it, resume it, and — if `print` is set — run it as a headless
+   [automation](/automations/overview).
 
