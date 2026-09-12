@@ -195,3 +195,57 @@
   color: var(--tempest-fg-muted);
   white-space: nowrap;
 }
+
+/* ── clickable row + per-agent panel ─────────────────────────────────── */
+.aqs-item--button {
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.aqs-item--button:hover { background: var(--tempest-bg-hover); }
+.aqs-item--button:focus-visible {
+  outline: 1px solid var(--tempest-focus, var(--tempest-accent-blue, currentColor));
+  outline-offset: 2px;
+}
+.aqs-item--open { background: var(--tempest-bg-hover); }
+
+.aqs-agent-panel {
+  position: absolute;
+  bottom: 100%;
+  margin-bottom: 6px;
+  right: 0;
+  z-index: 25;
+  min-width: 240px;
+  max-width: 360px;
+}
+
+.aqs-pref {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: var(--tempest-bg-hover, rgba(255, 255, 255, 0.06));
+  border-radius: 4px;
+}
+.aqs-pref-btn {
+  padding: 2px 6px;
+  font: inherit;
+  font-size: 10px;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  color: var(--tempest-fg-muted);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.aqs-pref-btn:hover:not(:disabled) { color: var(--tempest-fg-default); }
+.aqs-pref-btn--on {
+  background: var(--tempest-accent, var(--tempest-accent-blue, currentColor));
+  color: var(--tempest-accent-fg, #fff);
+}
+.aqs-pref-btn:disabled { opacity: 0.4; pointer-events: none; cursor: default; }

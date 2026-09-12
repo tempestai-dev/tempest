@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 import type { AgentConfig } from "../lib/agentManifest";
-import type { Balance, ProviderUsage, Window } from "../lib/quota";
+import { availableWindowPrefs, pickWindow, type Balance, type ProviderUsage, type Window } from "../lib/quota";
 
 function agent(hint: string): AgentConfig {
   return { id: hint, name: hint, hint, iconSrc: "" } as AgentConfig;
@@ -110,5 +110,30 @@ const notInstalled = itemsForAgents(
   { claude: false },
 );
 assert.equal(notInstalled.length, 0, "not installed → not shown");
+
+// ── window-preference cases ────────────────────────────────────────────
+function wlabel(id: string, label: string, used: number | null): Window {
+  return { id, label, used, resetsAt: Date.now() + 3_600_000, tone: "default" };
+}
+
+// Grok-shaped: weekly + monthly windows.
+const grokish = provider("grok", "available", {
+  windows: [wlabel("weekly", "Weekly credits", 0.4), wlabel("monthly", "Monthly budget", 0.7)],
+});
+assert.equal(pickWindow(grokish, "weekly")?.id, "weekly", "pickWindow returns weekly window when present");
+assert.equal(pickWindow(grokish, "monthly")?.id, "monthly", "pickWindow returns monthly window when present");
+
+// Claude-shaped: no monthly.
+const claudish = provider("claude", "available", {
+  windows: [wlabel("five_hour", "5-hour", 0.3), wlabel("seven_day", "Weekly", 0.8)],
+});
+assert.equal(pickWindow(claudish, "monthly"), null, "pickWindow returns null when no monthly window exists");
+
+const claudePrefs = availableWindowPrefs(claudish);
+assert.ok(claudePrefs.includes("weekly"), "availableWindowPrefs includes weekly for Claude-shaped input");
+assert.ok(!claudePrefs.includes("monthly"), "availableWindowPrefs excludes monthly for Claude-shaped input");
+
+const grokPrefs = availableWindowPrefs(grokish);
+assert.ok(grokPrefs.includes("weekly") && grokPrefs.includes("monthly"), "availableWindowPrefs includes both for Grok-shaped input");
 
 console.log("AgentQuotaStrip: itemsForAgents OK");

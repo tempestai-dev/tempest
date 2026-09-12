@@ -86,6 +86,33 @@ export interface ProviderUsage {
   error: string | null;
 }
 
+export type WindowPref = "peak" | "weekly" | "monthly";
+
+const WEEKLY_RE = /week/i;
+const MONTHLY_RE = /month/i;
+
+/** Pick the window matching a preference; null when none qualify. */
+export function pickWindow(p: ProviderUsage, pref: WindowPref): Window | null {
+  if (pref === "peak") {
+    let best: Window | null = null;
+    for (const w of p.windows) {
+      if (w.used == null) continue;
+      if (!best || (w.used ?? 0) > (best.used ?? 0)) best = w;
+    }
+    return best;
+  }
+  const re = pref === "weekly" ? WEEKLY_RE : MONTHLY_RE;
+  return p.windows.find((w) => re.test(w.id) || re.test(w.label)) ?? null;
+}
+
+/** Which of `["peak","weekly","monthly"]` this provider actually has. */
+export function availableWindowPrefs(p: ProviderUsage): WindowPref[] {
+  const out: WindowPref[] = ["peak"];
+  if (p.windows.some((w) => WEEKLY_RE.test(w.id) || WEEKLY_RE.test(w.label))) out.push("weekly");
+  if (p.windows.some((w) => MONTHLY_RE.test(w.id) || MONTHLY_RE.test(w.label))) out.push("monthly");
+  return out;
+}
+
 /// Every window across every provider, flattened + namespaced, so `peakQuota`
 /// can pick the single fullest one for the island to speak for.
 export function windowsFromProviders(providers: ProviderUsage[]): QuotaWindow[] {

@@ -99,7 +99,7 @@ export function QuotaIsland() {
   );
 }
 
-function ProviderRow({ p, pinned, onPin }: { p: ProviderUsage; pinned: boolean; onPin: () => void }) {
+export function ProviderRow({ p, pinned, onPin }: { p: ProviderUsage; pinned: boolean; onPin: () => void }) {
   const canPin = p.status === "available" && p.windows.some((w) => w.used != null);
   return (
     <div className={`quota-row quota-row--${p.status}`}>
@@ -132,14 +132,14 @@ function ProviderRow({ p, pinned, onPin }: { p: ProviderUsage; pinned: boolean; 
   );
 }
 
-function StatusChip({ p }: { p: ProviderUsage }) {
+export function StatusChip({ p }: { p: ProviderUsage }) {
   if (p.status === "available") return null;
   return <span className={`quota-chip quota-chip--${p.status}`}>
     {p.status === "unavailable" ? "not signed in" : "error"}
   </span>;
 }
 
-function WindowBar({ w }: { w: Window }) {
+export function WindowBar({ w }: { w: Window }) {
   const used = w.used ?? 0;
   return (
     <div className="quota-bar-wrap">
@@ -158,7 +158,7 @@ function WindowBar({ w }: { w: Window }) {
   );
 }
 
-function BalanceLine({ b }: { b: Balance }) {
+export function BalanceLine({ b }: { b: Balance }) {
   const parts: string[] = [];
   if (b.used != null) parts.push(`used ${formatAmount(b.used, b.unit)}`);
   if (b.remaining != null) parts.push(`${formatAmount(b.remaining, b.unit)} left`);
