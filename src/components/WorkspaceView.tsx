@@ -41,7 +41,7 @@ import { useKeybindings, matchesEvent, formatShortcut } from "../store/keybindin
 import { useAttribution, getAttribution, COAUTHOR_LINE } from "../store/attribution";
 import { useSettings, getSettings, updateSetting } from "../store/appSettings";
 import { TerminalPane } from "./TerminalPane";
-import { DiffPane } from "./DiffPane";
+import { DiffPaneNext as DiffPane } from "./DiffPaneNext";
 import { PreviewPane } from "./PreviewPane";
 import { CodeMirrorPane } from "./CodeMirrorPane";
 import { ThreadsView } from "./ThreadsView";

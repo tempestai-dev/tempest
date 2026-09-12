@@ -1,0 +1,834 @@
+/* ── DiffPaneNext (dpn) ──────────────────────────────────────────────────
+   Restrained, shadcn/Vercel-flavoured diff pane. Rides on top of DiffPane.css
+   which supplies base .diff-line, .dv-* status colors, and shared commit/
+   branch subcomponent chrome. */
+
+.dpn {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  color: var(--tempest-fg-default);
+  background: transparent;
+  font-size: 13px;
+}
+
+/* ── Toolbar ─────────────────────────────────────────────────────────── */
+
+.dpn-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  height: 40px;
+  min-height: 40px;
+  border-bottom: 1px solid var(--tempest-border-subtle);
+  flex-shrink: 0;
+  background: transparent;
+}
+
+.dpn-spacer { flex: 1 1 auto; min-width: 8px; }
+
+.dpn-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 26px;
+  min-width: 26px;
+  padding: 0 6px;
+  border-radius: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--tempest-fg-subtle);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.dpn-icon-btn:hover:not(:disabled) {
+  color: var(--tempest-fg-default);
+  background: var(--tempest-bg-hover);
+}
+.dpn-icon-btn.active {
+  color: var(--tempest-fg-default);
+  background: var(--tempest-bg-active);
+}
+.dpn-icon-btn.spinning svg { animation: dp-spin 900ms linear infinite; }
+.dpn-icon-btn:disabled { opacity: 0.4; cursor: default; }
+
+@keyframes dp-spin { to { transform: rotate(360deg); } }
+
+.dpn-push { display: inline-flex; gap: 4px; align-items: center; }
+
+/* ── Search bar ──────────────────────────────────────────────────────── */
+
+.dpn-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--tempest-border-subtle);
+  background: transparent;
+  color: var(--tempest-fg-subtle);
+  flex-shrink: 0;
+}
+.dpn-search input {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--tempest-fg-default);
+  font-size: 13px;
+  font-family: inherit;
+  height: 22px;
+}
+.dpn-search input::placeholder { color: var(--tempest-fg-subtle); opacity: 0.8; }
+.dpn-search button {
+  background: transparent;
+  border: 0;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  display: inline-flex;
+  transition: color 120ms ease;
+}
+.dpn-search button:hover { color: var(--tempest-fg-default); }
+
+/* ── Meta strip ──────────────────────────────────────────────────────── */
+
+.dpn-meta {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 12px;
+  height: 34px;
+  min-height: 34px;
+  border-bottom: 1px solid var(--tempest-border-subtle);
+  background: transparent;
+  color: var(--tempest-fg-subtle);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.dpn-meta-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  line-height: 1;
+}
+.dpn-meta-count {
+  color: var(--tempest-fg-default);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+.dpn-meta-label {
+  color: var(--tempest-fg-subtle);
+  font-size: 12px;
+}
+.dpn-meta-stats {
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+  font-family: "Geist Mono", "SF Mono", monospace;
+  font-size: 12px;
+  letter-spacing: -0.01em;
+}
+.dpn-meta-staged.has-staged .dpn-meta-count { color: var(--tempest-git-added); }
+
+.dpn-meta-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+.dpn-meta-btn:hover { color: var(--tempest-fg-default); background: var(--tempest-bg-hover); }
+.dpn-meta-btn.active { color: var(--tempest-fg-default); background: var(--tempest-bg-active); }
+
+/* Segmented toggle for view mode */
+.dpn-seg {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--tempest-bg-active);
+  gap: 1px;
+}
+.dpn-seg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.dpn-seg-btn:hover:not(.active) { color: var(--tempest-fg-default); }
+.dpn-seg-btn.active {
+  background: var(--tempest-bg-base);
+  color: var(--tempest-fg-default);
+  box-shadow: 0 1px 2px var(--tempest-ui-shadow-sm);
+}
+
+/* ── Body ────────────────────────────────────────────────────────────── */
+
+.dpn-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.dpn-scroll {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 16px 24px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tempest-border-subtle) transparent;
+}
+.dpn-scroll::-webkit-scrollbar { width: 8px; }
+.dpn-scroll::-webkit-scrollbar-thumb {
+  background: var(--tempest-border-subtle);
+  border-radius: 4px;
+  border: 2px solid var(--tempest-bg-base);
+}
+.dpn-scroll::-webkit-scrollbar-thumb:hover { background: var(--tempest-border-default); }
+
+.dpn-branch-anchor {
+  position: relative;
+  display: inline-flex;
+}
+.dpn-branch-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+.dpn-branch-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  width: 300px;
+  max-height: 380px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 8px;
+  background: var(--tempest-bg-panel);
+  box-shadow: 0 8px 24px var(--tempest-ui-shadow-sm),
+              0 2px 4px var(--tempest-ui-shadow-sm);
+  overflow: hidden;
+  animation: dpn-popover-in 120ms ease-out;
+}
+@keyframes dpn-popover-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.dpn-branch-popover .dv-branch-view-list {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.dpn-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  padding: 96px 20px; color: var(--tempest-fg-subtle); text-align: center;
+}
+.dpn-empty svg {
+  color: var(--tempest-fg-subtle);
+  opacity: 0.5;
+  padding: 10px;
+  border-radius: 999px;
+  background: var(--tempest-bg-active);
+  box-sizing: content-box;
+}
+.dpn-empty > div:first-of-type {
+  font-size: 13px;
+  color: var(--tempest-fg-default);
+  font-weight: 500;
+}
+.dpn-empty-sub {
+  font-size: 12px;
+  color: var(--tempest-fg-subtle);
+}
+.dpn-empty-sub b {
+  color: var(--tempest-fg-muted);
+  font-weight: 500;
+  font-family: "Geist Mono", monospace;
+  font-size: 11px;
+  padding: 1px 5px;
+  background: var(--tempest-bg-active);
+  border-radius: 3px;
+}
+.dpn-loading {
+  display: flex; justify-content: center; padding: 60px;
+  color: var(--tempest-fg-subtle);
+}
+
+/* ── Section ─────────────────────────────────────────────────────────── */
+
+.dpn-section { margin-bottom: 20px; }
+.dpn-section:last-child { margin-bottom: 4px; }
+
+.dpn-section-hdr {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px 8px;
+  background: transparent;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.dpn-section-toggle {
+  background: transparent;
+  border: 0;
+  padding: 2px 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--tempest-fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 120ms ease;
+}
+.dpn-section-toggle:hover { color: var(--tempest-fg-default); }
+.dpn-section-toggle svg { color: var(--tempest-fg-subtle); }
+.dpn-section-title { line-height: 1; }
+
+.dpn-section-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--tempest-bg-active);
+  color: var(--tempest-fg-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.dpn-section-action {
+  margin-left: auto;
+  background: transparent;
+  border: 0;
+  color: var(--tempest-fg-subtle);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 5px;
+  transition: color 120ms ease, background 120ms ease;
+}
+.dpn-section-action:hover:not(:disabled) {
+  color: var(--tempest-fg-default);
+  background: var(--tempest-bg-hover);
+}
+.dpn-section-action:disabled { opacity: 0.4; cursor: default; }
+
+/* Both sections use the same neutral chrome — the staged variant no longer
+   tints its header green; the count of staged files (in the meta strip and
+   commit rail) is the load-bearing signal. */
+
+.dpn-section-body { display: flex; flex-direction: column; gap: 8px; }
+
+/* ── FileCard ────────────────────────────────────────────────────────── */
+
+.dpn-file {
+  border: 1px solid var(--tempest-border-subtle);
+  border-radius: 8px;
+  overflow: hidden;
+  background: transparent;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.dpn-file:hover { border-color: var(--tempest-border-default); }
+.dpn-file.viewed { opacity: 0.5; }
+.dpn-file.viewed:hover { opacity: 1; }
+.dpn-file.collapsed .dpn-file-hdr { border-bottom: 0; }
+
+.dpn-file-hdr {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px 7px 6px;
+  height: 36px;
+  box-sizing: border-box;
+  background: transparent;
+  border-bottom: 1px solid var(--tempest-border-subtle);
+  cursor: pointer;
+  user-select: none;
+  transition: background 120ms ease;
+}
+.dpn-file-hdr:hover { background: var(--tempest-bg-hover); }
+
+.dpn-file-collapse {
+  background: transparent;
+  border: 0;
+  padding: 2px;
+  color: var(--tempest-fg-subtle);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.dpn-file-collapse:hover { color: var(--tempest-fg-default); }
+
+.dpn-file .dv-fstatus {
+  flex-shrink: 0;
+}
+
+.dpn-file-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "Geist Mono", "SF Mono", monospace;
+  font-size: 12.5px;
+  letter-spacing: -0.005em;
+}
+.dpn-file-path .dv-fdir { color: var(--tempest-fg-subtle); }
+.dpn-file-path .dv-fname { color: var(--tempest-fg-default); font-weight: 500; }
+
+.dpn-file .dv-fstats {
+  flex-shrink: 0;
+  display: inline-flex;
+  gap: 6px;
+  font-family: "Geist Mono", "SF Mono", monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  margin-left: 0;
+}
+
+.dpn-file-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* shadcn-style buttons: default = outline; icon-only = ghost */
+.dpn-file-btn {
+  height: 26px;
+  min-width: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--tempest-border-subtle);
+  background: transparent;
+  color: var(--tempest-fg-default);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  box-shadow: 0 1px 2px var(--tempest-ui-shadow-sm);
+}
+.dpn-file-btn:hover {
+  background: var(--tempest-bg-hover);
+  border-color: var(--tempest-border-default);
+}
+.dpn-file-btn:focus-visible {
+  outline: 2px solid var(--tempest-accent-blue);
+  outline-offset: 1px;
+}
+.dpn-file-btn.on {
+  background: var(--tempest-bg-active);
+  border-color: var(--tempest-border-default);
+}
+.dpn-file-btn--action {
+  padding: 0 12px;
+  background: var(--tempest-fg-default);
+  color: var(--tempest-bg-base);
+  border-color: var(--tempest-fg-default);
+}
+.dpn-file-btn--action:hover {
+  background: var(--tempest-fg-default);
+  border-color: var(--tempest-fg-default);
+  opacity: 0.9;
+}
+/* Icon-only buttons are square */
+.dpn-file-btn:has(> svg:only-child) {
+  padding: 0;
+  width: 26px;
+}
+.dpn-file-btn--danger:hover {
+  color: var(--tempest-git-deleted);
+  border-color: color-mix(in srgb, var(--tempest-git-deleted) 40%, var(--tempest-border-subtle));
+  background: color-mix(in srgb, var(--tempest-git-deleted) 10%, transparent);
+}
+
+.dpn-file-body {
+  background: transparent;
+}
+.dpn-file-loading, .dpn-file-empty {
+  padding: 20px;
+  color: var(--tempest-fg-subtle);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+}
+
+/* ── Hunks ───────────────────────────────────────────────────────────── */
+
+.dpn-hunk + .dpn-hunk { border-top: 1px solid var(--tempest-border-subtle); }
+
+.dpn-hunk-hdr {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px 3px 14px;
+  background: color-mix(in srgb, var(--tempest-fg-subtle) 4%, transparent);
+  font-family: "Geist Mono", "SF Mono", monospace;
+  font-size: 11.5px;
+  color: var(--tempest-fg-subtle);
+  min-height: 24px;
+  border-bottom: 1px solid var(--tempest-border-subtle);
+}
+.dpn-hunk-range {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+.dpn-hunk-actions {
+  display: inline-flex;
+  gap: 3px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.dpn-hunk:hover .dpn-hunk-actions,
+.dpn-hunk-actions:focus-within { opacity: 1; }
+
+.dpn-hunk-btn {
+  height: 20px;
+  min-width: 20px;
+  padding: 0 4px;
+  background: transparent;
+  border: 0;
+  color: var(--tempest-fg-subtle);
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 120ms ease, background 120ms ease;
+}
+.dpn-hunk-btn:hover {
+  color: var(--tempest-fg-default);
+  background: var(--tempest-bg-hover);
+}
+
+.dpn-hunk-body {
+  font-family: "Geist Mono", "SF Mono", monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* ── Split view ──────────────────────────────────────────────────────── */
+
+.dpn-hunk-body--split { display: block; }
+.dpn-split-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--tempest-border-subtle);
+}
+.dpn-split-cell {
+  padding: 1px 8px 1px 26px;
+  position: relative;
+  background: transparent;
+  min-height: 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  overflow: hidden;
+}
+.dpn-split-cell.empty {
+  background: color-mix(in srgb, var(--tempest-fg-subtle) 4%, transparent);
+}
+.dpn-split-cell.diff-added {
+  background: color-mix(in srgb, var(--tempest-git-added) 10%, var(--tempest-bg-base));
+}
+.dpn-split-cell.diff-removed {
+  background: color-mix(in srgb, var(--tempest-git-deleted) 10%, var(--tempest-bg-base));
+}
+.dpn-split-cell .diff-num {
+  color: var(--tempest-fg-subtle);
+  min-width: 32px;
+  text-align: right;
+  user-select: none;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+.dpn-split-cell .diff-content {
+  flex: 1;
+  white-space: pre;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.dpn-split-cell .diff-content::-webkit-scrollbar { display: none; }
+.dpn-split-cell .diff-comment-btn {
+  position: absolute;
+  left: 4px;
+  top: 3px;
+  padding: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--tempest-accent-blue);
+  color: #fff;
+  border: 0;
+  cursor: pointer;
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+.dpn-split-cell:hover .diff-comment-btn { opacity: 1; }
+.dpn-split-cell .diff-comment-btn:hover { transform: scale(1.1); }
+.dpn-split-comment {
+  grid-column: 1 / -1;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--tempest-fg-subtle) 4%, transparent);
+  border-top: 1px solid var(--tempest-border-subtle);
+}
+
+/* ── Commit rail (right side) ────────────────────────────────────────── */
+
+.dpn-commit-rail {
+  width: 300px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--tempest-border-subtle);
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 14px 14px 16px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tempest-border-subtle) transparent;
+}
+.dpn-commit-rail::-webkit-scrollbar { width: 6px; }
+.dpn-commit-rail::-webkit-scrollbar-thumb {
+  background: var(--tempest-border-subtle);
+  border-radius: 3px;
+}
+
+.dpn-commit-rail-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px 10px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--tempest-border-subtle);
+}
+.dpn-commit-rail-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--tempest-fg-muted);
+}
+.dpn-commit-rail-title svg { color: var(--tempest-fg-subtle); }
+.dpn-commit-rail-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--tempest-bg-active);
+  font-size: 11px;
+  color: var(--tempest-fg-subtle);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+.dpn-commit-rail-count.has-staged {
+  background: color-mix(in srgb, var(--tempest-git-added) 15%, transparent);
+  color: var(--tempest-git-added);
+}
+
+.dpn-commit-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 28px 14px;
+  border: 1px dashed var(--tempest-border-subtle);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--tempest-fg-subtle) 3%, transparent);
+  gap: 8px;
+}
+.dpn-commit-empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: var(--tempest-bg-active);
+  color: var(--tempest-fg-subtle);
+  margin-bottom: 2px;
+}
+.dpn-commit-empty-title {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--tempest-fg-default);
+}
+.dpn-commit-empty-body {
+  font-size: 12px;
+  color: var(--tempest-fg-subtle);
+  line-height: 1.45;
+}
+
+/* Compact commit box inside the rail; strip base .dv-commit chrome */
+.dpn-commit-rail .dv-commit {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  gap: 8px;
+}
+
+/* ── Toolbar strip overrides (branch pill, push, PR) ────────────────────
+   Scoped to .dpn so the classic DiffPane keeps its own look. Style follows
+   orca / shadcn: h-26, tight padding, neutral primary, ghost/outline. */
+
+.dpn .dv-branch-pill {
+  height: 26px;
+  padding: 0 8px;
+  gap: 5px;
+  border-radius: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--tempest-fg-default);
+  font-size: 12px;
+  font-weight: 500;
+  transition: background 120ms ease, color 120ms ease;
+}
+.dpn .dv-branch-pill:hover,
+.dpn .dv-branch-pill.open {
+  background: var(--tempest-bg-hover);
+}
+.dpn .dv-branch-pill svg {
+  color: var(--tempest-fg-subtle);
+}
+.dpn .dv-branch-pill .dv-branch-name {
+  max-width: 200px;
+}
+
+.dpn .dv-push-btn {
+  height: 26px;
+  padding: 0 10px;
+  gap: 5px;
+  border-radius: 6px;
+  border: 1px solid var(--tempest-fg-default);
+  background: var(--tempest-fg-default);
+  color: var(--tempest-bg-base);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  box-shadow: 0 1px 2px var(--tempest-ui-shadow-sm);
+  transition: opacity 120ms ease;
+}
+.dpn .dv-push-btn:hover:not(:disabled) { opacity: 0.9; }
+.dpn .dv-push-btn:disabled { opacity: 0.4; cursor: default; }
+
+.dpn .dv-push-btn--outline {
+  border: 1px solid var(--tempest-border-subtle);
+  background: transparent;
+  color: var(--tempest-fg-default);
+  box-shadow: 0 1px 2px var(--tempest-ui-shadow-sm);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.dpn .dv-push-btn--outline:hover:not(:disabled) {
+  background: var(--tempest-bg-hover);
+  border-color: var(--tempest-border-default);
+  opacity: 1;
+}
+
+.dpn .dv-new-branch-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.dpn .dv-branch-input {
+  height: 26px;
+  width: 160px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--tempest-border-subtle);
+  background: transparent;
+  color: var(--tempest-fg-default);
+  font-family: "Geist Mono", monospace;
+  font-size: 12px;
+}
+.dpn .dv-branch-input:focus {
+  outline: none;
+  border-color: var(--tempest-accent-blue);
+}
+.dpn .dv-branch-input::placeholder { color: var(--tempest-fg-subtle); }
+
+.dpn .dv-branch-cancel {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--tempest-fg-subtle);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.dpn .dv-branch-cancel:hover {
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
+}
+
+/* ── Narrow screens ──────────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .dpn-body { flex-direction: column; }
+  .dpn-commit-rail {
+    width: 100%;
+    border-left: 0;
+    border-top: 1px solid var(--tempest-border-subtle);
+    max-height: 260px;
+  }
+  .dpn-meta { gap: 12px; }
+}

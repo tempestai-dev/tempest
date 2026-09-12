@@ -38,7 +38,12 @@ export function groupHunks(lines: DiffLine[]): Hunk[] {
     if (line.kind === "hunk") {
       if (cur) hunks.push(cur);
       cur = { header: line, lines: [] };
-    } else if (cur) {
+    } else {
+      // Untracked files come back as bare "added" lines with no hunk header —
+      // synthesize one so the renderer has something to group them under.
+      if (!cur) {
+        cur = { header: { kind: "hunk", line_old: null, line_new: null, content: "@@ new file @@" }, lines: [] };
+      }
       cur.lines.push(line);
     }
   }
