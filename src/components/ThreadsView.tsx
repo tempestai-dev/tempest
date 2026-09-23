@@ -31,6 +31,7 @@ import { FileNode } from "./threads/nodes/FileNode";
 import { SiteNode } from "./threads/nodes/SiteNode";
 import { MediaNode } from "./threads/nodes/MediaNode";
 import { ThreadEdge } from "./threads/ThreadEdge";
+import { resolveIsolatedOverlaps } from "./threads/tidyLayout";
 import { ThreadNodeContext } from "./threads/ThreadNodeContext";
 import { Tooltip } from "./Tooltip";
 import { getSession } from "../store/sessions";
@@ -309,8 +310,10 @@ export function ThreadsView({
   // invent a flow that isn't in the data — a spring/charge simulation instead
   // pulls connected nodes together and lets repulsion + collision relax crossed
   // edges out. Only nodes that carry an edge are laid out; isolated nodes are
-  // left exactly where the user put them. ponytail: fixed force constants, no
-  // per-graph tuning knob — add one if dense canvases settle too tight/loose.
+  // left exactly where the user put them, and a final overlap pass pushes the
+  // freshly placed boxes clear of those stationary ones (connected nodes move,
+  // isolated ones never do). ponytail: fixed force constants, no per-graph
+  // tuning knob (add one if dense canvases settle too tight/loose).
   const tidy = useCallback(() => {
     setNodes((prev) => {
       const connected = new Set<string>();
@@ -343,11 +346,27 @@ export function ThreadsView({
         .stop();
       for (let i = 0; i < 300; i++) simulation.tick();
 
+      const pos = new Map(sim.map((s) => [s.id, { x: Math.round(s.x ?? 0), y: Math.round(s.y ?? 0) }]));
+      // The sim never sees isolated nodes, so the packed cluster can land on
+      // one. Nudge connected boxes clear (least-penetration push, deterministic);
+      // isolated boxes stay exactly where the user put them.
+      const nodeById = new Map(prev.map((n) => [n.id, n]));
+      const resolved = resolveIsolatedOverlaps(
+        [...pos].map(([id, p]) => {
+          const n = nodeById.get(id)!;
+          return { id, x: p.x, y: p.y, w: dimW(n), h: dimH(n) };
+        }),
+        prev
+          .filter((n) => !pos.has(n.id))
+          .map((n) => ({ id: n.id, x: n.position.x, y: n.position.y, w: dimW(n), h: dimH(n) })),
+      );
+      for (const [id, p] of resolved) pos.set(id, p);
+
       for (const s of sim) {
         const row = getThreadNode(s.id);
-        if (row) saveThreadNode({ ...row, x: Math.round(s.x ?? row.x), y: Math.round(s.y ?? row.y) });
+        const p = pos.get(s.id);
+        if (row && p) saveThreadNode({ ...row, x: p.x, y: p.y });
       }
-      const pos = new Map(sim.map((s) => [s.id, { x: Math.round(s.x ?? 0), y: Math.round(s.y ?? 0) }]));
       return prev.map((n) => ({ ...n, position: pos.get(n.id) ?? n.position }));
     });
     setTimeout(() => rfRef.current?.fitView({ duration: 400, padding: 0.2 }), 50);
