@@ -178,6 +178,20 @@ function ensureBranch(projectId: string, worktreePath: string): DbBranch {
   return branch;
 }
 
+// Per-session FIFO write chain. Every DB mutation for a given id (upsert /
+// delete) hangs off the same tail so a delete cannot leapfrog a prior upsert
+// and resurrect the row — the previous bug where "Close then Remove" left the
+// session in the DB because dbDeleteSession beat the closed=true dbUpsertSession
+// to the connection mutex.
+const _writeChain = new Map<string, Promise<unknown>>();
+function enqueue(id: string, step: () => Promise<unknown>, op: string): Promise<unknown> {
+  const prev = _writeChain.get(id) ?? Promise.resolve();
+  const next = prev.then(step, step);
+  _writeChain.set(id, next.catch(() => {}));
+  next.catch(logErr(op));
+  return next;
+}
+
 // Persist a session and its parent rows in FK order (project → branch → session)
 // as a single promise chain. The upserts are idempotent, so re-writing the
 // project/branch on every session change is harmless and guarantees the parents
@@ -199,11 +213,11 @@ function persistSession(s: WorktreeSession): void {
     placement: s.placement ?? "tab",
     createdAt: s.createdAt,
   };
-  let chain: Promise<unknown> = proj
-    ? dbEnsureProject(proj.id, proj.name, proj.path)
-    : Promise.resolve();
-  if (branch) chain = chain.then(() => dbUpsertBranch(branch));
-  chain.then(() => dbUpsertSession(row)).catch(logErr("save session"));
+  enqueue(s.id, async () => {
+    if (proj) await dbEnsureProject(proj.id, proj.name, proj.path);
+    if (branch) await dbUpsertBranch(branch);
+    await dbUpsertSession(row);
+  }, "save session");
 }
 
 export interface SaveSessionInput {
@@ -291,7 +305,7 @@ export function markSessionOpen(id: string): void {
 
 export function removeSession(id: string): void {
   if (!_sessions.delete(id)) return;
-  dbDeleteSession(id).catch(logErr("delete session"));
+  enqueue(id, () => dbDeleteSession(id), "delete session");
   emitLifecycle({ kind: "removed", id });
 }
 

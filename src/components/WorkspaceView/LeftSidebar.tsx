@@ -38,6 +38,7 @@ export interface LeftSidebarProps {
   gitProjectIds: Set<string>;
   atlasEnabled: boolean;
   threadsVersion: number;
+  sessionsVersion: number;
   expandedWorktrees: Set<string>;
 
   // Cross-cutting setters (state lives in parent)
@@ -86,7 +87,7 @@ function LeftSidebarImpl(props: LeftSidebarProps) {
     zen, path, name,
     sidebarOpen, sidebarFontSize, activeSection,
     projects, sessions, activeSessionId, zenSidebarItems,
-    gitProjectIds, atlasEnabled, threadsVersion, expandedWorktrees,
+    gitProjectIds, atlasEnabled, threadsVersion, sessionsVersion, expandedWorktrees,
     setActiveSessionId, setProjects, setProjectSettingsPanelId, setSettingsOpen,
     goTo, addWorkspace, onCloneRepo, openSessionMenu, openBranchSessionMenu, openCtxMenu,
     openSession, openThreadTab, toggleProject, toggleWorktree, toggleTheme,
@@ -94,6 +95,7 @@ function LeftSidebarImpl(props: LeftSidebarProps) {
   } = props;
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
+  void sessionsVersion; // re-render trigger for ghost rows read from the sessions store
 
   // ── Local state (moved from parent to isolate re-renders) ────────────────
   const sidebarScrollRef = useRef<HTMLDivElement>(null);

@@ -9,7 +9,7 @@ import { addRecent, getRecents, removeRecent } from "../store/recents";
 import { getOpenProjects, saveOpenProjects } from "../store/openProjects";
 import { setProjectWorktreeMeta } from "../store/worktrees";
 import { track } from "../lib/telemetry";
-import { getSession, getBranchSessions, getRootSessionsForProject, getAllSessions, getBranchPath, getProjectPath, saveSession, setSessionConversationId, setSessionName, markSessionClosed, removeBranchByPath, removeSession, pruneSessions } from "../store/sessions";
+import { getSession, getBranchSessions, getRootSessionsForProject, getAllSessions, getBranchPath, getProjectPath, saveSession, setSessionConversationId, setSessionName, markSessionClosed, removeBranchByPath, removeSession, pruneSessions, subscribeSessionLifecycle } from "../store/sessions";
 import { getRuntimeState, setRuntimeState } from "../lib/runtimeState";
 import { loadProjectSettings } from "./ProjectSettingsPanel/useProjectSettings";
 import { loadTempestConfig } from "../lib/tempestConfig";
@@ -256,6 +256,13 @@ export function WorkspaceView({ zen, name, path }: Props) {
   const [threadsVersion, setThreadsVersion] = useState(0);
   const bumpThreads = () => setThreadsVersion((v) => v + 1);
   const loadedThreadProjects = useRef<Set<string>>(new Set());
+
+  // Force sidebar re-render when a session row is added/updated/removed outside
+  // React state (e.g. ContextMenu → removeSession on a ghost row). Ghosts are
+  // read straight from the sessions store, so without this the sidebar keeps
+  // rendering the deleted row until some unrelated setSessions fires.
+  const [sessionsVersion, setSessionsVersion] = useState(0);
+  useEffect(() => subscribeSessionLifecycle(() => setSessionsVersion((v) => v + 1)), []);
 
   // Sidebar right-click context menu
   const [ctxMenu, setCtxMenu] = useState<CtxMenuState | null>(null);
@@ -1989,6 +1996,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
           gitProjectIds={gitProjectIds}
           atlasEnabled={atlasEnabled}
           threadsVersion={threadsVersion}
+          sessionsVersion={sessionsVersion}
           expandedWorktrees={expandedWorktrees}
           setActiveSessionId={setActiveSessionId}
           setProjects={setProjects}

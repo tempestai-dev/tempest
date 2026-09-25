@@ -114,9 +114,13 @@ export function ContextMenu({
           <button
             className="ctx-item ctx-item--danger"
             onClick={() => {
+              // Remove FIRST so the subsequent onCloseSession → markSessionClosed
+              // is a no-op (session already gone from the mirror). Otherwise
+              // markSessionClosed enqueues an upsert that races the delete and
+              // the row reappears as a ghost.
               const idToRemove = targetSession?.id ?? m.rootKey;
-              if (m.sessionId) onCloseSession(m.sessionId);
               if (idToRemove) removeSession(idToRemove);
+              if (m.sessionId) onCloseSession(m.sessionId);
               onClose();
             }}
           >
