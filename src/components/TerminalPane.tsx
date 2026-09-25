@@ -106,7 +106,10 @@ export const TerminalPane = memo(forwardRef<TerminalPaneHandle, Props>(function 
     t.options.cursorStyle = settings.terminalCursorStyle;
     t.options.cursorBlink = settings.terminalCursorBlink;
     t.options.scrollback = settings.terminalScrollback;
-    restoreRef.current?.scheduleFit();
+    // Font family/size change: load the new face before we let a fit cache dims.
+    // Non-font changes (cursor/scrollback) resolve instantly via the same path.
+    const fontSpec = `${settings.terminalFontSize}px "${settings.terminalFontFamily}"`;
+    document.fonts.load(fontSpec).finally(() => restoreRef.current?.notifyFontReady());
   }, [settings.terminalFontSize, settings.terminalFontFamily, settings.terminalCursorStyle, settings.terminalCursorBlink, settings.terminalScrollback]);
 
   // Create terminal once per sessionId. Work-done detection, buffering, and channel
@@ -185,11 +188,17 @@ export const TerminalPane = memo(forwardRef<TerminalPaneHandle, Props>(function 
 
     // Wait for the terminal font to load before the first fit. If we fit while the
     // fallback font is still active, xterm measures the wrong cell width → too few
-    // columns (gap on the right, jagged glyphs) until a later refit. fonts.ready
-    // resolves immediately once loaded, so this is free on subsequent opens.
-    // Two rAFs: first yields to layout, second reads committed dimensions.
-    // Lifecycle-guarded: a remount before fonts resolve must not fit the new session.
-    document.fonts.ready.then(() => restore.scheduleRestoreFit());
+    // columns (gap on the right, jagged glyphs) until a later refit.
+    //
+    // document.fonts.load(spec) — not document.fonts.ready — actively triggers
+    // loading of that specific font and resolves when it's measurable. `ready`
+    // resolves for whatever is currently loading; on mount xterm has not asked
+    // for the font yet, so `ready` fires with the fallback still in place and
+    // the first fit locks in wrong cols. notifyFontReady clears the cached
+    // dims so a corrective resize sends even if a ResizeObserver-driven fit
+    // already cached the miscalibrated dims.
+    const fontSpec = `${s.terminalFontSize}px "${s.terminalFontFamily}"`;
+    document.fonts.load(fontSpec).finally(() => restoreRef.current?.notifyFontReady());
 
     if (!readOnly) {
       term.onData((data) => {

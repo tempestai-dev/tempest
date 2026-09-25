@@ -223,6 +223,24 @@ function flush(fake: Fake) {
   assert.equal(fake2.fits, 1, "remounted session restores normally");
 }
 
+// Font-load correction: an early fit that ran before fonts resolved may have
+// cached wrong cols (measured against fallback). notifyFontReady must clear
+// the cache and force a corrective resize even when dims "match" the cache.
+{
+  const fake = makeFake();
+  const controller = makeController(fake);
+  fake.dims = { rows: 24, cols: 60 }; // wrong cols measured against fallback font
+  controller.fitNow();
+  assert.equal(fake.sends.length, 1, "early fit sends whatever it measures");
+  // Font finally resolves — measurement is unchanged in this fake, but the
+  // real symptom is xterm now reports the correct dims. The controller must
+  // not skip the resend just because the cached dims equal the current dims.
+  controller.notifyFontReady();
+  await flush(fake);
+  await flush(fake);
+  assert.equal(fake.sends.length, 2, "font-ready forces a corrective resize past the cache");
+}
+
 // Coalescing across sources: focus + show + scheduled fit share one slot.
 {
   const fake = makeFake();

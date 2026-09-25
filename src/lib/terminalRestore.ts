@@ -44,6 +44,11 @@ export interface RestoreController {
   noteVisibility(hidden: boolean): void;
   /** Mobile driver took over: force the next desktop fit to reassert dims. */
   controlAcquired(): void;
+  /** Terminal font finished loading. Any earlier fit may have measured cell
+   * width against the fallback font (too few cols → gap on the right); clear
+   * the cache and schedule a corrective fit that will send regardless of the
+   * previously "sent" dims. */
+  notifyFontReady(): void;
   /** Cancel all queued frames; every later call and callback becomes a no-op. */
   dispose(): void;
 }
@@ -140,6 +145,11 @@ export function createRestoreController(deps: RestoreControllerDeps): RestoreCon
     controlAcquired(): void {
       if (disposed) return;
       lastSent = null;
+    },
+    notifyFontReady(): void {
+      if (disposed) return;
+      lastSent = null;
+      scheduleFit();
     },
     dispose(): void {
       disposed = true;
