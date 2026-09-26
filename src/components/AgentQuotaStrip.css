@@ -216,6 +216,7 @@
 
 .aqs-agent-panel {
   position: absolute;
+  top: auto;
   bottom: 100%;
   margin-bottom: 6px;
   right: 0;
