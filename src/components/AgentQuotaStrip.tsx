@@ -102,14 +102,14 @@ function itemsForAgents(
     if (availability[a.hint] !== true) continue;
     const p = byId.get(a.hint);
     if (!p) continue; // no fetcher → don't invent a row
-    const pref = winPrefs[a.hint] ?? "peak";
-    if (p.status === "available" && pref !== "peak") {
+    const pref: WindowPref = winPrefs[a.hint] ?? "weekly";
+    if (p.status === "available") {
       const win = pickWindow(p, pref);
       if (win && win.used != null) {
         out.push({ agent: a, used: win.used, sublabel: win.label });
         continue;
       }
-      // no matching window → fall through to existing resolver (peak / balance / plan)
+      // picked window missing → fall through to plan/sign-in chip
     }
     const resolved = resolveProvider(p);
     if (resolved) { out.push({ agent: a, ...resolved }); continue; }
@@ -226,7 +226,7 @@ export function AgentQuotaStrip({ activeAgentHint }: Props) {
       {openProvider && openAgent && (
         <AgentPanel
           provider={openProvider}
-          pref={winPrefs[openAgent] ?? "peak"}
+          pref={winPrefs[openAgent] ?? "weekly"}
           onPrefChange={(v) => setPref(openAgent, v)}
         />
       )}
@@ -383,7 +383,6 @@ function WindowPrefControl({
   available: WindowPref[]; value: WindowPref; onChange: (v: WindowPref) => void;
 }) {
   const opts: { pref: WindowPref; label: string }[] = [
-    { pref: "peak", label: "Peak" },
     { pref: "weekly", label: "Weekly" },
     { pref: "monthly", label: "Monthly" },
   ];

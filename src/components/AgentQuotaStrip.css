@@ -224,6 +224,7 @@
   min-width: 240px;
   max-width: 360px;
 }
+.aqs-agent-panel .quota-pin { display: none; }
 
 .aqs-pref {
   display: inline-flex;
