@@ -122,6 +122,108 @@
   line-height: 1;
 }
 
+.ide-open-group {
+  display: inline-flex;
+  align-items: stretch;
+  height: 22px;
+  background: transparent;
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 999px;
+  overflow: hidden;
+  color: var(--tempest-fg-default);
+}
+
+.bar .ide-open-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  font-size: 10px;
+  font-family: inherit;
+  line-height: 1;
+  transition: background 0.12s ease;
+}
+
+.bar .ide-open-btn--main {
+  gap: 5px;
+  padding: 0 6px 0 8px;
+  border-right: 1px solid var(--tempest-border-default);
+}
+
+.bar .ide-open-btn--more {
+  padding: 0 6px;
+}
+
+.bar .ide-open-btn:hover {
+  background: var(--tempest-bg-hover, rgba(0, 0, 0, 0.06));
+}
+
+[data-theme="dark"] .bar .ide-open-btn:hover {
+  background: var(--tempest-bg-hover);
+}
+
+.ide-open-btn__icon {
+  width: 12px;
+  height: 12px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.ide-open-btn__label {
+  white-space: nowrap;
+}
+
+/* Dropdown ─────────────────────────────────────────────────────────── */
+
+.ide-open-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 180px;
+  padding: 4px;
+  background: var(--tempest-bg-base);
+  border: 1px solid var(--tempest-border-default);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ide-open-menu-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--tempest-fg-default);
+  font-size: 12px;
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ide-open-menu-item:hover {
+  background: var(--tempest-bg-hover, rgba(0, 0, 0, 0.06));
+}
+
+.ide-open-menu-item--active {
+  background: var(--tempest-ui-tab-active);
+}
+
+.ide-open-menu-item__icon {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
 .capsule-btn:hover {
   opacity: 0.7;
 }

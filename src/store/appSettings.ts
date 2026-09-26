@@ -46,6 +46,10 @@ export interface AppSettings {
   // bridge falls back to `where`/`which claude` on PATH. Corporate/offline
   // users can point this at their pinned install.
   claudeCliPath: string;
+  // Default IDE the toolbar "Open in <IDE>" button launches. One of the ids in
+  // IdeOpenButton's IDES list ("cursor", "vscode", "zed", ...). The three-dot
+  // menu next to it launches any other IDE without changing this default.
+  defaultIde: string;
 }
 
 export const SETTINGS_DEFAULTS: AppSettings = {
@@ -69,6 +73,7 @@ export const SETTINGS_DEFAULTS: AppSettings = {
   experimentalWarp: false,
   experimentalMobile: false,
   claudeCliPath: "",
+  defaultIde: "cursor",
 };
 
 export const FONT_FAMILY_OPTIONS: { label: string; value: string }[] = [

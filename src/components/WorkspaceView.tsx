@@ -37,6 +37,7 @@ import {
   PanelRight,
   Loader,
 } from "lucide-react";
+import { IdeOpenButton } from "./IdeOpenButton";
 import { setWorkState, clearWorkState, getWorkState, setAttention, getAttention } from "../store/workState";
 import { useKeybindings, matchesEvent, formatShortcut } from "../store/keybindings";
 import { useAttribution, getAttribution, COAUTHOR_LINE } from "../store/attribution";
@@ -2120,6 +2121,15 @@ export function WorkspaceView({ zen, name, path }: Props) {
                           onQueue={() => { if (activeSession?.agent) setQueueOpenSessionId((p) => p === activeSession.id ? null : activeSession.id); }}
                           onBroadcast={() => setBroadcastOpen(true)}
                         />
+                        {activeSession && (
+                          <IdeOpenButton
+                            path={
+                              activeSession.kind === "editor"
+                                ? (projects.find((pr) => pr.id === activeSession.projectId)?.path ?? activeSession.cwd)
+                                : activeSession.cwd
+                            }
+                          />
+                        )}
                         <div className="sep" />
                         <button className="sub-bar-icon-btn" onClick={() => setRightSidebarOpen((o) => !o)} title="Toggle right sidebar">
                           <PanelRight size={15} />

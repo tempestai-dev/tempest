@@ -2,6 +2,8 @@ import { useSettings, updateSetting } from "../../store/appSettings";
 import type { Theme } from "../../themes/types";
 import { SettingRow } from "../ui/SettingRow";
 import { Stepper } from "../ui/Stepper";
+import { SpSelect } from "../ui/SpSelect";
+import { IDES } from "../IdeOpenButton";
 
 export function AppearanceSection({
   themes,
@@ -31,11 +33,22 @@ export function AppearanceSection({
       </div>
 
       <div className="sp-section-heading" style={{ marginTop: 24 }}>Interface</div>
-      <p className="sp-section-desc">Adjust sidebar text sizing.</p>
+      <p className="sp-section-desc">Adjust sidebar text sizing and the default editor.</p>
       <div className="sp-rows">
         <SettingRow label="Sidebar font size" hint="12 – 18 px">
           <Stepper value={s.sidebarFontSize} min={12} max={18}
             onChange={(v) => updateSetting("sidebarFontSize", v)} />
+        </SettingRow>
+        <SettingRow label="Default editor" hint="The toolbar button opens worktrees in this editor. Others are available via its ⋮ menu.">
+          <SpSelect
+            value={s.defaultIde}
+            onChange={(v) => updateSetting("defaultIde", v)}
+            options={IDES.map((i) => ({
+              value: i.id,
+              label: i.label,
+              icon: <img src={i.iconSrc} alt="" className={`sp-ide-opt-icon${i.mono ? " agent-icon--mono" : ""}`} />,
+            }))}
+          />
         </SettingRow>
       </div>
     </div>

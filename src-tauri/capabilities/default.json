@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "opener:default",
+    "opener:allow-open-path",
     "dialog:allow-open",
     "clipboard-manager:allow-read-text",
     "core:window:allow-close",

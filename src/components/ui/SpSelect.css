@@ -83,6 +83,12 @@
   flex-shrink: 0;
 }
 
+.sp-ide-opt-icon {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+}
+
 .sp-drop-item {
   display: flex;
   align-items: center;
