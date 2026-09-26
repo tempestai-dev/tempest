@@ -1760,6 +1760,14 @@ export function WorkspaceView({ zen, name, path }: Props) {
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
 
+  useEffect(() => {
+    if (!activeSession) return;
+    const inMode = sidebarMode === "threads" ? activeSession.kind === "thread" : activeSession.kind !== "thread";
+    if (inMode) return;
+    const first = sessions.find((s) => !s.parentSessionId && (sidebarMode === "threads" ? s.kind === "thread" : s.kind !== "thread"));
+    setActiveSessionId(first ? first.id : null);
+  }, [sidebarMode, sessions, activeSession]);
+
   const activeProjectPath = activeSession
     ? (projects.find((p) => p.id === activeSession.projectId)?.path ?? (zen ? path : undefined))
     : zen
@@ -2045,7 +2053,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
             <div className="canvas">
               {(() => {
                 const visibleTabSessions = sessions.filter((s) => !s.parentSessionId && (sidebarMode === "threads" ? s.kind === "thread" : s.kind !== "thread"));
-                const hasActiveSession = visibleTabSessions.length > 0;
+                const hasActiveSession = !!activeSessionId;
                 return (
                 <div className={`bar${tabsMode === "tabbed" ? " tabs-tabbed" : tabsMode === "ver1" ? " tabs-ver1" : tabsMode === "designer" ? " tabs-designer" : ""}`}>
                   <div className="bar-end">
@@ -2277,19 +2285,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
             {!activeSessionId && activeSection === "automations" && (
               <AutomationsPage />
             )}
-            {sidebarMode === "threads" && (!activeSession || activeSession.kind !== "thread") && (
-              <div className="overview-page">
-                <div className="overview-container">
-                  <div className="overview-start">
-                    <Mark size={96} color="var(--tempest-bg-active)" />
-                    <div style={{ marginTop: 16, opacity: 0.6, fontSize: 13 }}>
-                      Pick a thread from the sidebar, or create one to start.
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-            {sidebarMode !== "threads" && (!activeSession || activeSession.kind === "thread") && activeSection === "overview" && (
+            {(!activeSession || activeSession.kind === "thread") && activeSection === "overview" && (
               <div className="overview-page">
                 <div className="overview-container">
 
@@ -2479,7 +2475,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
           </div>{/* canvas-wrap */}
         </div>{/* workspace */}
 
-        {activeSession ? (
+        {activeSession && (
           <RightSidebar
             cwd={activeSession.kind === "editor" ? (projects.find((p) => p.id === activeSession.projectId)?.path ?? activeSession.cwd) : activeSession.cwd}
             rootPath={zen ? (path ?? null) : (projects.find((p) => p.id === activeSession.projectId)?.path ?? activeSession.cwd)}
@@ -2489,16 +2485,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
             onOpenDiff={activeSession.kind !== "diff" && activeSession.kind !== "preview" ? () => { const p = activeSession.kind === "editor" ? (projects.find((p) => p.id === activeSession.projectId)?.path ?? activeSession.cwd) : activeSession.cwd; openDiffTab(p, activeSession.projectId); } : undefined}
             onOpenFile={(filePath) => openEditorTab(filePath, activeSession.projectId)}
           />
-        ) : sidebarMode === "threads" && projects[0] ? (
-          <RightSidebar
-            cwd={projects[0].path}
-            rootPath={projects[0].path}
-            open={rightSidebarOpen}
-            gitRevision={gitRevision}
-            noGit={false}
-            onOpenFile={(filePath) => openEditorTab(filePath, projects[0].id)}
-          />
-        ) : null}
+        )}
       </div>
 
       <NewSessionMenu
