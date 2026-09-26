@@ -4,26 +4,27 @@ import { ChevronsUpDown, Check } from "lucide-react";
 import { Mark } from "../assets/Mark";
 import { DynamicIsland } from "./DynamicIsland";
 
+export type SidebarMode = "agents" | "threads";
+
 interface Props {
   tabsMode: "designed" | "tabbed" | "ver1" | "designer";
   projectName: string;
   rightActions: React.ReactNode;
+  mode: SidebarMode;
+  onModeChange: (m: SidebarMode) => void;
 }
 
-type Mode = "agents" | "threads";
-const MODES: { id: Mode; label: string }[] = [
+const MODES: { id: SidebarMode; label: string }[] = [
   { id: "agents",  label: "Agents"  },
   { id: "threads", label: "Threads" },
 ];
 
-export function Toolbar({ tabsMode, projectName, rightActions }: Props) {
+export function Toolbar({ tabsMode, projectName, rightActions, mode, onModeChange }: Props) {
   const modeClass = tabsMode === "tabbed" ? " tabs-tabbed"
     : tabsMode === "ver1"      ? " tabs-ver1"
     : tabsMode === "designer"  ? " tabs-designer"
     : "";
 
-  // ponytail: local state only — no wiring yet, awaiting direction
-  const [mode, setMode] = useState<Mode>("agents");
   const [open, setOpen] = useState(false);
   const wrapRef    = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -86,7 +87,7 @@ export function Toolbar({ tabsMode, projectName, rightActions }: Props) {
                         role="option"
                         aria-selected={active}
                         className={`bar-mode-menu-item${active ? " bar-mode-menu-item--active" : ""}`}
-                        onClick={() => { setMode(m.id); setOpen(false); }}
+                        onClick={() => { onModeChange(m.id); setOpen(false); }}
                       >
                         <span>{m.label}</span>
                         {active && <Check size={12} className="bar-mode-menu-check" />}

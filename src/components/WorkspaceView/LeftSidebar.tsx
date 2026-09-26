@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   LayoutGrid, Brain, List, Workflow, FolderPlus, TerminalSquare, Cpu,
-  ChevronDown, ChevronRight, GitBranch, Plus, Cog, Waypoints, Trash2,
+  ChevronDown, ChevronRight, GitBranch, Plus, Cog, Waypoints,
   Bug, Mail, SunMoon, Settings, FolderOpen, Eye, Globe, FileCode, Download,
 } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -40,6 +40,7 @@ export interface LeftSidebarProps {
   threadsVersion: number;
   sessionsVersion: number;
   expandedWorktrees: Set<string>;
+  sidebarMode: "agents" | "threads";
 
   // Cross-cutting setters (state lives in parent)
   setActiveSessionId: (id: string) => void;
@@ -87,11 +88,11 @@ function LeftSidebarImpl(props: LeftSidebarProps) {
     zen, path, name,
     sidebarOpen, sidebarFontSize, activeSection,
     projects, sessions, activeSessionId, zenSidebarItems,
-    gitProjectIds, atlasEnabled, threadsVersion, sessionsVersion, expandedWorktrees,
+    gitProjectIds, atlasEnabled, threadsVersion, sessionsVersion, expandedWorktrees, sidebarMode,
     setActiveSessionId, setProjects, setProjectSettingsPanelId, setSettingsOpen,
     goTo, addWorkspace, onCloneRepo, openSessionMenu, openBranchSessionMenu, openCtxMenu,
     openSession, openThreadTab, toggleProject, toggleWorktree, toggleTheme,
-    ensureThreadsLoaded, createThread, renameThread, removeThread,
+    ensureThreadsLoaded, createThread,
   } = props;
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
@@ -102,8 +103,6 @@ function LeftSidebarImpl(props: LeftSidebarProps) {
   const [sidebarAtTop, setSidebarAtTop] = useState(true);
   const [sidebarAtBottom, setSidebarAtBottom] = useState(false);
   const [sidebarDragOver, setSidebarDragOver] = useState<{ id: string; side: "before" | "after" } | null>(null);
-  const [renamingThreadId, setRenamingThreadId] = useState<string | null>(null);
-  const [threadRenameValue, setThreadRenameValue] = useState("");
   const [inlineCreateProjectId, setInlineCreateProjectId] = useState<string | null>(null);
   const [inlineCreateName, setInlineCreateName] = useState("");
 
@@ -116,14 +115,14 @@ function LeftSidebarImpl(props: LeftSidebarProps) {
 
   useEffect(() => { requestAnimationFrame(checkSidebarScroll); }, [projects, sessions]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (sidebarMode !== "threads") return;
+    projects.forEach((p) => ensureThreadsLoaded(p.id));
+  }, [sidebarMode, projects, ensureThreadsLoaded]);
+
   function navBtn(section: NavSection) {
     const isActive = !activeSessionId && activeSection === section;
     return `sidebar-nav-btn${isActive ? " sidebar-nav-btn--active" : ""}`;
-  }
-
-  function commitThreadRename(id: string) {
-    renameThread(id, threadRenameValue);
-    setRenamingThreadId(null);
   }
 
   return (
@@ -170,7 +169,7 @@ function LeftSidebarImpl(props: LeftSidebarProps) {
             <span>New Workspace</span>
           </button>
           <div className="sidebar-section-label">Workspaces</div>
-          {zenSidebarItems.length === 0 ? (
+          {sidebarMode === "threads" ? null : zenSidebarItems.length === 0 ? (
             <div className="agents-empty">No open workspaces</div>
           ) : (
             zenSidebarItems.map((item) => {
@@ -333,6 +332,8 @@ function LeftSidebarImpl(props: LeftSidebarProps) {
 
                   {project.expanded && (
                     <div className="sidebar-project-sessions">
+                      {sidebarMode !== "threads" && (
+                      <>
                       {/* Root sessions — expandable row */}
                       {(isGitProject || rootRows.length > 0) && (
                         <div className="sb-worktree">
@@ -619,68 +620,49 @@ function LeftSidebarImpl(props: LeftSidebarProps) {
                             </button>
                           </div>
                         ))}
+                      </>
+                      )}
 
-                      {/* Threads (canvas chat) — project-scoped collapsible dropdown */}
+                      {/* Threads — collapsible under project in agents mode; flat list in threads mode */}
                       {(() => {
                         const threadsKey = project.path + "::threads";
                         const threadsExpanded = expandedWorktrees.has(threadsKey);
                         void threadsVersion; // re-render on lazy load
                         const canvases = getProjectThreads(project.id);
+                        const threadsMode = sidebarMode === "threads";
+                        const showList = threadsMode || threadsExpanded;
                         return (
                           <div className="sidebar-session-group">
-                            <div
-                              className="sidebar-thread-session"
-                              style={{ cursor: "pointer" }}
-                              onClick={() => { ensureThreadsLoaded(project.id); toggleWorktree(threadsKey); }}
-                            >
-                              {threadsExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                              <span>Threads</span>
-                              <button
-                                className="sidebar-project-add-btn"
-                                onClick={(e) => { e.stopPropagation(); ensureThreadsLoaded(project.id); createThread(project.id); }}
-                                aria-label="New thread"
+                            {!threadsMode && (
+                              <div
+                                className="sidebar-thread-session"
+                                style={{ cursor: "pointer" }}
+                                onClick={() => { ensureThreadsLoaded(project.id); toggleWorktree(threadsKey); }}
                               >
-                                <Plus size={10} />
+                                {threadsExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                <span>Threads</span>
+                                <button
+                                  className="sidebar-project-add-btn"
+                                  onClick={(e) => { e.stopPropagation(); ensureThreadsLoaded(project.id); createThread(project.id); }}
+                                  aria-label="New thread"
+                                >
+                                  <Plus size={10} />
+                                </button>
+                              </div>
+                            )}
+                            {showList && canvases.map((c) => (
+                              <button
+                                key={c.id}
+                                className={`sb-dropdown-item${c.id === activeSessionId ? " sb-dropdown-item--active" : ""}`}
+                                onClick={() => openThreadTab(project.id, c.id)}
+                              >
+                                <Waypoints size={11} />
+                                <span className="sb-dropdown-item-name">{c.name}</span>
                               </button>
-                            </div>
-                            {threadsExpanded && canvases.map((c) => (
-                              renamingThreadId === c.id ? (
-                                <input
-                                  key={c.id}
-                                  autoFocus
-                                  className="sb-inline-create-input"
-                                  value={threadRenameValue}
-                                  onChange={(e) => setThreadRenameValue(e.target.value)}
-                                  onBlur={() => commitThreadRename(c.id)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") commitThreadRename(c.id);
-                                    else if (e.key === "Escape") setRenamingThreadId(null);
-                                  }}
-                                />
-                              ) : (
-                                <div key={c.id} style={{ display: "flex", alignItems: "center" }}>
-                                  <button
-                                    className={`sidebar-thread-session${c.id === activeSessionId ? " sidebar-thread-session--active" : ""}`}
-                                    style={{ flex: 1 }}
-                                    onClick={() => openThreadTab(project.id, c.id)}
-                                    onDoubleClick={() => { setThreadRenameValue(c.name); setRenamingThreadId(c.id); }}
-                                  >
-                                    <Waypoints size={12} />
-                                    <span>{c.name}</span>
-                                  </button>
-                                  <button
-                                    className="sidebar-project-settings-btn"
-                                    onClick={() => removeThread(c.id)}
-                                    aria-label="Delete thread"
-                                  >
-                                    <Trash2 size={12} />
-                                  </button>
-                                </div>
-                              )
                             ))}
-                            {threadsExpanded && canvases.length === 0 && (
+                            {showList && canvases.length === 0 && (
                               <div className="sb-dropdown-empty-box">
-                                <span className="sb-dropdown-empty-text">No threads yet. Create one with +</span>
+                                <span className="sb-dropdown-empty-text">No threads yet{threadsMode ? "" : ". Create one with +"}</span>
                               </div>
                             )}
                           </div>
@@ -689,6 +671,7 @@ function LeftSidebarImpl(props: LeftSidebarProps) {
 
                       {/* Project-level empty state */}
                       {(() => {
+                        if (sidebarMode === "threads") return null;
                         const hasGitRows = isGitProject;
                         const hasRootRows = !isGitProject && rootRows.length > 0;
                         const hasOtherSessions = projectSessions.some((s) => !s.isRootSession && !s.parentSessionId && !project.worktrees.some((w) => w.path === s.cwd));

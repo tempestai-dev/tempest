@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { PencilLine, SplitSquareHorizontal, Keyboard, BookOpen } from "lucide-react";
-import { Toolbar } from "../Toolbar";
+import { Toolbar, type SidebarMode } from "../Toolbar";
 import { Tooltip } from "../Tooltip";
 import { NotesPopover } from "./NotesPopover";
 import { PromptPickerPopover } from "./PromptPickerPopover";
@@ -13,10 +13,12 @@ export interface TopBarProps {
   diffIconActive: boolean;
   onOpenDiffPicker: () => void;
   onOpenSettings: (section?: string) => void;
+  sidebarMode: SidebarMode;
+  onSidebarModeChange: (m: SidebarMode) => void;
 }
 
 function TopBarImpl(props: TopBarProps) {
-  const { tabsMode, projectName, projectPath, diffIconActive, onOpenDiffPicker, onOpenSettings } = props;
+  const { tabsMode, projectName, projectPath, diffIconActive, onOpenDiffPicker, onOpenSettings, sidebarMode, onSidebarModeChange } = props;
 
   const [notesOpen, setNotesOpen] = useState(false);
   const [notesPos, setNotesPos] = useState<{ top: number; right: number } | null>(null);
@@ -66,6 +68,8 @@ function TopBarImpl(props: TopBarProps) {
     <Toolbar
       tabsMode={tabsMode}
       projectName={projectName}
+      mode={sidebarMode}
+      onModeChange={onSidebarModeChange}
       rightActions={
         <>
           <Tooltip content="Notes" placement="bottom">
