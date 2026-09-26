@@ -4,6 +4,7 @@ import { invoke, Channel } from "@tauri-apps/api/core";
 import { sessionManager } from "../store/sessionManager";
 import { setActiveIslandSession, onIslandFocusRequest } from "../store/islandNotifs";
 import { open } from "@tauri-apps/plugin-dialog";
+import { sep as pathSep } from "@tauri-apps/api/path";
 import { createWorktree, gitInit } from "../lib/worktree";
 import { addRecent, getRecents, removeRecent } from "../store/recents";
 import { getOpenProjects, saveOpenProjects } from "../store/openProjects";
@@ -1462,13 +1463,19 @@ export function WorkspaceView({ zen, name, path }: Props) {
         worktreePath = directWorktreePath;
         addWorktreeToState({ name: branchName, path: worktreePath }, workingProjectId);
       } else {
-        // Instant tab: render the session NOW (pointing at the project root) and
-        // focus it, before the ~1-2s `git worktree add`. Without this the whole
-        // area sat blank until the worktree existed. openSession replaces this
-        // row with the real worktree cwd once creation returns. Mirrors the Main
-        // tab's instant-tab spawn.
+        // Instant tab AND instant worktree row: the backend places the worktree
+        // deterministically at `<project>/.tempest/<dir_name>` (see
+        // create_terminal_worktree in lib.rs), so we can pre-insert both the
+        // worktree entry and the session pointing at that path. Without this
+        // the row landed at cwd=projectRoot for the ~1-2s of `git worktree add`
+        // and rendered as a project-level "block" (LeftSidebar routes rows to
+        // a worktree only when cwd matches a known worktree path).
+        const dirName = branchName.replace(/\//g, "-");
+        const sep = pathSep();
+        const expectedWorktreePath = `${activePath}${sep}.tempest${sep}${dirName}`;
+        addWorktreeToState({ name: branchName, path: expectedWorktreePath }, workingProjectId);
         setSessions((prev) => [...prev, {
-          id: pendingId, instanceId: pendingId, name: sessionName, cwd: activePath,
+          id: pendingId, instanceId: pendingId, name: sessionName, cwd: expectedWorktreePath,
           projectId: workingProjectId ?? "", agent: agent?.hint,
           sandboxed: getSettings().isolateAgents,
           createdAt: new Date().toISOString(),
@@ -1479,10 +1486,20 @@ export function WorkspaceView({ zen, name, path }: Props) {
           const result = await createWorktree({ projectPath: activePath, name: branchName, existingBranch: existingBranchArg });
           worktreePath = result.path;
         } catch (e) {
-          // Worktree creation failed — roll back the optimistic tab.
+          // Worktree creation failed — roll back the optimistic tab AND the worktree entry.
           setSessions((prev) => prev.filter((s) => s.id !== pendingId));
+          if (zen) {
+            setZenWorktrees((prev) => prev.filter((w) => w.path !== expectedWorktreePath));
+          } else {
+            setProjects((prev) => prev.map((p) => p.id === workingProjectId
+              ? { ...p, worktrees: p.worktrees.filter((w) => w.path !== expectedWorktreePath) }
+              : p));
+          }
           throw e;
         }
+        // addWorktreeToState is idempotent by path, so the common case (backend
+        // path == expected) is a no-op here. Handles the paranoid edge where
+        // the backend returned a different string (e.g. separator mismatch).
         addWorktreeToState({ name: branchName, path: worktreePath }, workingProjectId);
         // Run the setup hook in the BACKGROUND so the session appears the instant the
         // worktree exists, instead of waiting out installs/build steps first. The agent
