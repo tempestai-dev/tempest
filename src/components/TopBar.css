@@ -108,6 +108,104 @@
   opacity: 1;
 }
 
+/* ─── Bar mode switch (shadcn-styled dropdown) ────────────────────────────── */
+
+.bar-mode-switch {
+  position: relative;
+  display: inline-flex;
+  -webkit-app-region: no-drag;
+  flex-shrink: 0;
+  margin-left: -8px;
+}
+
+.bar .bar-mode-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--tempest-fg-default);
+  font-size: 13px;
+  font-weight: 400;
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s ease;
+}
+
+.bar .bar-mode-trigger:hover,
+.bar .bar-mode-trigger[aria-expanded="true"] {
+  background: var(--tempest-bg-hover);
+  color: var(--tempest-fg-default);
+}
+
+.bar-mode-trigger-chev {
+  color: var(--tempest-fg-default);
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+/* Popover surface — ring, not border. Soft shadow. Enter animation. */
+.bar-mode-menu {
+  position: fixed;
+  min-width: 120px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--tempest-bg-elevated, var(--tempest-bg-base));
+  color: var(--tempest-fg-default);
+  box-shadow:
+    0 0 0 1px var(--tempest-border-default),
+    0 4px 12px rgba(0, 0, 0, 0.12),
+    0 2px 4px rgba(0, 0, 0, 0.08);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  transform-origin: top left;
+  animation: bar-mode-menu-in 120ms ease-out;
+  outline: none;
+}
+
+@keyframes bar-mode-menu-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+
+.bar-mode-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tempest-fg-default);
+  font-size: 13px;
+  font-weight: 400;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+  outline: none;
+  transition: background 0.08s ease;
+}
+
+.bar-mode-menu-item:hover,
+.bar-mode-menu-item:focus-visible {
+  background: var(--tempest-bg-hover);
+}
+
+.bar-mode-menu-check {
+  color: var(--tempest-fg-default);
+  opacity: 0.6;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 /* ─── Prompt picker anchor ─────────────────────────────────────────────────── */
 
 .topbar-prompt-wrap {
