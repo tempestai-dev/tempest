@@ -293,37 +293,51 @@ function LeftSidebarImpl(props: LeftSidebarProps) {
                       {project.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                       <span>{project.name}</span>
                     </button>
-                    {atlasEnabled && getRuntimeState().atlasProjects[project.path] === true && (
-                      <Cpu size={11} className="sidebar-project-atlas-icon" aria-label="Token Intelligence indexed" />
+                    {sidebarMode !== "threads" && (
+                      <>
+                        {atlasEnabled && getRuntimeState().atlasProjects[project.path] === true && (
+                          <Cpu size={11} className="sidebar-project-atlas-icon" aria-label="Token Intelligence indexed" />
+                        )}
+                        <ProjectWorkBadge sessionIds={sessions.filter((s) => s.projectId === project.id).map((s) => s.id)} />
+                        {(isGitProject || rootRows.length > 0) && (
+                          <span className="sidebar-project-count">{project.worktrees.length + (rootRows.length > 0 ? 1 : 0)}</span>
+                        )}
+                        <Tooltip content="Project settings" placement="right">
+                          <button
+                            className="sidebar-project-settings-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setProjectSettingsPanelId(project.id);
+                            }}
+                            aria-label="Project settings"
+                          >
+                            <Cog size={12} />
+                          </button>
+                        </Tooltip>
+                      </>
                     )}
-                    <ProjectWorkBadge sessionIds={sessions.filter((s) => s.projectId === project.id).map((s) => s.id)} />
-                    {(isGitProject || rootRows.length > 0) && (
-                      <span className="sidebar-project-count">{project.worktrees.length + (rootRows.length > 0 ? 1 : 0)}</span>
-                    )}
-                    <Tooltip content="Project settings" placement="right">
-                      <button
-                        className="sidebar-project-settings-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setProjectSettingsPanelId(project.id);
-                        }}
-                        aria-label="Project settings"
-                      >
-                        <Cog size={12} />
-                      </button>
-                    </Tooltip>
-                    <Tooltip content="New session" placement="right">
+                    <Tooltip content={sidebarMode === "threads" ? "New thread" : "New session"} placement="right">
                       <button
                         className="sidebar-project-add-btn"
                         onClick={(e) => {
                           e.stopPropagation();
-                          openSessionMenu(e, project.id, "right");
+                          if (sidebarMode === "threads") {
+                            ensureThreadsLoaded(project.id);
+                            createThread(project.id);
+                          } else {
+                            openSessionMenu(e, project.id, "right");
+                          }
                         }}
                         onContextMenu={(e) => {
                           e.stopPropagation();
-                          openSessionMenu(e, project.id, "right");
+                          if (sidebarMode === "threads") {
+                            ensureThreadsLoaded(project.id);
+                            createThread(project.id);
+                          } else {
+                            openSessionMenu(e, project.id, "right");
+                          }
                         }}
-                        aria-label="New session"
+                        aria-label={sidebarMode === "threads" ? "New thread" : "New session"}
                       >
                         <Plus size={12} />
                       </button>

@@ -8,7 +8,7 @@ import {
   AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter,
 } from "lucide-react";
 import {
-  ReactFlow, Background, Controls, MiniMap, Panel,
+  ReactFlow, Background, BackgroundVariant, Controls, MiniMap, Panel,
   applyNodeChanges, applyEdgeChanges, addEdge, ConnectionMode,
   useStore, useStoreApi,
   type Node, type NodeChange, type Edge, type EdgeChange, type Connection, type Viewport,
@@ -568,7 +568,7 @@ export function ThreadsView({
         proOptions={{ hideAttribution: true }}
         colorMode={theme.type}
       >
-        <Background id="threads-bg" bgColor="var(--tempest-bg-editor)" color="var(--tempest-border-subtle)" gap={28} size={2.5} />
+        <Background id="threads-bg" variant={BackgroundVariant.Dots} bgColor="var(--tempest-bg-editor)" color="var(--tempest-text-muted)" gap={28} size={1.6} />
         <Controls />
         <MiniMap pannable zoomable />
         <Panel position="top-center">
