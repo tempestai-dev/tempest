@@ -38,7 +38,6 @@
   </a>
 </p>
 
-
 <h2 align="center">
   <strong>Run Claude Code, Codex, Gemini and any other CLI Agent with 86% fewer tokens</strong>
 </h2>
@@ -139,6 +138,14 @@ Thanks to everyone who has contributed to Tempest. See [CONTRIBUTING.md](CONTRIB
 
 <a href="https://github.com/tempestai-dev/tempest/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=tempestai-dev/tempest" alt="Tempest contributors" />
+</a>
+
+## Support
+
+If Tempest saves you tokens (and time), a coffee keeps the project moving.
+
+<a href="https://www.buymeacoffee.com/gsvprharsha" target="_blank">
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/arial-yellow.png" alt="Buy Me a Coffee" height="60" />
 </a>
 
 ## Community
