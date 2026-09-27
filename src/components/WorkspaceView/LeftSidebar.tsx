@@ -637,34 +637,13 @@ function LeftSidebarImpl(props: LeftSidebarProps) {
                       </>
                       )}
 
-                      {/* Threads — collapsible under project in agents mode; flat list in threads mode */}
-                      {(() => {
-                        const threadsKey = project.path + "::threads";
-                        const threadsExpanded = expandedWorktrees.has(threadsKey);
+                      {/* Threads — flat list in threads mode only; agents mode has no threads section (threads have their own view) */}
+                      {sidebarMode === "threads" && (() => {
                         void threadsVersion; // re-render on lazy load
                         const canvases = getProjectThreads(project.id);
-                        const threadsMode = sidebarMode === "threads";
-                        const showList = threadsMode || threadsExpanded;
                         return (
                           <div className="sidebar-session-group">
-                            {!threadsMode && (
-                              <div
-                                className="sidebar-thread-session"
-                                style={{ cursor: "pointer" }}
-                                onClick={() => { ensureThreadsLoaded(project.id); toggleWorktree(threadsKey); }}
-                              >
-                                {threadsExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                                <span>Threads</span>
-                                <button
-                                  className="sidebar-project-add-btn"
-                                  onClick={(e) => { e.stopPropagation(); ensureThreadsLoaded(project.id); createThread(project.id); }}
-                                  aria-label="New thread"
-                                >
-                                  <Plus size={10} />
-                                </button>
-                              </div>
-                            )}
-                            {showList && canvases.map((c) => (
+                            {canvases.map((c) => (
                               <button
                                 key={c.id}
                                 className={`sb-dropdown-item${c.id === activeSessionId ? " sb-dropdown-item--active" : ""}`}
@@ -674,9 +653,9 @@ function LeftSidebarImpl(props: LeftSidebarProps) {
                                 <span className="sb-dropdown-item-name">{c.name}</span>
                               </button>
                             ))}
-                            {showList && canvases.length === 0 && (
+                            {canvases.length === 0 && (
                               <div className="sb-dropdown-empty-box">
-                                <span className="sb-dropdown-empty-text">No threads yet{threadsMode ? "" : ". Create one with +"}</span>
+                                <span className="sb-dropdown-empty-text">No threads yet</span>
                               </div>
                             )}
                           </div>
