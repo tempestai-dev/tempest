@@ -6,7 +6,10 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "opener:allow-open-path",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [{ "path": "**", "app": true }]
+    },
     "dialog:allow-open",
     "clipboard-manager:allow-read-text",
     "core:window:allow-close",
