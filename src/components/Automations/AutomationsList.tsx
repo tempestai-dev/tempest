@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
-import { Loader, Plus, Trash2, Workflow } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const Loader = (p: any) => <UiIcon name="loader" {...p} />;
+const Plus = (p: any) => <UiIcon name="plus" {...p} />;
+const Trash2 = (p: any) => <UiIcon name="trash-2" {...p} />;
+const Workflow = (p: any) => <UiIcon name="workflow" {...p} />;
 import { createPortal } from "react-dom";
 import type { StoredProject } from "../../store/openProjects";
 import { type Automation, loadAutomations, updateAutomation, deleteAutomation } from "../../store/automations";

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { CircleArrowRight } from 'lucide-react';
+import { UiIcon } from "../../icons/UiIcon";
+const CircleArrowRight = (p: any) => <UiIcon name="circle-arrow-right" {...p} />;
 import { getVersion } from '@tauri-apps/api/app';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { TempestLogo } from '../../assets/TempestLogo';

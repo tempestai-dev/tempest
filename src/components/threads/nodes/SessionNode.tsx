@@ -1,7 +1,8 @@
 import { useContext, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { NodeResizeControl, ResizeControlVariant, useReactFlow } from "@xyflow/react";
-import { Trash2 } from "lucide-react";
+import { UiIcon } from "../../../icons/UiIcon";
+const Trash2 = (p: any) => <UiIcon name="trash-2" {...p} />;
 import { SpSelect } from "../../ui/SpSelect";
 import { TerminalPane } from "../../TerminalPane";
 import { AGENT_CONFIGS, AgentIcon } from "../../NewSessionMenu";

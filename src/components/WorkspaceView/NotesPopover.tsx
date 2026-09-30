@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, Trash2, Copy, Check, Globe, Folder, Pencil } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const Plus = (p: any) => <UiIcon name="plus" {...p} />;
+const Trash2 = (p: any) => <UiIcon name="trash-2" {...p} />;
+const Copy = (p: any) => <UiIcon name="copy" {...p} />;
+const Check = (p: any) => <UiIcon name="check" {...p} />;
+const Globe = (p: any) => <UiIcon name="globe" {...p} />;
+const Pencil = (p: any) => <UiIcon name="pencil" {...p} />;
+import { FileIcon } from "../../icons/FileIcon";
 import { EditorView, placeholder, keymap, drawSelection, highlightSpecialChars } from "@codemirror/view";
 import { EditorState, EditorSelection } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
@@ -241,7 +248,7 @@ export function NotesPopover({ pos, projectPath, projectName }: Props) {
 
   const scopeOptions = [
     { value: "global", label: "Global", icon: <Globe size={12} /> },
-    ...(projectPath ? [{ value: projectPath, label: projectName ?? "Project", icon: <Folder size={12} /> }] : []),
+    ...(projectPath ? [{ value: projectPath, label: projectName ?? "Project", icon: <FileIcon name="" isDir size={12} /> }] : []),
   ];
 
   return createPortal(
@@ -270,7 +277,7 @@ export function NotesPopover({ pos, projectPath, projectName }: Props) {
               >
                 <div className="sub-bar-notes-item-title">{displayTitle(n)}</div>
                 <div className="sub-bar-notes-item-meta">
-                  {isProject ? <Folder size={10} /> : <Globe size={10} />}
+                  {isProject ? <FileIcon name="" isDir size={10} /> : <Globe size={10} />}
                   <span className="sub-bar-notes-item-scope">
                     {isProject
                       ? (n.scope === projectPath ? projectName ?? "Project" : n.scope.split(/[\\/]/).pop())

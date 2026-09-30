@@ -1,4 +1,9 @@
-import { GitBranch, GitPullRequest, Loader, Check, X } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const GitBranch = (p: any) => <UiIcon name="git-branch" {...p} />;
+const GitPullRequest = (p: any) => <UiIcon name="git-pull-request" {...p} />;
+const Loader = (p: any) => <UiIcon name="loader" {...p} />;
+const Check = (p: any) => <UiIcon name="check" {...p} />;
+const X = (p: any) => <UiIcon name="x" {...p} />;
 
 export function PushControls({
   currentBranch,

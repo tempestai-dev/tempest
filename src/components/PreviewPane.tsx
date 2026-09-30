@@ -1,10 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import {
-  Globe, RefreshCw, ArrowLeft, ArrowRight, X,
-  Smartphone, Tablet, Monitor, ExternalLink, Loader,
-} from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const Globe = (p: any) => <UiIcon name="globe" {...p} />;
+const RefreshCw = (p: any) => <UiIcon name="refresh-cw" {...p} />;
+const ArrowLeft = (p: any) => <UiIcon name="arrow-left" {...p} />;
+const ArrowRight = (p: any) => <UiIcon name="arrow-right" {...p} />;
+const X = (p: any) => <UiIcon name="x" {...p} />;
+const Smartphone = (p: any) => <UiIcon name="smartphone" {...p} />;
+const Tablet = (p: any) => <UiIcon name="tablet" {...p} />;
+const Monitor = (p: any) => <UiIcon name="monitor" {...p} />;
+const ExternalLink = (p: any) => <UiIcon name="external-link" {...p} />;
+const Loader = (p: any) => <UiIcon name="loader" {...p} />;
 import "./PreviewPane.css";
 
 // ── Constants ──────────────────────────────────────────────────────────────

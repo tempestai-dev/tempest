@@ -1,4 +1,7 @@
-import { Loader, Check, RotateCcw } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const Loader = (p: any) => <UiIcon name="loader" {...p} />;
+const Check = (p: any) => <UiIcon name="check" {...p} />;
+const RotateCcw = (p: any) => <UiIcon name="rotate-ccw" {...p} />;
 import { setAttribution } from "../../store/attribution";
 
 export function CommitBox({

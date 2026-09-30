@@ -1,4 +1,7 @@
-import { ArrowLeft, ArrowRight, Download } from 'lucide-react';
+import { UiIcon } from "../../icons/UiIcon";
+const ArrowLeft = (p: any) => <UiIcon name="arrow-left" {...p} />;
+const ArrowRight = (p: any) => <UiIcon name="arrow-right" {...p} />;
+const Download = (p: any) => <UiIcon name="download" {...p} />;
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { AGENT_CONFIGS } from '../NewSessionMenu';
 import { useAgentAvailability } from '../../store/agentAvailability';

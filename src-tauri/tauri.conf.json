@@ -49,6 +49,7 @@
       "resources/codex-bridge/**/*",
       "resources/opencode-bridge/**/*",
       "resources/gemini-bridge/**/*",
+      "resources/extensions/**/*",
       "icons/128x128.png"
     ],
     "icon": [

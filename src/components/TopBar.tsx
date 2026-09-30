@@ -1,4 +1,8 @@
-import { Minus, Square, X, ExternalLink } from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const Minus = (p: any) => <UiIcon name="minus" {...p} />;
+const Square = (p: any) => <UiIcon name="square" {...p} />;
+const X = (p: any) => <UiIcon name="x" {...p} />;
+const ExternalLink = (p: any) => <UiIcon name="external-link" {...p} />;
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Mark } from "../assets/Mark";
 import { Tooltip } from "./Tooltip";

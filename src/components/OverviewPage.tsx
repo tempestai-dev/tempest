@@ -1,4 +1,12 @@
-import { TerminalSquare, GitBranch, Eye, GitPullRequest, MoreHorizontal, Loader, FolderOpen, Bell } from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const TerminalSquare = (p: any) => <UiIcon name="terminal-square" {...p} />;
+const GitBranch = (p: any) => <UiIcon name="git-branch" {...p} />;
+const Eye = (p: any) => <UiIcon name="eye" {...p} />;
+const GitPullRequest = (p: any) => <UiIcon name="git-pull-request" {...p} />;
+const MoreHorizontal = (p: any) => <UiIcon name="more-horizontal" {...p} />;
+const Loader = (p: any) => <UiIcon name="loader" {...p} />;
+const Bell = (p: any) => <UiIcon name="bell" {...p} />;
+import { FileIcon } from "../icons/FileIcon";
 import { AgentIcon } from "./NewSessionMenu";
 import { useWorkState, useAttention, getWorkState, getAttention, useWorkStateVersion } from "../store/workState";
 import "./OverviewPage.css";
@@ -181,7 +189,7 @@ export function OverviewPage({ workspaces, onOpen, onDiff, onOpenProject }: Over
           <div className="op-empty">
             <span className="op-empty-text">No workspaces open</span>
             <button className="op-empty-btn" onClick={onOpenProject}>
-              <FolderOpen size={13} />
+              <FileIcon name="" isDir isOpen size={13} />
               Open Project
             </button>
           </div>

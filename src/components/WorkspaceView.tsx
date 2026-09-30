@@ -23,20 +23,19 @@ import { DiffPickerModal } from "./WorkspaceView/DiffPickerModal";
 import { ContextMenu, type CtxMenuState } from "./WorkspaceView/ContextMenu";
 import { TitleBar } from "./WorkspaceView/TitleBar";
 import { LeftSidebar } from "./WorkspaceView/LeftSidebar";
+import { FileIcon } from "../icons/FileIcon";
 import { TopBar } from "./WorkspaceView/TopBar";
 import { useEvent } from "../lib/useEvent";
-import {
-  FolderOpen,
-  Settings,
-  TerminalSquare,
-  X,
-  ChevronLeft,
-  ChevronRight,
-  Cpu,
-  PanelLeft,
-  PanelRight,
-  Loader,
-} from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const Settings = (p: any) => <UiIcon name="settings" {...p} />;
+const TerminalSquare = (p: any) => <UiIcon name="terminal-square" {...p} />;
+const X = (p: any) => <UiIcon name="x" {...p} />;
+const ChevronLeft = (p: any) => <UiIcon name="chevron-left" {...p} />;
+const ChevronRight = (p: any) => <UiIcon name="chevron-right" {...p} />;
+const Cpu = (p: any) => <UiIcon name="cpu" {...p} />;
+const PanelLeft = (p: any) => <UiIcon name="panel-left" {...p} />;
+const PanelRight = (p: any) => <UiIcon name="panel-right" {...p} />;
+const Loader = (p: any) => <UiIcon name="loader" {...p} />;
 import { IdeOpenButton } from "./IdeOpenButton";
 import { setWorkState, clearWorkState, getWorkState, setAttention, getAttention } from "../store/workState";
 import { useKeybindings, matchesEvent, formatShortcut } from "../store/keybindings";
@@ -2323,7 +2322,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
                     <Mark size={96} color="var(--tempest-bg-active)" />
 
                     <div className="overview-btn-row">
-                      <button className="overview-btn" onClick={addWorkspace}><FolderOpen size={13} />Open Project</button>
+                      <button className="overview-btn" onClick={addWorkspace}><FileIcon name="" isDir isOpen size={13} />Open Project</button>
                       <button className="overview-btn" onClick={() => setSettingsOpen(true)}><Settings size={13} />Settings</button>
                     </div>
 

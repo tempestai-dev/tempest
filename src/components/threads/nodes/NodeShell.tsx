@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { NodeResizeControl, ResizeControlVariant, useReactFlow } from "@xyflow/react";
-import { Pencil, Trash2 } from "lucide-react";
+import { UiIcon } from "../../../icons/UiIcon";
+const Pencil = (p: any) => <UiIcon name="pencil" {...p} />;
+const Trash2 = (p: any) => <UiIcon name="trash-2" {...p} />;
 import { NodeConnector } from "./NodeConnector";
 import { useZoomCounterScale } from "./useZoomCounterScale";
 import { CollapsedNode } from "./CollapsedNode";

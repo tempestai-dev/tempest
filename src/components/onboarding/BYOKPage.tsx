@@ -1,6 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, Eye, EyeOff, ChevronDown, Check } from 'lucide-react';
+import { UiIcon } from "../../icons/UiIcon";
+const ArrowLeft = (p: any) => <UiIcon name="arrow-left" {...p} />;
+const ArrowRight = (p: any) => <UiIcon name="arrow-right" {...p} />;
+const Eye = (p: any) => <UiIcon name="eye" {...p} />;
+const EyeOff = (p: any) => <UiIcon name="eye-off" {...p} />;
+const ChevronDown = (p: any) => <UiIcon name="chevron-down" {...p} />;
+const Check = (p: any) => <UiIcon name="check" {...p} />;
 import { useTheme } from '../../themes/ThemeContext';
 import { byokId, setSecret } from '../../lib/secrets';
 

@@ -1,4 +1,7 @@
-import { MessageSquare, X, Send } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const MessageSquare = (p: any) => <UiIcon name="message-square" {...p} />;
+const X = (p: any) => <UiIcon name="x" {...p} />;
+const Send = (p: any) => <UiIcon name="send" {...p} />;
 import type { AgentSession } from "../DiffPane";
 
 export function CommentBar({

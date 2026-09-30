@@ -10,6 +10,7 @@ mod agent_hooks;
 mod automations;
 mod canvas_mcp;
 mod claude_bridge;
+mod extensions;
 mod git_clone;
 mod node_ingest;
 mod notes;
@@ -4618,6 +4619,9 @@ pub fn run() {
             check_branch_merged,
             write_coauthor_hook,
             remove_coauthor_hook,
+            extensions::seed_extensions,
+            extensions::list_extensions,
+            extensions::read_extension_file,
             check_git_initialized,
             git_add_remote,
             embed_ide_panel,

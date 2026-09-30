@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Megaphone, X } from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const Megaphone = (p: any) => <UiIcon name="megaphone" {...p} />;
+const X = (p: any) => <UiIcon name="x" {...p} />;
 import { AgentIcon } from "./NewSessionMenu";
 
 export interface BroadcastSession {

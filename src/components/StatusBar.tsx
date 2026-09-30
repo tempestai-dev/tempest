@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { Shield, Cpu, RefreshCw } from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const Shield = (p: any) => <UiIcon name="shield" {...p} />;
+const Cpu = (p: any) => <UiIcon name="cpu" {...p} />;
+const RefreshCw = (p: any) => <UiIcon name="refresh-cw" {...p} />;
 import { Tooltip } from "./Tooltip";
 import { UpdateNotice } from "./UpdateNotice";
 import { AgentQuotaStrip } from "./AgentQuotaStrip";

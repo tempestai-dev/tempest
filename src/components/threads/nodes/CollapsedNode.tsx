@@ -1,6 +1,21 @@
 import { useContext } from "react";
-import { Maximize2, MessagesSquare, StickyNote, Bot, SquareTerminal, Image as ImageIcon, FileText, Globe, Play } from "lucide-react";
+import { UiIcon } from "../../../icons/UiIcon";
+const Maximize2 = (p: any) => <UiIcon name="maximize-2" {...p} />;
+const MessagesSquare = (p: any) => <UiIcon name="messages-square" {...p} />;
+const StickyNote = (p: any) => <UiIcon name="sticky-note" {...p} />;
+const Bot = (p: any) => <UiIcon name="bot" {...p} />;
+const SquareTerminal = (p: any) => <UiIcon name="square-terminal" {...p} />;
+const ImageIcon = (p: any) => <UiIcon name="image" {...p} />;
+const Globe = (p: any) => <UiIcon name="globe" {...p} />;
+const Play = (p: any) => <UiIcon name="play" {...p} />;
+import { FileIcon } from "../../../icons/FileIcon";
 import { NodeConnector } from "./NodeConnector";
+
+const FileText = ({ size, style }: { size?: number; style?: React.CSSProperties }) => (
+  <span style={style ? { display: "inline-flex", ...style } : { display: "inline-flex" }}>
+    <FileIcon name="" isDir={false} size={size ?? 14} />
+  </span>
+);
 import { getThreadNode, getNodeData } from "../../../store/threads";
 import { getSession, getBranch } from "../../../store/sessions";
 import { firstLine } from "../canvasContext";
@@ -10,7 +25,7 @@ import { ThreadNodeContext } from "../ThreadNodeContext";
 // maximize). A single-row pill — kind icon, title, one-line gist — reusing the
 // same metadata the canvas map shows (no full content loaded). Connectors stay
 // live so wiring survives collapse; double-click or the maximize button expands.
-const ICON: Record<string, typeof StickyNote> = {
+const ICON: Record<string, React.ComponentType<{ size?: number; style?: React.CSSProperties }>> = {
   chat: MessagesSquare, text: StickyNote, agent: Bot, terminal: SquareTerminal,
   image: ImageIcon, file: FileText, site: Globe, media: Play,
 };

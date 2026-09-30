@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Loader } from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const Loader = (p: any) => <UiIcon name="loader" {...p} />;
 import {
   forceSimulation,
   forceManyBody,

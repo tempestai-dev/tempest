@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Shield, Globe, HardDrive, Lock, Database, Bot, Gauge } from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const X = (p: any) => <UiIcon name="x" {...p} />;
+const Shield = (p: any) => <UiIcon name="shield" {...p} />;
+const Globe = (p: any) => <UiIcon name="globe" {...p} />;
+const HardDrive = (p: any) => <UiIcon name="hard-drive" {...p} />;
+const Lock = (p: any) => <UiIcon name="lock" {...p} />;
+const Database = (p: any) => <UiIcon name="database" {...p} />;
+const Bot = (p: any) => <UiIcon name="bot" {...p} />;
+const Gauge = (p: any) => <UiIcon name="gauge" {...p} />;
 import { SandboxSection }     from "./ProjectSettingsPanel/SandboxSection";
 import { NetworkSection }     from "./ProjectSettingsPanel/NetworkSection";
 import { FilesystemSection }  from "./ProjectSettingsPanel/FilesystemSection";

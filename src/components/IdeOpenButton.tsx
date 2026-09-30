@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { MoreVertical } from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const MoreVertical = (p: any) => <UiIcon name="more-vertical" {...p} />;
 import { openPath } from "@tauri-apps/plugin-opener";
 import { useSettings } from "../store/appSettings";
 import vscodeSrc from "../assets/agent-icons/vscode.svg";

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
-import { FolderOpen } from "lucide-react";
+import { FileIcon } from "../icons/FileIcon";
 import "./NewProjectModal.css";
 
 interface Props {
@@ -75,7 +75,7 @@ export function NewProjectModal({ onClose, onCreated }: Props) {
               onClick={browse}
             />
             <button className="modal-browse-btn" onClick={browse}>
-              <FolderOpen size={14} />
+              <FileIcon name="" isDir isOpen size={14} />
             </button>
           </div>
         </div>

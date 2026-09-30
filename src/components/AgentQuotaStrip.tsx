@@ -10,7 +10,9 @@
 // second, quieter surface for glanceable at-a-glance-during-work numbers.
 
 import { useState, useEffect, useRef } from "react";
-import { SlidersHorizontal, RefreshCw } from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const SlidersHorizontal = (p: any) => <UiIcon name="sliders-horizontal" {...p} />;
+const RefreshCw = (p: any) => <UiIcon name="refresh-cw" {...p} />;
 import {
   pct,
   pickWindow,

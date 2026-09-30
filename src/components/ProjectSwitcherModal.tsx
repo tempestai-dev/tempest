@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { open } from "@tauri-apps/plugin-dialog";
-import { FolderOpen, Link, ChevronRight } from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const Link = (p: any) => <UiIcon name="link" {...p} />;
+const ChevronRight = (p: any) => <UiIcon name="chevron-right" {...p} />;
+import { FileIcon } from "../icons/FileIcon";
 import { getRecents, type RecentWorkspace } from "../store/recents";
 import "./ProjectSwitcherModal.css";
 
@@ -94,7 +97,7 @@ export function ProjectSwitcherModal({ anchorRect, onClose, onSwitch }: Props) {
 
       <div className="psm-actions">
         <button className="psm-action-btn" onClick={openLocal}>
-          <FolderOpen size={14} />
+          <FileIcon name="" isDir isOpen size={14} />
           <span>Open local folder</span>
         </button>
         <button className="psm-action-btn" onClick={() => setCloneMode((v) => !v)}>

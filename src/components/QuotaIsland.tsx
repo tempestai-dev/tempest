@@ -5,7 +5,9 @@
 // user always sees the full picture without leaving the title bar.
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Pin } from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const Loader2 = (p: any) => <UiIcon name="loader-2" {...p} />;
+const Pin = (p: any) => <UiIcon name="pin" {...p} />;
 import {
   CRIT, WARN, formatReset, levelOf, peakQuota, pct,
   windowsFromProviders,

@@ -1,5 +1,4 @@
-import { FileText, Folder, GitCommit, GitBranch, Bot, Database, Terminal, Search, Globe, Pencil, FilePlus2, ListChecks } from "lucide-react";
-import type React from "react";
+// Icon names refer to entries in the active UI icon pack (see src/icons/UiIcon).
 
 export interface ChatProvider {
   id: string;
@@ -288,14 +287,12 @@ export function getContextSize(modelId: string): number {
   return MODEL_CONTEXT[modelId] ?? DEFAULT_CONTEXT;
 }
 
-export type LucideIcon = React.ComponentType<{ size?: number; className?: string }>;
-
-export const TOOL_ICON_MAP: Record<string, LucideIcon> = {
-  read_file:          FileText,
-  list_files:         Folder,
-  run_git_log:        GitCommit,
-  run_git_status:     GitBranch,
-  propose_agent_task: Bot,
+export const TOOL_ICON_MAP: Record<string, string> = {
+  read_file:          "file-text",
+  list_files:         "folder",
+  run_git_log:        "git-commit",
+  run_git_status:     "git-branch",
+  propose_agent_task: "bot",
 };
 
 export const TOOL_LABEL_MAP: Record<string, string> = {
@@ -310,21 +307,21 @@ export const TOOL_LABEL_MAP: Record<string, string> = {
 // static noun label, and a present-tense verb shown while the step is still
 // running so the user sees the live action ("Reading src/foo.ts"). argsPreview
 // supplies the target (basename / command / query).
-const CLI_TOOL_META: Record<string, { icon: LucideIcon; label: string; running: string }> = {
-  Read:         { icon: FileText,  label: "Read",       running: "Reading" },
-  Write:        { icon: FilePlus2, label: "Write",      running: "Writing" },
-  Edit:         { icon: Pencil,    label: "Edit",       running: "Editing" },
-  MultiEdit:    { icon: Pencil,    label: "Edit",       running: "Editing" },
-  NotebookEdit: { icon: Pencil,    label: "Edit",       running: "Editing" },
-  Bash:         { icon: Terminal,  label: "Shell",      running: "Running" },
-  BashOutput:   { icon: Terminal,  label: "Shell output", running: "Reading output" },
-  Grep:         { icon: Search,    label: "Search",     running: "Searching" },
-  Glob:         { icon: Search,    label: "Find",       running: "Finding" },
-  LS:           { icon: Folder,    label: "List",       running: "Listing" },
-  WebFetch:     { icon: Globe,     label: "Fetch",      running: "Fetching" },
-  WebSearch:    { icon: Globe,     label: "Web search", running: "Searching" },
-  Task:         { icon: Bot,       label: "Task",       running: "Working" },
-  TodoWrite:    { icon: ListChecks, label: "Plan",      running: "Planning" },
+const CLI_TOOL_META: Record<string, { icon: string; label: string; running: string }> = {
+  Read:         { icon: "file-text",  label: "Read",         running: "Reading" },
+  Write:        { icon: "file-plus-2", label: "Write",       running: "Writing" },
+  Edit:         { icon: "pencil",     label: "Edit",         running: "Editing" },
+  MultiEdit:    { icon: "pencil",     label: "Edit",         running: "Editing" },
+  NotebookEdit: { icon: "pencil",     label: "Edit",         running: "Editing" },
+  Bash:         { icon: "terminal",   label: "Shell",        running: "Running" },
+  BashOutput:   { icon: "terminal",   label: "Shell output", running: "Reading output" },
+  Grep:         { icon: "search",     label: "Search",       running: "Searching" },
+  Glob:         { icon: "search",     label: "Find",         running: "Finding" },
+  LS:           { icon: "folder",     label: "List",         running: "Listing" },
+  WebFetch:     { icon: "globe",      label: "Fetch",        running: "Fetching" },
+  WebSearch:    { icon: "globe",      label: "Web search",   running: "Searching" },
+  Task:         { icon: "bot",        label: "Task",         running: "Working" },
+  TodoWrite:    { icon: "list-checks", label: "Plan",        running: "Planning" },
 };
 
 // mcp__<server>__<tool> → the leaf tool name, spaced (canvas MCP etc.).
@@ -333,10 +330,10 @@ function mcpLeaf(toolName: string): string | null {
   return m ? m[1].replace(/_/g, " ") : null;
 }
 
-export function getToolIcon(toolName: string): LucideIcon {
+export function getToolIcon(toolName: string): string {
   if (CLI_TOOL_META[toolName]) return CLI_TOOL_META[toolName].icon;
-  if (toolName.startsWith("atlas_") || toolName.startsWith("mcp__")) return Database;
-  return TOOL_ICON_MAP[toolName] ?? Terminal;
+  if (toolName.startsWith("atlas_") || toolName.startsWith("mcp__")) return "database";
+  return TOOL_ICON_MAP[toolName] ?? "terminal";
 }
 
 export function getToolLabel(toolName: string, running = false): string {

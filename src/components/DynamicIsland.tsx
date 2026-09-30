@@ -1,10 +1,16 @@
 import { useRef, useState, useEffect, useSyncExternalStore } from "react";
 import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
-import {
-  Bell, BellOff, Play, ShieldAlert, CheckCircle2,
-  ChevronLeft, ChevronRight, Pause, X,
-} from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const Bell = (p: any) => <UiIcon name="bell" {...p} />;
+const BellOff = (p: any) => <UiIcon name="bell-off" {...p} />;
+const Play = (p: any) => <UiIcon name="play" {...p} />;
+const ShieldAlert = (p: any) => <UiIcon name="shield-alert" {...p} />;
+const CheckCircle2 = (p: any) => <UiIcon name="check-circle-2" {...p} />;
+const ChevronLeft = (p: any) => <UiIcon name="chevron-left" {...p} />;
+const ChevronRight = (p: any) => <UiIcon name="chevron-right" {...p} />;
+const Pause = (p: any) => <UiIcon name="pause" {...p} />;
+const X = (p: any) => <UiIcon name="x" {...p} />;
 import "./DynamicIsland.css";
 import {
   subscribeIslandNotifs, getIslandNotifs, dismissIslandNotif, requestIslandFocus, type IslandNotif,

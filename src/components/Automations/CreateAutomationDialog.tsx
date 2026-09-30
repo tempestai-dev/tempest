@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { Loader, Workflow } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const Loader = (p: any) => <UiIcon name="loader" {...p} />;
+const Workflow = (p: any) => <UiIcon name="workflow" {...p} />;
 import { SchedulePicker } from "./SchedulePicker";
 import { createAutomation, type CreateAutomationReq } from "../../store/automations";
 import { computeNextRunAt } from "../../lib/automationSchedule";

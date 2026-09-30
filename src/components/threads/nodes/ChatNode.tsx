@@ -1,7 +1,14 @@
 import { Fragment, useState, useRef, useCallback, useEffect, useContext } from "react";
 import { createPortal } from "react-dom";
 import { NodeResizeControl, ResizeControlVariant, useReactFlow, useNodeConnections } from "@xyflow/react";
-import { Trash2, Pencil, Plus, ArrowUp, ChevronDown, Search, Terminal } from "lucide-react";
+import { UiIcon } from "../../../icons/UiIcon";
+const Trash2 = (p: any) => <UiIcon name="trash-2" {...p} />;
+const Pencil = (p: any) => <UiIcon name="pencil" {...p} />;
+const Plus = (p: any) => <UiIcon name="plus" {...p} />;
+const ArrowUp = (p: any) => <UiIcon name="arrow-up" {...p} />;
+const ChevronDown = (p: any) => <UiIcon name="chevron-down" {...p} />;
+const Search = (p: any) => <UiIcon name="search" {...p} />;
+const Terminal = (p: any) => <UiIcon name="terminal" {...p} />;
 import { NodeConnector } from "./NodeConnector";
 import { useZoomCounterScale } from "./useZoomCounterScale";
 import { CollapsedNode } from "./CollapsedNode";

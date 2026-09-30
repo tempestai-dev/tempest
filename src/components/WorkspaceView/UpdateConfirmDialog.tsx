@@ -1,5 +1,8 @@
 import { createPortal } from "react-dom";
-import { Download, AlertTriangle, Loader } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const Download = (p: any) => <UiIcon name="download" {...p} />;
+const AlertTriangle = (p: any) => <UiIcon name="alert-triangle" {...p} />;
+const Loader = (p: any) => <UiIcon name="loader" {...p} />;
 
 type Props = {
   version: string;

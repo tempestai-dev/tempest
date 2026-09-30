@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { RotateCcw } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const RotateCcw = (p: any) => <UiIcon name="rotate-ccw" {...p} />;
 import { Tooltip } from "../Tooltip";
 import {
   ACTION_DEFS,

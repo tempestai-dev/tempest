@@ -1,9 +1,20 @@
 import { createPortal } from "react-dom";
 import { useState, useMemo, useEffect, useRef } from "react";
-import {
-  ChevronRight, ChevronLeft, PanelLeft, PanelRight, Columns,
-  Rows, FolderOpen, Plus, X, Radio, List, Settings, SunMoon, Download,
-} from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const ChevronRight = (p: any) => <UiIcon name="chevron-right" {...p} />;
+const ChevronLeft = (p: any) => <UiIcon name="chevron-left" {...p} />;
+const PanelLeft = (p: any) => <UiIcon name="panel-left" {...p} />;
+const PanelRight = (p: any) => <UiIcon name="panel-right" {...p} />;
+const Columns = (p: any) => <UiIcon name="columns" {...p} />;
+const Rows = (p: any) => <UiIcon name="rows" {...p} />;
+const Plus = (p: any) => <UiIcon name="plus" {...p} />;
+const X = (p: any) => <UiIcon name="x" {...p} />;
+const Radio = (p: any) => <UiIcon name="radio" {...p} />;
+const List = (p: any) => <UiIcon name="list" {...p} />;
+const Settings = (p: any) => <UiIcon name="settings" {...p} />;
+const SunMoon = (p: any) => <UiIcon name="sun-moon" {...p} />;
+const Download = (p: any) => <UiIcon name="download" {...p} />;
+import { FileIcon } from "../icons/FileIcon";
 import type { ActionId } from "../store/keybindings";
 import { getBindings, formatShortcut } from "../store/keybindings";
 import "./CommandPalette.css";
@@ -71,7 +82,7 @@ export function CommandPalette({
     { id: "toggle-right-sidebar", section: "Layout",     label: "Toggle Right Sidebar",    icon: <PanelRight size={14} />,   actionId: "toggleRightSidebar", run: () => { onToggleRightSidebar(); onClose(); } },
     { id: "split-v",              section: "Layout",     label: "Split Pane Side by Side", icon: <Columns size={14} />,      actionId: "splitPaneV",         run: () => { onSplitV(); onClose(); } },
     { id: "split-h",              section: "Layout",     label: "Split Pane Top / Bottom", icon: <Rows size={14} />,         actionId: "splitPaneH",         run: () => { onSplitH(); onClose(); } },
-    { id: "open-project",         section: "Workspaces", label: "Open Project",            icon: <FolderOpen size={14} />,   actionId: "openProject",        run: () => { onOpenProject(); onClose(); } },
+    { id: "open-project",         section: "Workspaces", label: "Open Project",            icon: <FileIcon name="" isDir isOpen size={14} />,   actionId: "openProject",        run: () => { onOpenProject(); onClose(); } },
     { id: "clone-repo",           section: "Workspaces", label: "Clone from Remote",       icon: <Download size={14} />,     keywords: "git clone remote url", run: () => { onCloneRepo(); onClose(); } },
     { id: "new-workspace",        section: "Workspaces", label: "New Workspace",           icon: <Plus size={14} />,         actionId: "newWorkspace",       run: () => { onNewWorkspace(); onClose(); } },
     { id: "close-tab",            section: "Workspaces", label: "Close Tab",               icon: <X size={14} />,            actionId: "closeTab",           run: () => { onCloseTab(); onClose(); } },

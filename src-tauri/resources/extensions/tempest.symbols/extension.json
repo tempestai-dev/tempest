@@ -1,0 +1,21 @@
+{
+  "id": "tempest.symbols",
+  "displayName": "Symbols Icons",
+  "description": "Soft, pastel file and folder icons by Miguel Solorio",
+  "version": "1.0.1",
+  "publisher": "tempest",
+  "author": "Miguel Solorio",
+  "license": "MIT",
+  "homepage": "https://github.com/miguelsolorio/vscode-symbols",
+  "engines": { "tempest": ">=0.1.0" },
+  "contributes": {
+    "iconPacks": [
+      {
+        "id": "symbols",
+        "displayName": "Symbols",
+        "format": "vscode-icon-theme",
+        "manifest": "./symbol-icon-theme.json"
+      }
+    ]
+  }
+}
