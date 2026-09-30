@@ -52,7 +52,16 @@ export function FileIcon({ name, isDir, isOpen = false, size = 14, className }: 
     };
   }, [cacheKey, active, relPath]);
 
-  const style = { width: size, height: size, display: "inline-block", lineHeight: 0 };
+  const style = {
+    width: size,
+    height: size,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    verticalAlign: "middle",
+    flexShrink: 0,
+    lineHeight: 0,
+  } as const;
 
   if (svg) {
     return (

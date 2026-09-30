@@ -56,7 +56,11 @@ export const UiIcon = forwardRef<HTMLSpanElement, Props>(function UiIcon(
   const merged: CSSProperties = {
     width: size,
     height: size,
-    display: "inline-block",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    verticalAlign: "middle",
+    flexShrink: 0,
     lineHeight: 0,
     ...(color !== undefined ? { color } : null),
     ...(strokeWidth !== undefined ? { ["--icon-sw" as never]: String(strokeWidth) } : null),
