@@ -821,11 +821,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
     parentSessionId?: string, // set when spawned via a split — makes this a sub-session of another
     model?: string, // specific model override passed as --model to supported agent CLIs
     placement: "tab" | "canvas" = "tab", // "canvas" = a Threads node owns it; no tab bar entry
-    // Optional gate awaited immediately before create_pty_session. Lets the caller
-    // (launchBranch) run `git worktree add` in parallel with our settings/keychain
-    // prep, so the agent process fires the instant both are ready. Rejection
-    // propagates as a spawn failure, invoking the catch below that rolls the tab back.
-    cwdReadyPromise?: Promise<string>,
+    worktreeAdd?: { projectPath: string; name: string; existingBranch?: string },
   ) {
     // Guard is scoped to the restore loop (dedupe=true). User-triggered opens never block
     // each other, so two root sessions at the same cwd can be opened intentionally.
@@ -936,13 +932,15 @@ export function WorkspaceView({ zen, name, path }: Props) {
       // The project root — not `cwd`, which may be a worktree. tempest.yml lives
       // at the root and governs every worktree cut from it.
       const projectRoot = getProjectPath(projectId);
-      // Load in parallel: loadProjectSettings already reads tempest.yml internally,
-      // so running the two sequentially doubled the disk round-trips (and a missing
-      // tempest.yml costs two failing read_file calls each). Overlapping them keeps
-      // the config load off the critical path before the tab renders.
-      const [projectSettings, tempestConfig] = await Promise.all([
+      // Fire all three prep reads concurrently: project settings, tempest.yml,
+      // and the (optional) provider-env keychain read. None depend on each
+      // other, so joining them in one Promise.all removes ~keychain-latency ms
+      // that were previously serialized between settings and cwdReady.
+      const providerEnvPromise: Promise<Record<string, string>> = config ? resolveAgentProviderEnv(config.id) : Promise.resolve({});
+      const [projectSettings, tempestConfig, providerEnv] = await Promise.all([
         loadProjectSettings(projectId, projectRoot),
         loadTempestConfig(projectRoot ?? ""),
+        providerEnvPromise,
       ]);
 
       // The global "isolate agents" switch is the master off-switch (read above,
@@ -975,30 +973,11 @@ export function WorkspaceView({ zen, name, path }: Props) {
         skip_permission_flags: AGENT_CONFIGS.flatMap((a) => a.autoApproveArgs ?? []),
       };
 
-      // A selected provider preset (Settings → Agents → Provider) points this
-      // agent at a third-party endpoint via that vendor's documented env recipe,
-      // with the API key read from the OS keychain. Resolved here rather than up
-      // with the other config reads: the keychain read is async, and everything
-      // above this point is deliberately synchronous so the tab renders instantly.
-      // `{}` whenever no preset applies, so the default path is unchanged.
-      const providerEnv = config ? await resolveAgentProviderEnv(config.id) : {};
-
-      // Wait for the parallel worktree creation (if any) to finish. On the
-      // backend-returned path edge case (separator mismatch), fall back to it
-      // for the spawn cwd; the tab and saveSession keep the expected path
-      // they were pre-inserted with.
-      let spawnCwd = effectiveCwd;
-      if (cwdReadyPromise) {
-        const readyPath = await cwdReadyPromise;
-        if (readyPath && readyPath !== cwd) {
-          spawnCwd = agentCfg?.subdir ? `${readyPath}/${agentCfg.subdir}` : readyPath;
-        }
-      }
-
       try {
         await invoke<void>("create_pty_session", {
           sessionId,
-          cwd: spawnCwd,
+          cwd: effectiveCwd,
+          worktreeAdd,
           rows: 24,
           cols: 80,
           command: agent ?? null,
@@ -1477,59 +1456,48 @@ export function WorkspaceView({ zen, name, path }: Props) {
     const pendingId = crypto.randomUUID();
     try {
       let worktreePath: string;
-      let cwdReady: Promise<string> | undefined;
+      let worktreeAdd: { projectPath: string; name: string; existingBranch?: string } | undefined;
+      let rollbackPath: string | undefined;
       if (directWorktreePath) {
         worktreePath = directWorktreePath;
         addWorktreeToState({ name: branchName, path: worktreePath }, workingProjectId);
       } else {
-        // Instant tab AND instant worktree row: the backend places the worktree
-        // deterministically at `<project>/.tempest/<dir_name>` (see
-        // create_terminal_worktree in lib.rs), so we can pre-insert both the
-        // worktree entry and the session pointing at that path. Without this
-        // the row landed at cwd=projectRoot for the ~1-2s of `git worktree add`
-        // and rendered as a project-level "block" (LeftSidebar routes rows to
-        // a worktree only when cwd matches a known worktree path).
         const dirName = branchName.replace(/\//g, "-");
         const sep = pathSep();
-        const expectedWorktreePath = `${activePath}${sep}.tempest${sep}${dirName}`;
-        worktreePath = expectedWorktreePath;
-        addWorktreeToState({ name: branchName, path: expectedWorktreePath }, workingProjectId);
+        const expected = `${activePath}${sep}.tempest${sep}${dirName}`;
+        worktreePath = expected;
+        rollbackPath = expected;
+        addWorktreeToState({ name: branchName, path: expected }, workingProjectId);
         setSessions((prev) => [...prev, {
-          id: pendingId, instanceId: pendingId, name: sessionName, cwd: expectedWorktreePath,
+          id: pendingId, instanceId: pendingId, name: sessionName, cwd: expected,
           projectId: workingProjectId ?? "", agent: agent?.hint,
           sandboxed: getSettings().isolateAgents,
           createdAt: new Date().toISOString(),
           metadata: { resumeCount: 0, hasBeenResumed: false },
         }]);
         if (!override?.skipFocus) setActiveSessionId(pendingId);
-        // Fire `git worktree add` in parallel with openSession's prep (project
-        // settings load, keychain read). openSession awaits this immediately
-        // before create_pty_session, so worktree creation is no longer serial
-        // on the critical path — the agent process fires the instant both are
-        // ready. Setup hook still runs in the background after that.
-        cwdReady = createWorktree({ projectPath: activePath, name: branchName, existingBranch: existingBranchArg })
-          .then((result) => {
-            // Idempotent by path in the common case; handles the paranoid edge
-            // where the backend returned a different string (separator mismatch).
-            addWorktreeToState({ name: branchName, path: result.path }, workingProjectId);
-            runWorktreeHook("setup", activePath, workingProjectId ?? "", result.path)
-              .then((failure) => { if (failure) setPolicyError(failure); })
-              .catch((e) => setPolicyError(String(e)));
-            return result.path;
-          }, (e) => {
-            // git worktree add failed. Roll back the optimistic worktree row here;
-            // openSession's own catch drops the tab and surfaces the error.
-            if (zen) {
-              setZenWorktrees((prev) => prev.filter((w) => w.path !== expectedWorktreePath));
-            } else {
-              setProjects((prev) => prev.map((p) => p.id === workingProjectId
-                ? { ...p, worktrees: p.worktrees.filter((w) => w.path !== expectedWorktreePath) }
-                : p));
-            }
-            throw e;
-          });
+        worktreeAdd = { projectPath: activePath, name: branchName, existingBranch: existingBranchArg };
       }
-      await openSession(sessionName, worktreePath, workingProjectId ?? "", agent?.hint, prompt, undefined, undefined, undefined, undefined, undefined, pendingId, undefined, undefined, undefined, cwdReady);
+      try {
+        await openSession(sessionName, worktreePath, workingProjectId ?? "", agent?.hint, prompt, undefined, undefined, undefined, undefined, undefined, pendingId, undefined, undefined, undefined, worktreeAdd);
+      } catch (e) {
+        if (rollbackPath) {
+          const dead = rollbackPath;
+          if (zen) {
+            setZenWorktrees((prev) => prev.filter((w) => w.path !== dead));
+          } else {
+            setProjects((prev) => prev.map((p) => p.id === workingProjectId
+              ? { ...p, worktrees: p.worktrees.filter((w) => w.path !== dead) }
+              : p));
+          }
+        }
+        throw e;
+      }
+      if (worktreeAdd) {
+        runWorktreeHook("setup", activePath, workingProjectId ?? "", worktreePath)
+          .then((failure) => { if (failure) setPolicyError(failure); })
+          .catch((err) => setPolicyError(String(err)));
+      }
       return pendingId;
     } catch (e) {
       setPolicyError(String(e));
