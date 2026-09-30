@@ -1,4 +1,5 @@
-import { Check } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const Check = (p: any) => <UiIcon name="check" {...p} />;
 import { AgentIcon } from "../NewSessionMenu";
 import { useAgents } from "../../lib/agentRegistry";
 import type { ProjectSettings } from "./useProjectSettings";

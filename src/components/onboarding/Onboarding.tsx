@@ -1,5 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Minus, Square, X, Sun, Moon } from 'lucide-react';
+import { UiIcon } from "../../icons/UiIcon";
+const Minus = (p: any) => <UiIcon name="minus" {...p} />;
+const Square = (p: any) => <UiIcon name="square" {...p} />;
+const X = (p: any) => <UiIcon name="x" {...p} />;
+const Sun = (p: any) => <UiIcon name="sun" {...p} />;
+const Moon = (p: any) => <UiIcon name="moon" {...p} />;
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useTheme } from '../../themes/ThemeContext';
 import { checkAgentAvailability } from '../../store/agentAvailability';

@@ -1,4 +1,7 @@
-import { Minus, Square, X } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const Minus = (p: any) => <UiIcon name="minus" {...p} />;
+const Square = (p: any) => <UiIcon name="square" {...p} />;
+const X = (p: any) => <UiIcon name="x" {...p} />;
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Tooltip } from "../Tooltip";
 import { QuotaIsland } from "../QuotaIsland";

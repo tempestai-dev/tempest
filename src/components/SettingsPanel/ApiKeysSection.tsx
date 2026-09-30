@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { Pencil, Trash2, Plus, Eye, EyeOff, Check } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const Pencil = (p: any) => <UiIcon name="pencil" {...p} />;
+const Trash2 = (p: any) => <UiIcon name="trash-2" {...p} />;
+const Plus = (p: any) => <UiIcon name="plus" {...p} />;
+const Eye = (p: any) => <UiIcon name="eye" {...p} />;
+const EyeOff = (p: any) => <UiIcon name="eye-off" {...p} />;
+const Check = (p: any) => <UiIcon name="check" {...p} />;
 import { Tooltip } from "../Tooltip";
 import { byokId, getSecret, setSecret, deleteSecret } from "../../lib/secrets";
 

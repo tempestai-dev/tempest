@@ -1,5 +1,10 @@
 import { createPortal } from "react-dom";
-import { Eye, X, Database, Trash2, FolderOpen } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const Eye = (p: any) => <UiIcon name="eye" {...p} />;
+const X = (p: any) => <UiIcon name="x" {...p} />;
+const Database = (p: any) => <UiIcon name="database" {...p} />;
+const Trash2 = (p: any) => <UiIcon name="trash-2" {...p} />;
+import { FileIcon } from "../../icons/FileIcon";
 import { getSettings } from "../../store/appSettings";
 import { getRuntimeState, setRuntimeState } from "../../lib/runtimeState";
 import { removeSession } from "../../store/sessions";
@@ -133,7 +138,7 @@ export function ContextMenu({
           </button>
         )}
         <button className="ctx-item ctx-item--danger" onClick={() => { onRemoveProject(m.projectId); onClose(); }}>
-          <FolderOpen size={13} /> Remove project
+          <FileIcon name="" isDir isOpen size={13} /> Remove project
         </button>
       </div>
     </div>,

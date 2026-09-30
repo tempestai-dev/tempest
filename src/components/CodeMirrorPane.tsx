@@ -12,7 +12,7 @@ import { python } from "@codemirror/lang-python";
 import { json } from "@codemirror/lang-json";
 import { markdown } from "@codemirror/lang-markdown";
 import { tags } from "@lezer/highlight";
-import { FileCode } from "lucide-react";
+import { FileIcon } from "../icons/FileIcon";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -282,7 +282,7 @@ export function CodeMirrorPane({ filePath, hidden }: Props) {
   return (
     <div className="cmp-pane" style={{ display: hidden ? "none" : "flex" }}>
       <div className="cmp-header">
-        <FileCode size={13} className="cmp-header-icon" />
+        <span className="cmp-header-icon"><FileIcon name={fileName} isDir={false} size={13} /></span>
         <span className="cmp-header-name" title={filePath}>{fileName}</span>
         {isDirty && <span className="cmp-dirty-dot" title="Unsaved changes (Ctrl+S to save)">•</span>}
         {isMarkdown && (

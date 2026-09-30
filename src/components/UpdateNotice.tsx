@@ -1,4 +1,5 @@
-import { X } from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const X = (p: any) => <UiIcon name="x" {...p} />;
 
 interface Props {
   version: string;

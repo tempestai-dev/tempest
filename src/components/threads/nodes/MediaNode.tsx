@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Play, ArrowRight, Loader2, ExternalLink, RefreshCw, Captions, CaptionsOff } from "lucide-react";
+import { UiIcon } from "../../../icons/UiIcon";
+const Play = (p: any) => <UiIcon name="play" {...p} />;
+const ArrowRight = (p: any) => <UiIcon name="arrow-right" {...p} />;
+const Loader2 = (p: any) => <UiIcon name="loader-2" {...p} />;
+const ExternalLink = (p: any) => <UiIcon name="external-link" {...p} />;
+const RefreshCw = (p: any) => <UiIcon name="refresh-cw" {...p} />;
+const Captions = (p: any) => <UiIcon name="captions" {...p} />;
+const CaptionsOff = (p: any) => <UiIcon name="captions-off" {...p} />;
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { NodeShell } from "./NodeShell";

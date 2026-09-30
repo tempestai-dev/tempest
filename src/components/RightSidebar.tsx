@@ -1,28 +1,25 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import {
-  Folder,
-  FolderOpen,
-  File,
-  RefreshCw,
-  ChevronRight,
-  ChevronDown,
-  GitBranch,
-  Search,
-  Loader,
-  WrapText,
-  ChevronsUpDown,
-  ChevronsDownUp,
-  SplitSquareHorizontal,
-  Database,
-  Play,
-  Square,
-  Plus,
-  X as XIcon,
-  Terminal,
-} from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const RefreshCw = (p: any) => <UiIcon name="refresh-cw" {...p} />;
+const ChevronRight = (p: any) => <UiIcon name="chevron-right" {...p} />;
+const ChevronDown = (p: any) => <UiIcon name="chevron-down" {...p} />;
+const GitBranch = (p: any) => <UiIcon name="git-branch" {...p} />;
+const Search = (p: any) => <UiIcon name="search" {...p} />;
+const Loader = (p: any) => <UiIcon name="loader" {...p} />;
+const WrapText = (p: any) => <UiIcon name="wrap-text" {...p} />;
+const ChevronsUpDown = (p: any) => <UiIcon name="chevrons-up-down" {...p} />;
+const ChevronsDownUp = (p: any) => <UiIcon name="chevrons-down-up" {...p} />;
+const SplitSquareHorizontal = (p: any) => <UiIcon name="split-square-horizontal" {...p} />;
+const Database = (p: any) => <UiIcon name="database" {...p} />;
+const Play = (p: any) => <UiIcon name="play" {...p} />;
+const Square = (p: any) => <UiIcon name="square" {...p} />;
+const Plus = (p: any) => <UiIcon name="plus" {...p} />;
+const XIcon = (p: any) => <UiIcon name="x" {...p} />;
+const Terminal = (p: any) => <UiIcon name="terminal" {...p} />;
 import { Tooltip } from "./Tooltip";
+import { FileIcon } from "../icons/FileIcon";
 import { portForWorkspace, hostSlug, proxyUrl } from "../lib/servicePort";
 import type { DiffLine, FileStats } from "../types/git";
 import "./RightSidebar.css";
@@ -171,11 +168,7 @@ function FileTreeNodes({
                 (node.expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />)}
             </span>
             <span className="rs-file-icon">
-              {node.is_dir ? (
-                node.expanded ? <FolderOpen size={13} /> : <Folder size={13} />
-              ) : (
-                <File size={13} />
-              )}
+              <FileIcon name={node.name} isDir={node.is_dir} isOpen={node.expanded} size={14} />
             </span>
             <span className="rs-file-name">{node.name}</span>
           </div>
@@ -598,7 +591,7 @@ export function RightSidebar({ cwd, rootPath, open, gitRevision, noGit, onOpenDi
                       title={rel}
                     >
                       <span className="rs-file-chevron" />
-                      <span className="rs-file-icon"><File size={13} /></span>
+                      <span className="rs-file-icon"><FileIcon name={name} isDir={false} size={14} /></span>
                       <span className="rs-file-name">{name}</span>
                       {dir && <span className="rs-file-dir">{dir}</span>}
                     </div>

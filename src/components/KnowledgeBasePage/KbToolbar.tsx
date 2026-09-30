@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { ZoomIn, ZoomOut, Maximize2, RotateCcw, ChevronDown, FileText } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const ZoomIn = (p: any) => <UiIcon name="zoom-in" {...p} />;
+const ZoomOut = (p: any) => <UiIcon name="zoom-out" {...p} />;
+const Maximize2 = (p: any) => <UiIcon name="maximize-2" {...p} />;
+const RotateCcw = (p: any) => <UiIcon name="rotate-ccw" {...p} />;
+const ChevronDown = (p: any) => <UiIcon name="chevron-down" {...p} />;
+import { FileIcon } from "../../icons/FileIcon";
 import { Tooltip } from "../Tooltip";
 import type { IndexedProject } from "../../types/knowledgeGraph";
 
@@ -83,7 +89,7 @@ export function KbToolbar({
           onClick={onToggleDocs}
           disabled={!selectedPath}
         >
-          <FileText size={14} />
+          <FileIcon name="" isDir={false} size={14} />
           <span className="kb-docs-toggle-label">Docs</span>
         </button>
       </Tooltip>

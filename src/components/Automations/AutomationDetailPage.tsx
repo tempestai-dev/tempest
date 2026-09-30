@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, Loader, Play } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const ChevronLeft = (p: any) => <UiIcon name="chevron-left" {...p} />;
+const Loader = (p: any) => <UiIcon name="loader" {...p} />;
+const Play = (p: any) => <UiIcon name="play" {...p} />;
 import {
   type Automation, type AutomationRun,
   updateAutomation, listAutomationRuns, runAutomationNow,

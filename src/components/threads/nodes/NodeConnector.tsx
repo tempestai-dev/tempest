@@ -1,5 +1,6 @@
 import { Handle, Position, useConnection, useNodeConnections } from "@xyflow/react";
-import { Hexagon } from "lucide-react";
+import { UiIcon } from "../../../icons/UiIcon";
+const Hexagon = (p: any) => <UiIcon name="hexagon" {...p} />;
 
 // Inline hexagon connector for a thread node header. Left = target (incoming,
 // followed by a separator that fences it off from the title); right = source

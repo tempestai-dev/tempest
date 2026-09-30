@@ -1,5 +1,8 @@
 import { memo } from "react";
-import { Loader, Bell, CheckCircle2 } from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const Loader = (p: any) => <UiIcon name="loader-2" {...p} />;
+const Bell = (p: any) => <UiIcon name="bell" {...p} />;
+const CheckCircle2 = (p: any) => <UiIcon name="check-circle-2" {...p} />;
 import {
   useWorkState,
   useAttention,
@@ -88,6 +91,6 @@ export const ProjectWorkBadge = memo(function ProjectWorkBadge({ sessionIds }: {
   }
   if (anyAttention) return <Bell size={10} className="work-attention-bell" aria-label="Agent waiting for input" />;
   if (anyWorking) return <Loader size={10} className="spin work-spinner" />;
-  if (anyDone) return <CheckCircle2 size={12} className="work-done-check" aria-label="Agent finished" />;
+  if (anyDone) return <CheckCircle2 size={10} className="work-done-check" aria-label="Agent finished" />;
   return null;
 });

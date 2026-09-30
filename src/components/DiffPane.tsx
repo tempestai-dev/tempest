@@ -1,10 +1,24 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import {
-  RefreshCw, GitBranch, Loader, Plus, X, ChevronDown, ChevronRight,
-  Trash2, Check, Eye, Columns, Rows, Search, FileText, FoldVertical, UnfoldVertical, GitCommit,
-} from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const RefreshCw = (p: any) => <UiIcon name="refresh-cw" {...p} />;
+const GitBranch = (p: any) => <UiIcon name="git-branch" {...p} />;
+const Loader = (p: any) => <UiIcon name="loader" {...p} />;
+const Plus = (p: any) => <UiIcon name="plus" {...p} />;
+const X = (p: any) => <UiIcon name="x" {...p} />;
+const ChevronDown = (p: any) => <UiIcon name="chevron-down" {...p} />;
+const ChevronRight = (p: any) => <UiIcon name="chevron-right" {...p} />;
+const Trash2 = (p: any) => <UiIcon name="trash-2" {...p} />;
+const Check = (p: any) => <UiIcon name="check" {...p} />;
+const Eye = (p: any) => <UiIcon name="eye" {...p} />;
+const Columns = (p: any) => <UiIcon name="columns" {...p} />;
+const Rows = (p: any) => <UiIcon name="rows" {...p} />;
+const Search = (p: any) => <UiIcon name="search" {...p} />;
+const FoldVertical = (p: any) => <UiIcon name="fold-vertical" {...p} />;
+const UnfoldVertical = (p: any) => <UiIcon name="unfold-vertical" {...p} />;
+const GitCommit = (p: any) => <UiIcon name="git-commit" {...p} />;
+import { FileIcon } from "../icons/FileIcon";
 import { Tooltip } from "./Tooltip";
 import { useAttribution, COAUTHOR_LINE } from "../store/attribution";
 import { useComments, addComment, removeComment, clearComments, composeMessage } from "../store/reviewComments";
@@ -416,7 +430,7 @@ export function DiffPane({ cwd, hidden, gitRevision, agentSessions = [] }: Props
         {remoteUrl && currentBranch && !showBranchInput && (
           <Tooltip content={`Open pull request page for ${currentBranch}`} placement="bottom">
             <button className="dpn-icon-btn" onClick={openPrPage} aria-label="Open PR page">
-              <FileText size={12} />
+              <FileIcon name="" isDir={false} size={12} />
             </button>
           </Tooltip>
         )}

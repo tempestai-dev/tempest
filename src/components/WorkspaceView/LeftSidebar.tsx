@@ -1,9 +1,26 @@
 import { memo, useEffect, useRef, useState, type CSSProperties } from "react";
-import {
-  LayoutGrid, Brain, List, Workflow, FolderPlus, TerminalSquare, Cpu,
-  ChevronDown, ChevronRight, GitBranch, Plus, Cog, Waypoints,
-  Bug, Mail, SunMoon, Settings, FolderOpen, Eye, Globe, FileCode, Download,
-} from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const LayoutGrid = (p: any) => <UiIcon name="layout-grid" {...p} />;
+const Brain = (p: any) => <UiIcon name="brain" {...p} />;
+const List = (p: any) => <UiIcon name="list" {...p} />;
+const Workflow = (p: any) => <UiIcon name="workflow" {...p} />;
+const FolderPlus = (p: any) => <UiIcon name="folder-plus" {...p} />;
+const TerminalSquare = (p: any) => <UiIcon name="terminal-square" {...p} />;
+const Cpu = (p: any) => <UiIcon name="cpu" {...p} />;
+const ChevronDown = (p: any) => <UiIcon name="chevron-down" {...p} />;
+const ChevronRight = (p: any) => <UiIcon name="chevron-right" {...p} />;
+const GitBranch = (p: any) => <UiIcon name="git-branch" {...p} />;
+const Plus = (p: any) => <UiIcon name="plus" {...p} />;
+const Cog = (p: any) => <UiIcon name="cog" {...p} />;
+const Waypoints = (p: any) => <UiIcon name="waypoints" {...p} />;
+const Bug = (p: any) => <UiIcon name="bug" {...p} />;
+const Mail = (p: any) => <UiIcon name="mail" {...p} />;
+const SunMoon = (p: any) => <UiIcon name="sun-moon" {...p} />;
+const Settings = (p: any) => <UiIcon name="settings" {...p} />;
+const Eye = (p: any) => <UiIcon name="eye" {...p} />;
+const Globe = (p: any) => <UiIcon name="globe" {...p} />;
+const Download = (p: any) => <UiIcon name="download" {...p} />;
+import { FileIcon } from "../../icons/FileIcon";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Session, Worktree, Project, NavSection } from "../../types/workspace";
 import { getWorktreeAgentSession, getRootSessionsForProject, getBranchSessions, markSessionOpen, type WorktreeSession } from "../../store/sessions";
@@ -628,7 +645,7 @@ function LeftSidebarImpl(props: LeftSidebarProps) {
                               onClick={() => setActiveSessionId(s.id)}
                               onContextMenu={(e) => openCtxMenu(e, null, project.path, project.id, s.id)}
                             >
-                              {s.kind === "diff" ? <Eye size={12} /> : s.kind === "preview" ? <Globe size={12} /> : s.kind === "editor" ? <FileCode size={12} /> : s.agent ? <AgentIcon hint={s.agent} size={12} /> : <TerminalSquare size={12} />}
+                              {s.kind === "diff" ? <Eye size={12} /> : s.kind === "preview" ? <Globe size={12} /> : s.kind === "editor" ? <FileIcon name={s.name} isDir={false} size={12} /> : s.agent ? <AgentIcon hint={s.agent} size={12} /> : <TerminalSquare size={12} />}
                               <span>{s.name}</span>
                               {s.agent && <SidebarWorkBadge sessionId={s.id} />}
                             </button>
@@ -738,7 +755,7 @@ function LeftSidebarImpl(props: LeftSidebarProps) {
             </Tooltip>
             {zen ? (
               <Tooltip content={name ?? "Project"} placement="top">
-                <FolderOpen size={16} className="sidebar-bottom-icon" />
+                <span className="sidebar-bottom-icon"><FileIcon name="" isDir isOpen size={16} /></span>
               </Tooltip>
             ) : (
               <Tooltip content="Add project" placement="top">

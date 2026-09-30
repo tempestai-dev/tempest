@@ -1,5 +1,9 @@
 import { useRef, useState, useEffect } from "react";
-import { X, ListOrdered, Eraser, Send } from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const X = (p: any) => <UiIcon name="x" {...p} />;
+const ListOrdered = (p: any) => <UiIcon name="list-ordered" {...p} />;
+const Eraser = (p: any) => <UiIcon name="eraser" {...p} />;
+const Send = (p: any) => <UiIcon name="send" {...p} />;
 import { useQueue, enqueue, dequeue, removeFromQueue, clearQueue } from "../store/messageQueue";
 import "./QueuePanel.css";
 

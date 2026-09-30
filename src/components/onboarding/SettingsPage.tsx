@@ -1,5 +1,14 @@
 import { useState } from 'react';
-import { ArrowLeft, ArrowRight, Cpu, GitBranch, ShieldCheck, GitCommitHorizontal, BarChart3, Sparkles, Check } from 'lucide-react';
+import { UiIcon } from "../../icons/UiIcon";
+const ArrowLeft = (p: any) => <UiIcon name="arrow-left" {...p} />;
+const ArrowRight = (p: any) => <UiIcon name="arrow-right" {...p} />;
+const Cpu = (p: any) => <UiIcon name="cpu" {...p} />;
+const GitBranch = (p: any) => <UiIcon name="git-branch" {...p} />;
+const ShieldCheck = (p: any) => <UiIcon name="shield-check" {...p} />;
+const GitCommitHorizontal = (p: any) => <UiIcon name="git-commit-horizontal" {...p} />;
+const BarChart3 = (p: any) => <UiIcon name="bar-chart-3" {...p} />;
+const Sparkles = (p: any) => <UiIcon name="sparkles" {...p} />;
+const Check = (p: any) => <UiIcon name="check" {...p} />;
 import { useSettings, updateSetting } from '../../store/appSettings';
 import { setTelemetryEnabled } from '../../lib/telemetry';
 import { useAttribution, setAttribution } from '../../store/attribution';

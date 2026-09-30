@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { FolderOpen } from "lucide-react";
+import { FileIcon } from "../icons/FileIcon";
 import { parseCloneUrl, defaultFolderName, classifyCloneError, type ClassifiedCloneError } from "../lib/gitClone";
 import "./NewProjectModal.css";
 import "./CloneRepoModal.css";
@@ -134,7 +134,7 @@ export function CloneRepoModal({ onClose, onCloned }: Props) {
                   onClick={browse}
                 />
                 <button className="modal-browse-btn" onClick={browse}>
-                  <FolderOpen size={14} />
+                  <FileIcon name="" isDir isOpen size={14} />
                 </button>
               </div>
             </div>

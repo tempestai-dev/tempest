@@ -2,7 +2,26 @@ import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } fr
 import { createPortal } from "react-dom";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useAgentAvailability } from "../store/agentAvailability";
-import { TerminalSquare, Globe, Waypoints, Download, ChevronDown, GitBranch, ArrowRight, Terminal, Bot, Code2, Command, Cpu, Zap, Sparkles, Package, Rocket, Wrench, Ghost, Play } from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const TerminalSquare = (p: any) => <UiIcon name="terminal-square" {...p} />;
+const Globe = (p: any) => <UiIcon name="globe" {...p} />;
+const Waypoints = (p: any) => <UiIcon name="waypoints" {...p} />;
+const Download = (p: any) => <UiIcon name="download" {...p} />;
+const ChevronDown = (p: any) => <UiIcon name="chevron-down" {...p} />;
+const GitBranch = (p: any) => <UiIcon name="git-branch" {...p} />;
+const ArrowRight = (p: any) => <UiIcon name="arrow-right" {...p} />;
+const Terminal = (p: any) => <UiIcon name="terminal" {...p} />;
+const Bot = (p: any) => <UiIcon name="bot" {...p} />;
+const Code2 = (p: any) => <UiIcon name="code-2" {...p} />;
+const Command = (p: any) => <UiIcon name="command" {...p} />;
+const Cpu = (p: any) => <UiIcon name="cpu" {...p} />;
+const Zap = (p: any) => <UiIcon name="zap" {...p} />;
+const Sparkles = (p: any) => <UiIcon name="sparkles" {...p} />;
+const Package = (p: any) => <UiIcon name="package" {...p} />;
+const Rocket = (p: any) => <UiIcon name="rocket" {...p} />;
+const Wrench = (p: any) => <UiIcon name="wrench" {...p} />;
+const Ghost = (p: any) => <UiIcon name="ghost" {...p} />;
+const Play = (p: any) => <UiIcon name="play" {...p} />;
 import { useAgents, getAgent, getIconDataUrl, remoteIconUrl, type AgentConfig } from "../lib/agentRegistry";
 
 // Curated Lucide icon set for user-added agents. A closed set (not free text)

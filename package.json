@@ -66,7 +66,6 @@
     "geist": "^1.7.2",
     "github-markdown-css": "^5.9.0",
     "gsap": "^3.15.0",
-    "lucide-react": "^1.47.0",
     "motion": "^12.43.0",
     "posthog-js": "^1.434.8",
     "qrcode": "^1.5.4",

@@ -1,5 +1,7 @@
 import { createPortal } from "react-dom";
-import { Check, Plus } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const Check = (p: any) => <UiIcon name="check" {...p} />;
+const Plus = (p: any) => <UiIcon name="plus" {...p} />;
 import type { PromptEntry } from "../../store/prompts";
 
 type Props = {

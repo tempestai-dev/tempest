@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Plus, Trash2, FileText, X } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const Plus = (p: any) => <UiIcon name="plus" {...p} />;
+const Trash2 = (p: any) => <UiIcon name="trash-2" {...p} />;
+const X = (p: any) => <UiIcon name="x" {...p} />;
+import { FileIcon } from "../../icons/FileIcon";
 
 interface AssetRow {
   id: string;
@@ -95,7 +99,7 @@ export function AssetsPanel({ projectPath, onClose }: { projectPath: string | nu
         <div className="kb-assets-loading">Loading…</div>
       ) : assets.length === 0 ? (
         <div className="kb-assets-empty-state">
-          <FileText size={32} className="kb-assets-empty-icon" />
+          <span className="kb-assets-empty-icon"><FileIcon name="" isDir={false} size={32} /></span>
           <span className="kb-empty-title">No documents attached</span>
           <span className="kb-empty-desc">
             Add markdown notes, text files, or PDFs to index them in the knowledge graph.
@@ -105,7 +109,7 @@ export function AssetsPanel({ projectPath, onClose }: { projectPath: string | nu
         <div className="kb-assets-list">
           {assets.map((a) => (
             <div key={a.id} className="kb-asset-row">
-              <FileText size={14} className="kb-asset-icon" />
+              <span className="kb-asset-icon"><FileIcon name={a.name} isDir={false} size={14} /></span>
               <div className="kb-asset-info">
                 <span className="kb-asset-name">{a.name}</span>
                 <span className="kb-asset-meta">

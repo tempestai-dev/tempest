@@ -2,6 +2,9 @@ import ReactDOM from "react-dom/client";
 import "./fonts.css";
 import App from "./App";
 import { ThemeProvider } from "./themes/ThemeContext";
+import { ExtensionsProvider } from "./extensions/ExtensionsContext";
+import { IconPackProvider } from "./icons/IconPackContext";
+import { UiIconProvider } from "./icons/UiIconContext";
 import { loadAppState } from "./lib/runtimeState";
 import { refreshAgentRegistry } from "./lib/agentRegistry";
 import { loadSessions } from "./store/sessions";
@@ -25,7 +28,13 @@ import { terminalRendererPolicy } from "./lib/terminalRenderer";
   refreshAgentRegistry();
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <ThemeProvider>
-      <App />
+      <ExtensionsProvider>
+        <IconPackProvider>
+          <UiIconProvider>
+            <App />
+          </UiIconProvider>
+        </IconPackProvider>
+      </ExtensionsProvider>
     </ThemeProvider>,
   );
 })();

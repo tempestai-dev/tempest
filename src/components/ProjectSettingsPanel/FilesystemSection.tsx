@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { X, Plus } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const X = (p: any) => <UiIcon name="x" {...p} />;
+const Plus = (p: any) => <UiIcon name="plus" {...p} />;
 import type { ProjectSettings } from "./useProjectSettings";
 
 function PathList({

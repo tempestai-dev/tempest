@@ -1,4 +1,5 @@
-import { GitBranch } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const GitBranch = (p: any) => <UiIcon name="git-branch" {...p} />;
 import type { BranchInfo } from "../../types/git";
 
 type ProjectLite = { id: string; name: string; path: string };

@@ -1,5 +1,9 @@
 import { useEffect, useRef } from "react";
-import { Columns2, Rows2, ListOrdered, Megaphone } from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const Columns2 = (p: any) => <UiIcon name="columns-2" {...p} />;
+const Rows2 = (p: any) => <UiIcon name="rows-2" {...p} />;
+const ListOrdered = (p: any) => <UiIcon name="list-ordered" {...p} />;
+const Megaphone = (p: any) => <UiIcon name="megaphone" {...p} />;
 
 interface Props {
   open: boolean;

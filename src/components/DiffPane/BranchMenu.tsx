@@ -1,4 +1,7 @@
-import { GitBranch, Check, Trash2 } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const GitBranch = (p: any) => <UiIcon name="git-branch" {...p} />;
+const Check = (p: any) => <UiIcon name="check" {...p} />;
+const Trash2 = (p: any) => <UiIcon name="trash-2" {...p} />;
 import { Tooltip } from "../Tooltip";
 import type { BranchInfo } from "../../types/git";
 

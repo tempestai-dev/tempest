@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { FilePlus2, FileText, RefreshCw, Loader2 } from "lucide-react";
+import { UiIcon } from "../../../icons/UiIcon";
+const FilePlus2 = (p: any) => <UiIcon name="file-plus-2" {...p} />;
+const RefreshCw = (p: any) => <UiIcon name="refresh-cw" {...p} />;
+const Loader2 = (p: any) => <UiIcon name="loader-2" {...p} />;
+import { FileIcon } from "../../../icons/FileIcon";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { NodeShell } from "./NodeShell";
@@ -112,7 +116,7 @@ export function FileNode({ id, data }: { id: string; data?: { collapsed?: boolea
                 color: "var(--tempest-fg-muted, #888)", font: '11px "Geist", system-ui, sans-serif',
               }}
             >
-              <FileText size={14} style={{ opacity: 0.7, flexShrink: 0 }} />
+              <span style={{ opacity: 0.7, flexShrink: 0, display: "inline-flex" }}><FileIcon name={baseName(file.path ?? "")} isDir={false} size={14} /></span>
               <span style={{
                 color: "var(--tempest-fg-default, #e6e6e6)",
                 overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",

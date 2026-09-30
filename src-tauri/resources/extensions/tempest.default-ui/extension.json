@@ -1,0 +1,19 @@
+{
+  "id": "tempest.default-ui",
+  "displayName": "Tempest UI Icons",
+  "description": "Default UI icon set for Tempest (chevrons, controls, panels, git, meta). Outline style, currentColor.",
+  "version": "1.1.0",
+  "publisher": "tempest",
+  "license": "ISC",
+  "engines": { "tempest": ">=0.1.0" },
+  "contributes": {
+    "uiIconPacks": [
+      {
+        "id": "default",
+        "displayName": "Tempest Default",
+        "format": "svg-directory",
+        "path": "./ui"
+      }
+    ]
+  }
+}

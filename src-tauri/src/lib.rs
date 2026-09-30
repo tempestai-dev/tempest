@@ -10,6 +10,7 @@ mod agent_hooks;
 mod automations;
 mod canvas_mcp;
 mod claude_bridge;
+mod extensions;
 mod git_clone;
 mod node_ingest;
 mod notes;
@@ -2358,17 +2359,190 @@ fn git_add_remote(repo_path: String, remote_url: String) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-async fn create_terminal_worktree(
-    project_path: String,
-    name: String,
-    existing_branch: Option<String>,
+// ── Worktree prep pool ───────────────────────────────────────────────────────
+// Speculative `git worktree add` after each consume, so the NEXT create in a
+// burst is a filesystem rename (`git worktree move` + `git branch -m`) instead
+// of a fresh checkout. The first create in a session still pays full cost;
+// once two creates land inside BURST_WINDOW the pool arms and every subsequent
+// one hits. The prep branches from HEAD at prep-time — if HEAD advances before
+// the take, the resulting branch is behind by that delta (user can rebase).
+// ponytail: 1 entry per project, in-memory, 5-min TTL, best-effort cleanup on
+// app restart via `worktree prune`. Bump the per-project cap if telemetry
+// shows contention from concurrent creates on the same project.
+
+const PREP_TTL: std::time::Duration = std::time::Duration::from_secs(5 * 60);
+const BURST_WINDOW: std::time::Duration = std::time::Duration::from_secs(5 * 60);
+
+struct PreparedEntry {
+    prep_path: std::path::PathBuf,
+    prep_branch: String,
+    created_at: std::time::Instant,
+}
+
+#[derive(Default)]
+struct PrepPool {
+    entries: std::collections::HashMap<std::path::PathBuf, PreparedEntry>,
+    last_consumed: std::collections::HashMap<std::path::PathBuf, std::time::Instant>,
+    in_flight: std::collections::HashSet<std::path::PathBuf>,
+}
+
+static PREP_POOL: std::sync::OnceLock<std::sync::Mutex<PrepPool>> = std::sync::OnceLock::new();
+
+fn prep_pool() -> &'static std::sync::Mutex<PrepPool> {
+    PREP_POOL.get_or_init(|| std::sync::Mutex::new(PrepPool::default()))
+}
+
+fn project_key(project: &std::path::Path) -> std::path::PathBuf {
+    std::fs::canonicalize(project).unwrap_or_else(|_| project.to_path_buf())
+}
+
+/// Pure: hand back a fresh entry, or None if stale/missing. The stale entry is
+/// still returned separately so the caller can schedule its cleanup.
+fn take_from(
+    pool: &mut PrepPool,
+    key: &std::path::Path,
+    now: std::time::Instant,
+) -> (Option<PreparedEntry>, Option<PreparedEntry>) {
+    match pool.entries.remove(key) {
+        Some(e) if now.duration_since(e.created_at) <= PREP_TTL => (Some(e), None),
+        Some(stale) => (None, Some(stale)),
+        None => (None, None),
+    }
+}
+
+/// Take and consume the prepared entry for this project, if any and not stale.
+/// Stale entries are removed and discarded in the background.
+fn take_prep(project: &std::path::Path) -> Option<PreparedEntry> {
+    let key = project_key(project);
+    let now = std::time::Instant::now();
+    let (fresh, stale) = {
+        let mut pool = prep_pool().lock().ok()?;
+        take_from(&mut pool, &key, now)
+    };
+    if let Some(stale) = stale {
+        let project = project.to_path_buf();
+        std::thread::spawn(move || {
+            let _ = new_command("git")
+                .args(["worktree", "remove", "--force", &stale.prep_path.to_string_lossy()])
+                .current_dir(&project)
+                .output();
+            let _ = new_command("git")
+                .args(["branch", "-D", &stale.prep_branch])
+                .current_dir(&project)
+                .output();
+        });
+    }
+    fresh
+}
+
+/// Move the prepped tree to the user's target path and rename its branch.
+/// On failure, unwinds the move so the caller can fall through to a fresh create.
+fn finalize_prep(
+    project: &std::path::Path,
+    prep: &PreparedEntry,
+    final_path: &std::path::Path,
+    branch_name: &str,
+) -> Result<(), String> {
+    let mv = new_command("git")
+        .args([
+            "worktree", "move",
+            &prep.prep_path.to_string_lossy(),
+            &final_path.to_string_lossy(),
+        ])
+        .current_dir(project)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !mv.status.success() {
+        return Err(String::from_utf8_lossy(&mv.stderr).trim().to_string());
+    }
+    let rn = new_command("git")
+        .args(["branch", "-m", &prep.prep_branch, branch_name])
+        .current_dir(project)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !rn.status.success() {
+        let _ = new_command("git")
+            .args(["worktree", "remove", "--force", &final_path.to_string_lossy()])
+            .current_dir(project)
+            .output();
+        let _ = new_command("git")
+            .args(["branch", "-D", &prep.prep_branch])
+            .current_dir(project)
+            .output();
+        return Err(String::from_utf8_lossy(&rn.stderr).trim().to_string());
+    }
+    Ok(())
+}
+
+fn build_prep(project: &std::path::Path) -> Result<PreparedEntry, String> {
+    let uuid = uuid::Uuid::new_v4().to_string();
+    let short = &uuid[..8];
+    let prep_path = project.join(".tempest").join(format!(".prep-{}", short));
+    let prep_branch = format!("tempest-prep/{}", short);
+    let out = new_command("git")
+        .args([
+            "worktree", "add",
+            &prep_path.to_string_lossy(),
+            "-b", &prep_branch,
+        ])
+        .current_dir(project)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    Ok(PreparedEntry {
+        prep_path,
+        prep_branch,
+        created_at: std::time::Instant::now(),
+    })
+}
+
+/// Pure: mutate the pool for this consume and report whether the caller
+/// should kick off a background rearm.
+fn decide_rearm(
+    pool: &mut PrepPool,
+    key: &std::path::Path,
+    now: std::time::Instant,
+) -> bool {
+    let prev = pool.last_consumed.insert(key.to_path_buf(), now);
+    let is_burst = prev.map_or(false, |t| now.duration_since(t) < BURST_WINDOW);
+    is_burst
+        && !pool.entries.contains_key(key)
+        && pool.in_flight.insert(key.to_path_buf())
+}
+
+/// Record this consume as the project's most recent, and — only if it falls
+/// inside a burst and no prep is already armed or in flight — kick off a
+/// background prep so the next create hits.
+fn record_consume_and_maybe_rearm(project: &std::path::Path) {
+    let key = project_key(project);
+    let now = std::time::Instant::now();
+    let should_rearm = {
+        let mut pool = prep_pool().lock().unwrap();
+        decide_rearm(&mut pool, &key, now)
+    };
+    if !should_rearm {
+        return;
+    }
+    let project = project.to_path_buf();
+    std::thread::spawn(move || {
+        let result = build_prep(&project);
+        let key = project_key(&project);
+        let mut pool = prep_pool().lock().unwrap();
+        pool.in_flight.remove(&key);
+        if let Ok(entry) = result {
+            pool.entries.insert(key, entry);
+        }
+    });
+}
+
+fn create_terminal_worktree_sync(
+    project_path: &str,
+    name: &str,
+    existing_branch: Option<&str>,
 ) -> Result<String, String> {
-    // The body is pure blocking work (git subprocesses + file ops). Run it on a
-    // dedicated blocking thread so a slow worktree creation never starves Tauri's
-    // bounded IPC worker pool. Both params are owned, so they move in cleanly.
-    tauri::async_runtime::spawn_blocking(move || {
-    let project = std::path::Path::new(&project_path);
+    let project = std::path::Path::new(project_path);
     let tempest_dir = project.join(".tempest");
     std::fs::create_dir_all(&tempest_dir).map_err(|e| e.to_string())?;
     // Sanitize the name for use as a filesystem directory: branch names like
@@ -2443,27 +2617,31 @@ async fn create_terminal_worktree(
             .map_err(|e| format!("Failed to remove orphan directory: {}", e))?;
     }
 
-    // 4. Create the worktree.
-    let wt_path_str = worktree_path.to_string_lossy().to_string();
-    let mut args = vec!["worktree", "add", &wt_path_str];
-    // When checking out an existing branch, pass it directly (no -b).
-    // When creating a new branch, pass -b <name> so git creates it.
-    let branch_arg;
-    if let Some(ref branch) = existing_branch {
-        branch_arg = branch.clone();
-        args.push(&branch_arg);
-    } else {
-        args.push("-b");
-        args.push(&name);
-    }
-    let output = new_command("git")
-        .args(&args)
-        .current_dir(project)
-        .output()
-        .map_err(|e| format!("Failed to run git: {}", e))?;
+    // 4. Create the worktree — try the prep pool first when eligible. A hit
+    //    turns this step into a rename; a miss or a failed finalize falls
+    //    through to a fresh `git worktree add`.
+    let from_prep = existing_branch.is_none()
+        && take_prep(project)
+            .map(|prep| finalize_prep(project, &prep, &worktree_path, name).is_ok())
+            .unwrap_or(false);
+    if !from_prep {
+        let wt_path_str = worktree_path.to_string_lossy().to_string();
+        let mut args = vec!["worktree", "add", &wt_path_str];
+        if let Some(branch) = existing_branch {
+            args.push(branch);
+        } else {
+            args.push("-b");
+            args.push(name);
+        }
+        let output = new_command("git")
+            .args(&args)
+            .current_dir(project)
+            .output()
+            .map_err(|e| format!("Failed to run git: {}", e))?;
 
-    if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+        }
     }
 
     // 5. Write .tempest-pid to the worktree's git info/exclude so it never shows
@@ -2546,10 +2724,100 @@ async fn create_terminal_worktree(
     }
 
     ensure_tempest_gitignore(project);
+
+    // Speculatively arm a spare so the next create in this burst is instant.
+    // Only when the current create used the fresh-branch path — an existing-
+    // branch consume can't be served by a prep (prep branches are always new).
+    if existing_branch.is_none() {
+        record_consume_and_maybe_rearm(project);
+    }
+
     Ok(worktree_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn create_terminal_worktree(
+    project_path: String,
+    name: String,
+    existing_branch: Option<String>,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        create_terminal_worktree_sync(&project_path, &name, existing_branch.as_deref())
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod worktree_prep_tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::time::{Duration, Instant};
+
+    fn mk_entry(age: Duration) -> PreparedEntry {
+        PreparedEntry {
+            prep_path: PathBuf::from("/tmp/.prep-xxx"),
+            prep_branch: "tempest-prep/xxx".to_string(),
+            created_at: Instant::now().checked_sub(age).unwrap_or_else(Instant::now),
+        }
+    }
+
+    #[test]
+    fn first_consume_never_rearms() {
+        let mut pool = PrepPool::default();
+        let key = PathBuf::from("/p");
+        assert!(!decide_rearm(&mut pool, &key, Instant::now()));
+        assert_eq!(pool.in_flight.len(), 0);
+    }
+
+    #[test]
+    fn second_consume_inside_burst_rearms() {
+        let mut pool = PrepPool::default();
+        let key = PathBuf::from("/p");
+        let t0 = Instant::now();
+        decide_rearm(&mut pool, &key, t0);
+        assert!(decide_rearm(&mut pool, &key, t0 + Duration::from_secs(10)));
+        assert!(pool.in_flight.contains(&key));
+    }
+
+    #[test]
+    fn second_consume_outside_burst_does_not_rearm() {
+        let mut pool = PrepPool::default();
+        let key = PathBuf::from("/p");
+        let t0 = Instant::now();
+        decide_rearm(&mut pool, &key, t0);
+        assert!(!decide_rearm(&mut pool, &key, t0 + BURST_WINDOW + Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn rearm_skipped_when_entry_already_armed() {
+        let mut pool = PrepPool::default();
+        let key = PathBuf::from("/p");
+        let t0 = Instant::now();
+        decide_rearm(&mut pool, &key, t0);
+        pool.entries.insert(key.clone(), mk_entry(Duration::from_secs(0)));
+        assert!(!decide_rearm(&mut pool, &key, t0 + Duration::from_secs(10)));
+    }
+
+    #[test]
+    fn take_returns_fresh_entry() {
+        let mut pool = PrepPool::default();
+        let key = PathBuf::from("/p");
+        pool.entries.insert(key.clone(), mk_entry(Duration::from_secs(10)));
+        let (fresh, stale) = take_from(&mut pool, &key, Instant::now());
+        assert!(fresh.is_some());
+        assert!(stale.is_none());
+    }
+
+    #[test]
+    fn take_discards_stale_entry() {
+        let mut pool = PrepPool::default();
+        let key = PathBuf::from("/p");
+        pool.entries.insert(key.clone(), mk_entry(PREP_TTL + Duration::from_secs(1)));
+        let (fresh, stale) = take_from(&mut pool, &key, Instant::now());
+        assert!(fresh.is_none());
+        assert!(stale.is_some());
+    }
 }
 
 
@@ -3690,6 +3958,14 @@ mod agent_shell_args_tests {
     }
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WorktreeAddSpec {
+    project_path: String,
+    name: String,
+    existing_branch: Option<String>,
+}
+
 #[tauri::command]
 async fn create_pty_session(
     session_id: String,
@@ -3704,9 +3980,17 @@ async fn create_pty_session(
     // Extra environment from the project's `tempest.yml`. Names are validated and
     // loader/DB variables stripped on the frontend before they reach here.
     env: Option<std::collections::HashMap<String, String>>,
+    worktree_add: Option<WorktreeAddSpec>,
     on_event: Channel<PtyOutputPayload>,
     state: tauri::State<'_, PtyState>,
 ) -> Result<(), String> {
+    if let Some(spec) = worktree_add {
+        tauri::async_runtime::spawn_blocking(move || {
+            create_terminal_worktree_sync(&spec.project_path, &spec.name, spec.existing_branch.as_deref())
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+    }
     // ── Launch policy ────────────────────────────────────────────────────────
     // Refuse disallowed launches before any resource is acquired: no PTY, no
     // Docker branch, no Job Object. Only agent sessions are vetted — `command`
@@ -4618,6 +4902,9 @@ pub fn run() {
             check_branch_merged,
             write_coauthor_hook,
             remove_coauthor_hook,
+            extensions::seed_extensions,
+            extensions::list_extensions,
+            extensions::read_extension_file,
             check_git_initialized,
             git_add_remote,
             embed_ide_panel,

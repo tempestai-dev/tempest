@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { X, GitPullRequest, ExternalLink } from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const X = (p: any) => <UiIcon name="x" {...p} />;
+const GitPullRequest = (p: any) => <UiIcon name="git-pull-request" {...p} />;
+const ExternalLink = (p: any) => <UiIcon name="external-link" {...p} />;
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { track } from "../lib/telemetry";
 import "./PrDialog.css";

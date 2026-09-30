@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const ChevronDown = (p: any) => <UiIcon name="chevron-down" {...p} />;
 import "./SpSelect.css";
 
 export function SpSelect({ value, options, onChange, className }: {

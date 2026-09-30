@@ -1,4 +1,5 @@
-import { AlertTriangle } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const AlertTriangle = (p: any) => <UiIcon name="alert-triangle" {...p} />;
 
 export function DiscardFileDialog({ path, onConfirm, onCancel }: {
   path: string | null;

@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import QRCode from "qrcode";
-import { Smartphone, Pencil, Trash2, RefreshCw, X } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const Smartphone = (p: any) => <UiIcon name="smartphone" {...p} />;
+const Pencil = (p: any) => <UiIcon name="pencil" {...p} />;
+const Trash2 = (p: any) => <UiIcon name="trash-2" {...p} />;
+const RefreshCw = (p: any) => <UiIcon name="refresh-cw" {...p} />;
+const X = (p: any) => <UiIcon name="x" {...p} />;
 import { Tooltip } from "../Tooltip";
 import {
   useMobileState,

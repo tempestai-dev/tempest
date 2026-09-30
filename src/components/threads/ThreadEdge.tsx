@@ -1,5 +1,6 @@
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, useReactFlow, type EdgeProps } from "@xyflow/react";
-import { X } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const X = (p: any) => <UiIcon name="x" {...p} />;
 import { useNodeGenerating } from "../../store/nodeActivity";
 
 // Removable connection edge. React Flow has no built-in "disconnect" gesture, so

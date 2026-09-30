@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Check } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const Check = (p: any) => <UiIcon name="check" {...p} />;
 import { useSettings, updateSetting } from "../../store/appSettings";
 import { downloadAtlasModel } from "../../lib/atlasModel";
 import gooseSrc from "../../assets/agent-icons/goose.svg";

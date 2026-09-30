@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const ChevronDown = (p: any) => <UiIcon name="chevron-down" {...p} />;
 import { argsPreview, resultSummary } from "../../lib/chatTools";
 import { getToolIcon, getToolLabel } from "../../lib/chatModels";
 import type { ToolCallPart } from "../../types/chat";
@@ -7,7 +8,7 @@ import type { ToolCallPart } from "../../types/chat";
 export function ToolCallCard({ part }: { part: ToolCallPart }) {
   const [expanded, setExpanded] = useState(false);
   const preview = argsPreview(part.toolName, part.args);
-  const Icon = getToolIcon(part.toolName);
+  const iconName = getToolIcon(part.toolName);
   const label = getToolLabel(part.toolName, part.status === "running");
   const canExpand = part.status === "complete" && part.result != null;
   const dotState = part.status === "running" ? "running" : "complete";
@@ -21,7 +22,7 @@ export function ToolCallCard({ part }: { part: ToolCallPart }) {
       >
         <span className={`chat-step-dot chat-step-dot--${dotState}`} />
         <span className="chat-step-icon">
-          <Icon size={13} />
+          <UiIcon name={iconName} size={13} />
         </span>
         <span className="chat-step-name">{label}</span>
         {preview && <span className="chat-step-summary">{preview}</span>}

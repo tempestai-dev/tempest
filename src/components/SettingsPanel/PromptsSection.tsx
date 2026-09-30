@@ -1,5 +1,11 @@
 import { useRef, useState } from "react";
-import { RotateCcw, GripVertical, Pencil, Copy, Trash2, Plus } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const RotateCcw = (p: any) => <UiIcon name="rotate-ccw" {...p} />;
+const GripVertical = (p: any) => <UiIcon name="grip-vertical" {...p} />;
+const Pencil = (p: any) => <UiIcon name="pencil" {...p} />;
+const Copy = (p: any) => <UiIcon name="copy" {...p} />;
+const Trash2 = (p: any) => <UiIcon name="trash-2" {...p} />;
+const Plus = (p: any) => <UiIcon name="plus" {...p} />;
 import { Tooltip } from "../Tooltip";
 import { ToggleSwitch } from "../ui/ToggleSwitch";
 import {

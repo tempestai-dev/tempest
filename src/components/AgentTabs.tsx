@@ -1,5 +1,12 @@
 import { useRef, useState, useEffect, useCallback } from "react";
-import { X, Eye, Globe, FileCode, TerminalSquare, Waypoints, Plus } from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const X = (p: any) => <UiIcon name="x" {...p} />;
+const Eye = (p: any) => <UiIcon name="eye" {...p} />;
+const Globe = (p: any) => <UiIcon name="globe" {...p} />;
+const TerminalSquare = (p: any) => <UiIcon name="terminal-square" {...p} />;
+const Waypoints = (p: any) => <UiIcon name="waypoints" {...p} />;
+const Plus = (p: any) => <UiIcon name="plus" {...p} />;
+import { FileIcon } from "../icons/FileIcon";
 import { AgentIcon } from "./NewSessionMenu";
 import { WorkStateBadge, QueueBadge } from "./SessionBadges";
 import ProgressiveBlur from "./ProgressiveBlur";
@@ -59,7 +66,7 @@ interface Props {
 function SessionIcon({ session }: { session: SessionTab }) {
   if (session.kind === "diff")    return <Eye            size={13} className="agent-icon" />;
   if (session.kind === "preview") return <Globe          size={13} className="agent-icon" />;
-  if (session.kind === "editor")  return <FileCode       size={13} className="agent-icon" />;
+  if (session.kind === "editor")  return <span className="agent-icon"><FileIcon name={session.name} isDir={false} size={13} /></span>;
   if (session.kind === "thread")  return <Waypoints      size={13} className="agent-icon" />;
   if (session.agent)              return <AgentIcon hint={session.agent} size={13} />;
   return                                 <TerminalSquare size={13} className="agent-icon" />;

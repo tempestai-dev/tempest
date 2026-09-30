@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { Globe, ArrowRight, RefreshCw, Loader2, ExternalLink } from "lucide-react";
+import { UiIcon } from "../../../icons/UiIcon";
+const Globe = (p: any) => <UiIcon name="globe" {...p} />;
+const ArrowRight = (p: any) => <UiIcon name="arrow-right" {...p} />;
+const RefreshCw = (p: any) => <UiIcon name="refresh-cw" {...p} />;
+const Loader2 = (p: any) => <UiIcon name="loader-2" {...p} />;
+const ExternalLink = (p: any) => <UiIcon name="external-link" {...p} />;
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { NodeShell } from "./NodeShell";

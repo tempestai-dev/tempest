@@ -1,5 +1,9 @@
 import { memo, useEffect, useRef, useState } from "react";
-import { PencilLine, SplitSquareHorizontal, Keyboard, BookOpen } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const PencilLine = (p: any) => <UiIcon name="pencil-line" {...p} />;
+const SplitSquareHorizontal = (p: any) => <UiIcon name="split-square-horizontal" {...p} />;
+const Keyboard = (p: any) => <UiIcon name="keyboard" {...p} />;
+const BookOpen = (p: any) => <UiIcon name="book-open" {...p} />;
 import { Toolbar, type SidebarMode } from "../Toolbar";
 import { Tooltip } from "../Tooltip";
 import { NotesPopover } from "./NotesPopover";

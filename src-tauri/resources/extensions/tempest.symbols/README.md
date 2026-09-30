@@ -1,0 +1,126 @@
+<div align="center">
+
+<img src="https://raw.githubusercontent.com/misolori/vscode-symbols/main/symbols.png" width="140" />
+
+# Symbols
+
+A file icon for VS Code
+
+![Preview of extension](https://github.com/misolori/vscode-symbols/raw/main/preview.png)
+
+</div>
+
+## Contributing
+
+If you'd like to contribute to this extension, please take a look at the issues or create a new one. If you'd like to create a new icon, please reference the [Symbols - File Icon Figma file](https://www.figma.com/file/HYLMyRbIdSbIJQlqnd9pSN/Symbols---File-Icons?node-id=20521%3A84115&t=PyBzZOlVG5TXyEdx-1), you can make a copy or reference the styles used (tailwind). Please try to limit your colors to the ones used in existing icons before choosing a different color style.
+
+When submitting a PR, please ensure you've tested the extension locally and ensure that your new icons appear correctly in the file tree view with your new file extension. Include a screenshot of your proposed icon in your PR.
+
+## Generating Icon Previews
+
+Before submitting a PR, please run the preview generation script to update the icon previews:
+
+```bash
+npm run generate-previews
+```
+
+This script will update the preview markdown files with your new icons. Make sure to commit these changes along with your PR.
+
+## Configuration
+
+You can configure which folders and files icons are displayed by using the following settings:
+
+### Folders
+
+```json
+"symbols.folders.associations": {
+    "{folder name}": "{icon name}"
+}
+```
+
+Example:
+
+```json
+"symbols.folders.associations": {
+    "entities": "folder-assets",
+    "infra": "folder-app",
+    "schemas": "folder-purple"
+}
+```
+
+### Files
+
+```json
+"symbols.files.associations": {
+    "{file name}": "{icon name}"
+}
+```
+
+Example:
+
+```json
+"symbols.files.associations": {
+    "app.module.ts": "nest",
+    "*.service.ts": "nest"
+}
+```
+
+_Note: For file names, you can use `*` to match all files with a specific file extension._
+
+### Subfolder Files
+
+```json
+"symbols.subfolder.file.associations": {
+    "{subfolder}": {
+        "{filename}": "{icon name}"
+    }
+}
+```
+
+Example:
+
+```json
+"symbols.subfolder.file.associations": {
+    "annotation": {
+        "*.java": "at",
+        "LogAPICall.java": "at-blue"
+    }
+}
+```
+
+_Note: For file names, you can use `*` to match all files with a specific file extension._
+
+## Icon Preview
+
+You can preview the icons by reading the the [preview.md](./preview/preview.md) file.
+
+## Other Platforms & Editors
+
+### React Symbols
+
+[Pablo Hdez](https://github.com/pheralb) has graciously created [React-Symbols](https://react-symbols.vercel.app) ([pheralb/react-symbols](https://github.com/pheralb/react-symbols)) to allow you to embed Symbol icons for your React projects.
+
+<img src="https://raw.githubusercontent.com/pheralb/react-symbols/main/website/public/images/og.png">
+
+### Open VSX
+
+If you're using editors like [Cursor](https://cursor.com/), [Antigravity](https://antigravity.google/), or [VSCodium](https://vscodium.com/), you can find the extension on [Open VSX](https://open-vsx.org/extension/misolori/symbols).
+
+### Zed Editor
+
+If you're using the [Zed](https://zed.dev) editor, you can find its maintained version here: [Symbols for Zed](https://github.com/sebastiandotdev/zed-symbols).
+
+### JetBrains IDEs
+
+If you're using a [JetBrains](https://www.jetbrains.com) IDE (including [Android Studio](https://developer.android.com/studio)), you can find its maintained version here: [Symbols for JetBrains](https://github.com/sebastiandotdev/jetbrains-symbols).
+
+### Browser
+
+You can use the Symbols icon set in your browser by installing the [`symbols-browser-extension`](https://github.com/jahirfiquitiva/symbols-browser-extension) created by [Jahir Fiquitiva](https://jahir.dev)
+
+<a href="https://github.com/jahirfiquitiva/symbols-browser-extension">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/jahirfiquitiva/symbols-browser-extension/refs/heads/main/media/store-preview-dark.jpeg">
+    <img alt="A GitHub file listing with Symbols icons" width="640" src="https://raw.githubusercontent.com/jahirfiquitiva/symbols-browser-extension/refs/heads/main/media/store-preview-light.jpeg">
+  </picture>
+</a>

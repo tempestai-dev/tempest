@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { XCircle, RefreshCw, ArrowRight } from 'lucide-react';
+import { UiIcon } from "../../icons/UiIcon";
+const XCircle = (p: any) => <UiIcon name="x-circle" {...p} />;
+const RefreshCw = (p: any) => <UiIcon name="refresh-cw" {...p} />;
+const ArrowRight = (p: any) => <UiIcon name="arrow-right" {...p} />;
 import { useGSAP } from '@gsap/react';
 import gsap from 'gsap';
 

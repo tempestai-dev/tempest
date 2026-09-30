@@ -1,12 +1,27 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
-import {
-  MessagesSquare, StickyNote, Bot, SquareTerminal, LayoutGrid, Minimize2, Maximize2, Trash2, Trash,
-  Image as ImageIcon, FileText, Globe, Play,
-  AlignStartVertical, AlignCenterVertical, AlignEndVertical,
-  AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
-  AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter,
-} from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const MessagesSquare = (p: any) => <UiIcon name="messages-square" {...p} />;
+const StickyNote = (p: any) => <UiIcon name="sticky-note" {...p} />;
+const Bot = (p: any) => <UiIcon name="bot" {...p} />;
+const SquareTerminal = (p: any) => <UiIcon name="square-terminal" {...p} />;
+const LayoutGrid = (p: any) => <UiIcon name="layout-grid" {...p} />;
+const Minimize2 = (p: any) => <UiIcon name="minimize-2" {...p} />;
+const Maximize2 = (p: any) => <UiIcon name="maximize-2" {...p} />;
+const Trash2 = (p: any) => <UiIcon name="trash-2" {...p} />;
+const Trash = (p: any) => <UiIcon name="trash" {...p} />;
+const ImageIcon = (p: any) => <UiIcon name="image" {...p} />;
+const Globe = (p: any) => <UiIcon name="globe" {...p} />;
+const Play = (p: any) => <UiIcon name="play" {...p} />;
+const AlignStartVertical = (p: any) => <UiIcon name="align-start-vertical" {...p} />;
+const AlignCenterVertical = (p: any) => <UiIcon name="align-center-vertical" {...p} />;
+const AlignEndVertical = (p: any) => <UiIcon name="align-end-vertical" {...p} />;
+const AlignStartHorizontal = (p: any) => <UiIcon name="align-start-horizontal" {...p} />;
+const AlignCenterHorizontal = (p: any) => <UiIcon name="align-center-horizontal" {...p} />;
+const AlignEndHorizontal = (p: any) => <UiIcon name="align-end-horizontal" {...p} />;
+const AlignHorizontalDistributeCenter = (p: any) => <UiIcon name="align-horizontal-distribute-center" {...p} />;
+const AlignVerticalDistributeCenter = (p: any) => <UiIcon name="align-vertical-distribute-center" {...p} />;
+import { FileIcon } from "../icons/FileIcon";
 import {
   ReactFlow, Background, BackgroundVariant, Controls, MiniMap, Panel,
   applyNodeChanges, applyEdgeChanges, addEdge, ConnectionMode,
@@ -36,6 +51,13 @@ import { ThreadNodeContext } from "./threads/ThreadNodeContext";
 import { Tooltip } from "./Tooltip";
 import { getSession } from "../store/sessions";
 import type { DbThreadNode } from "../lib/db";
+
+// Adapts FileIcon to the `Icon: Component` shape used by node-add buttons below.
+const FileText = ({ size, style }: { size?: number; style?: React.CSSProperties }) => (
+  <span style={style ? { display: "inline-flex", ...style } : { display: "inline-flex" }}>
+    <FileIcon name="" isDir={false} size={size ?? 14} />
+  </span>
+);
 
 // Custom node kinds → their component. Module-level so the object identity is
 // stable across renders (React Flow warns otherwise). Unlisted kinds fall back to

@@ -5,11 +5,24 @@ import { EditorView, placeholder, keymap, drawSelection, highlightSpecialChars }
 import { Compartment, EditorState, EditorSelection } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
-import {
-  Check, Code2, Copy, Eye, Pencil, Trash2,
-  Heading1, Heading2, Heading3, Bold, Italic, Strikethrough, Underline,
-  Code, List, ListOrdered, Quote,
-} from "lucide-react";
+import { UiIcon } from "../../../icons/UiIcon";
+const Check = (p: any) => <UiIcon name="check" {...p} />;
+const Code2 = (p: any) => <UiIcon name="code-2" {...p} />;
+const Copy = (p: any) => <UiIcon name="copy" {...p} />;
+const Eye = (p: any) => <UiIcon name="eye" {...p} />;
+const Pencil = (p: any) => <UiIcon name="pencil" {...p} />;
+const Trash2 = (p: any) => <UiIcon name="trash-2" {...p} />;
+const Heading1 = (p: any) => <UiIcon name="heading-1" {...p} />;
+const Heading2 = (p: any) => <UiIcon name="heading-2" {...p} />;
+const Heading3 = (p: any) => <UiIcon name="heading-3" {...p} />;
+const Bold = (p: any) => <UiIcon name="bold" {...p} />;
+const Italic = (p: any) => <UiIcon name="italic" {...p} />;
+const Strikethrough = (p: any) => <UiIcon name="strikethrough" {...p} />;
+const Underline = (p: any) => <UiIcon name="underline" {...p} />;
+const Code = (p: any) => <UiIcon name="code" {...p} />;
+const List = (p: any) => <UiIcon name="list" {...p} />;
+const ListOrdered = (p: any) => <UiIcon name="list-ordered" {...p} />;
+const Quote = (p: any) => <UiIcon name="quote" {...p} />;
 import { NodeConnector } from "./NodeConnector";
 import { CollapsedNode } from "./CollapsedNode";
 import { markdownLivePreview, livePreviewTheme } from "./markdownLivePreview";

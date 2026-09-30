@@ -1,4 +1,5 @@
-import { Trash2 } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const Trash2 = (p: any) => <UiIcon name="trash-2" {...p} />;
 
 export function DeleteBranchDialog({ branch, alsoRemote, error, onSetAlsoRemote, onCancel, onDelete }: {
   branch: string | null;

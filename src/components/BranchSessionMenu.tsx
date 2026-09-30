@@ -5,7 +5,10 @@ import { useAgentAvailability } from "../store/agentAvailability";
 import { AgentIcon, type AgentConfig } from "./NewSessionMenu";
 import type { NewSessionPlacement } from "./NewSessionMenu";
 import { useAgents } from "../lib/agentRegistry";
-import { TerminalSquare, Globe, Download } from "lucide-react";
+import { UiIcon } from "../icons/UiIcon";
+const TerminalSquare = (p: any) => <UiIcon name="terminal-square" {...p} />;
+const Globe = (p: any) => <UiIcon name="globe" {...p} />;
+const Download = (p: any) => <UiIcon name="download" {...p} />;
 import "./BranchSessionMenu.css";
 
 // ─────────────────────────────────────────────────────────────────────────────

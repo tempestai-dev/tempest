@@ -1,5 +1,8 @@
 import { createPortal } from "react-dom";
-import { Trash2, AlertTriangle, Loader } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const Trash2 = (p: any) => <UiIcon name="trash-2" {...p} />;
+const AlertTriangle = (p: any) => <UiIcon name="alert-triangle" {...p} />;
+const Loader = (p: any) => <UiIcon name="loader" {...p} />;
 import type { Worktree } from "../../types/workspace";
 
 export type DeleteDialogState = {

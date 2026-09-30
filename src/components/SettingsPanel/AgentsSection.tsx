@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, ChevronDown, Trash2, Copy, Plus } from "lucide-react";
+import { UiIcon } from "../../icons/UiIcon";
+const ChevronRight = (p: any) => <UiIcon name="chevron-right" {...p} />;
+const ChevronDown = (p: any) => <UiIcon name="chevron-down" {...p} />;
+const Trash2 = (p: any) => <UiIcon name="trash-2" {...p} />;
+const Copy = (p: any) => <UiIcon name="copy" {...p} />;
+const Plus = (p: any) => <UiIcon name="plus" {...p} />;
 import { useAgents, getCustomAgents, setCustomAgents } from "../../lib/agentRegistry";
 import type { AgentConfig } from "../../lib/agentManifest";
 import { getAgentConfig, setAgentConfig } from "../../lib/runtimeState";
@@ -7,7 +12,18 @@ import {
   parseArgs, argsToText, parseEnv, envToText,
 } from "../../lib/agentConfig";
 import { LUCIDE_ICON_NAMES, AgentIcon } from "../NewSessionMenu";
-import { Terminal, Bot, Code2, Command as CommandIcon, Cpu, Zap, Sparkles, Package, Rocket, Wrench, Ghost, Play } from "lucide-react";
+const Terminal = (p: any) => <UiIcon name="terminal" {...p} />;
+const Bot = (p: any) => <UiIcon name="bot" {...p} />;
+const Code2 = (p: any) => <UiIcon name="code-2" {...p} />;
+const CommandIcon = (p: any) => <UiIcon name="command" {...p} />;
+const Cpu = (p: any) => <UiIcon name="cpu" {...p} />;
+const Zap = (p: any) => <UiIcon name="zap" {...p} />;
+const Sparkles = (p: any) => <UiIcon name="sparkles" {...p} />;
+const Package = (p: any) => <UiIcon name="package" {...p} />;
+const Rocket = (p: any) => <UiIcon name="rocket" {...p} />;
+const Wrench = (p: any) => <UiIcon name="wrench" {...p} />;
+const Ghost = (p: any) => <UiIcon name="ghost" {...p} />;
+const Play = (p: any) => <UiIcon name="play" {...p} />;
 import { useSettings, updateSetting } from "../../store/appSettings";
 import { getProvidersForAgent } from "../../lib/providerRegistry";
 import { byokId, getSecret, setSecret, deleteSecret } from "../../lib/secrets";

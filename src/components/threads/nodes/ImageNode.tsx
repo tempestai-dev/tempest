@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ImagePlus } from "lucide-react";
+import { UiIcon } from "../../../icons/UiIcon";
+const ImagePlus = (p: any) => <UiIcon name="image-plus" {...p} />;
 import { NodeShell } from "./NodeShell";
 import { getNodeData, patchNodeData } from "../../../store/threads";
 
