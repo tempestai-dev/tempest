@@ -822,6 +822,11 @@ export function WorkspaceView({ zen, name, path }: Props) {
     parentSessionId?: string, // set when spawned via a split — makes this a sub-session of another
     model?: string, // specific model override passed as --model to supported agent CLIs
     placement: "tab" | "canvas" = "tab", // "canvas" = a Threads node owns it; no tab bar entry
+    // Optional gate awaited immediately before create_pty_session. Lets the caller
+    // (launchBranch) run `git worktree add` in parallel with our settings/keychain
+    // prep, so the agent process fires the instant both are ready. Rejection
+    // propagates as a spawn failure, invoking the catch below that rolls the tab back.
+    cwdReadyPromise?: Promise<string>,
   ) {
     // Guard is scoped to the restore loop (dedupe=true). User-triggered opens never block
     // each other, so two root sessions at the same cwd can be opened intentionally.
@@ -979,10 +984,22 @@ export function WorkspaceView({ zen, name, path }: Props) {
       // `{}` whenever no preset applies, so the default path is unchanged.
       const providerEnv = config ? await resolveAgentProviderEnv(config.id) : {};
 
+      // Wait for the parallel worktree creation (if any) to finish. On the
+      // backend-returned path edge case (separator mismatch), fall back to it
+      // for the spawn cwd; the tab and saveSession keep the expected path
+      // they were pre-inserted with.
+      let spawnCwd = effectiveCwd;
+      if (cwdReadyPromise) {
+        const readyPath = await cwdReadyPromise;
+        if (readyPath && readyPath !== cwd) {
+          spawnCwd = agentCfg?.subdir ? `${readyPath}/${agentCfg.subdir}` : readyPath;
+        }
+      }
+
       try {
         await invoke<void>("create_pty_session", {
           sessionId,
-          cwd: effectiveCwd,
+          cwd: spawnCwd,
           rows: 24,
           cols: 80,
           command: agent ?? null,
@@ -1461,6 +1478,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
     const pendingId = crypto.randomUUID();
     try {
       let worktreePath: string;
+      let cwdReady: Promise<string> | undefined;
       if (directWorktreePath) {
         worktreePath = directWorktreePath;
         addWorktreeToState({ name: branchName, path: worktreePath }, workingProjectId);
@@ -1475,6 +1493,7 @@ export function WorkspaceView({ zen, name, path }: Props) {
         const dirName = branchName.replace(/\//g, "-");
         const sep = pathSep();
         const expectedWorktreePath = `${activePath}${sep}.tempest${sep}${dirName}`;
+        worktreePath = expectedWorktreePath;
         addWorktreeToState({ name: branchName, path: expectedWorktreePath }, workingProjectId);
         setSessions((prev) => [...prev, {
           id: pendingId, instanceId: pendingId, name: sessionName, cwd: expectedWorktreePath,
@@ -1484,34 +1503,34 @@ export function WorkspaceView({ zen, name, path }: Props) {
           metadata: { resumeCount: 0, hasBeenResumed: false },
         }]);
         if (!override?.skipFocus) setActiveSessionId(pendingId);
-        try {
-          const result = await createWorktree({ projectPath: activePath, name: branchName, existingBranch: existingBranchArg });
-          worktreePath = result.path;
-        } catch (e) {
-          // Worktree creation failed — roll back the optimistic tab AND the worktree entry.
-          setSessions((prev) => prev.filter((s) => s.id !== pendingId));
-          if (zen) {
-            setZenWorktrees((prev) => prev.filter((w) => w.path !== expectedWorktreePath));
-          } else {
-            setProjects((prev) => prev.map((p) => p.id === workingProjectId
-              ? { ...p, worktrees: p.worktrees.filter((w) => w.path !== expectedWorktreePath) }
-              : p));
-          }
-          throw e;
-        }
-        // addWorktreeToState is idempotent by path, so the common case (backend
-        // path == expected) is a no-op here. Handles the paranoid edge where
-        // the backend returned a different string (e.g. separator mismatch).
-        addWorktreeToState({ name: branchName, path: worktreePath }, workingProjectId);
-        // Run the setup hook in the BACKGROUND so the session appears the instant the
-        // worktree exists, instead of waiting out installs/build steps first. The agent
-        // can start working while setup finishes; a failure surfaces as a notice rather
-        // than blocking the launch.
-        runWorktreeHook("setup", activePath, workingProjectId ?? "", worktreePath)
-          .then((failure) => { if (failure) setPolicyError(failure); })
-          .catch((e) => setPolicyError(String(e)));
+        // Fire `git worktree add` in parallel with openSession's prep (project
+        // settings load, keychain read). openSession awaits this immediately
+        // before create_pty_session, so worktree creation is no longer serial
+        // on the critical path — the agent process fires the instant both are
+        // ready. Setup hook still runs in the background after that.
+        cwdReady = createWorktree({ projectPath: activePath, name: branchName, existingBranch: existingBranchArg })
+          .then((result) => {
+            // Idempotent by path in the common case; handles the paranoid edge
+            // where the backend returned a different string (separator mismatch).
+            addWorktreeToState({ name: branchName, path: result.path }, workingProjectId);
+            runWorktreeHook("setup", activePath, workingProjectId ?? "", result.path)
+              .then((failure) => { if (failure) setPolicyError(failure); })
+              .catch((e) => setPolicyError(String(e)));
+            return result.path;
+          }, (e) => {
+            // git worktree add failed. Roll back the optimistic worktree row here;
+            // openSession's own catch drops the tab and surfaces the error.
+            if (zen) {
+              setZenWorktrees((prev) => prev.filter((w) => w.path !== expectedWorktreePath));
+            } else {
+              setProjects((prev) => prev.map((p) => p.id === workingProjectId
+                ? { ...p, worktrees: p.worktrees.filter((w) => w.path !== expectedWorktreePath) }
+                : p));
+            }
+            throw e;
+          });
       }
-      await openSession(sessionName, worktreePath, workingProjectId ?? "", agent?.hint, prompt, undefined, undefined, undefined, undefined, undefined, pendingId);
+      await openSession(sessionName, worktreePath, workingProjectId ?? "", agent?.hint, prompt, undefined, undefined, undefined, undefined, undefined, pendingId, undefined, undefined, undefined, cwdReady);
       return pendingId;
     } catch (e) {
       setPolicyError(String(e));
