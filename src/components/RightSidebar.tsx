@@ -8,6 +8,8 @@ import {
   RefreshCw,
   ChevronRight,
   ChevronDown,
+  GitBranch,
+  Search,
   Loader,
   WrapText,
   ChevronsUpDown,
@@ -107,6 +109,21 @@ function toggleInTree(nodes: TreeNode[], targetPath: string): TreeNode[] {
   });
 }
 
+// Flatten currently-loaded (expanded) tree into paths relative to `root`.
+// Fallback for noGit workspaces where git ls-files is unavailable.
+function collectLoadedFiles(nodes: TreeNode[], root: string): string[] {
+  const prefix = root.endsWith("/") || root.endsWith("\\") ? root : root + (root.includes("\\") ? "\\" : "/");
+  const out: string[] = [];
+  const walk = (ns: TreeNode[]) => {
+    for (const n of ns) {
+      if (n.is_dir) { if (n.children) walk(n.children); }
+      else out.push(n.path.startsWith(prefix) ? n.path.slice(prefix.length).split("\\").join("/") : n.path);
+    }
+  };
+  walk(nodes);
+  return out;
+}
+
 function statusLabel(s: string): string {
   switch (s.toUpperCase()) {
     case "M": return "M";
@@ -194,6 +211,10 @@ export function RightSidebar({ cwd, rootPath, open, gitRevision, noGit, onOpenDi
   const [changes, setChanges] = useState<GitChange[]>([]);
   const [reloading, setReloading] = useState(false);
   const [gitError, setGitError] = useState<string | null>(null);
+  const [branch, setBranch] = useState<string | null>(null);
+  const [filesQuery, setFilesQuery] = useState("");
+  const [allFiles, setAllFiles] = useState<string[] | null>(null);
+  const filesSearchRef = useRef<HTMLInputElement>(null);
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const dragState = useRef<{ startX: number; startWidth: number } | null>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -344,10 +365,46 @@ export function RightSidebar({ cwd, rootPath, open, gitRevision, noGit, onOpenDi
     setTree([]);
     setChanges([]);
     setGitError(null);
+    setAllFiles(null);
     const filesPath = rootPath ?? cwd;
     if (!filesPath) return;
     reload(filesPath, noGit ? null : (cwd ?? null));
   }, [cwd, rootPath, noGit]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Current branch for the Changes header. Refetch when the workspace switches
+  // or a git-visible action bumps gitRevision.
+  useEffect(() => {
+    if (!cwd || noGit) { setBranch(null); return; }
+    invoke<string>("get_git_branch", { path: cwd })
+      .then((b) => setBranch(b || null))
+      .catch(() => setBranch(null));
+  }, [cwd, noGit, gitRevision]);
+
+  // Full recursive file list for search. Lazy: fetched on first non-empty query
+  // per workspace, then reused. Requires git; falls back to loaded tree filter.
+  const searchRoot = rootPath ?? cwd;
+  useEffect(() => {
+    if (!filesQuery.trim() || allFiles !== null || !searchRoot || noGit) return;
+    invoke<string[]>("git_ls_files", { path: searchRoot })
+      .then((files) => setAllFiles(files.filter((f) => !f.includes(".tempest-pid"))))
+      .catch(() => setAllFiles([]));
+  }, [filesQuery, allFiles, searchRoot, noGit]);
+
+  // `/` focuses the Files search when the tab is active and sidebar is open.
+  useEffect(() => {
+    if (!open || activeTab !== "files") return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "/") return;
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || t?.isContentEditable) return;
+      e.preventDefault();
+      filesSearchRef.current?.focus();
+      filesSearchRef.current?.select();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, activeTab]);
 
   useEffect(() => {
     if (!cwd) { setDbBranches([]); return; }
@@ -483,17 +540,73 @@ export function RightSidebar({ cwd, rootPath, open, gitRevision, noGit, onOpenDi
 
         {/* All Files tab */}
         {activeTab === "files" && (
-          <div className="rs-scroll">
-            {!rootPath && !cwd && (
-              <div className="rs-empty">No active session</div>
-            )}
-            {(rootPath || cwd) && tree.length === 0 && !reloading && (
-              <div className="rs-empty">Empty directory</div>
-            )}
-            {tree.length > 0 && (
-              <FileTreeNodes nodes={tree} depth={0} onToggle={handleToggle} onOpenFile={onOpenFile} />
-            )}
-          </div>
+          <>
+            <div className="rs-files-search">
+              <Search size={11} className="rs-files-search-icon" />
+              <input
+                ref={filesSearchRef}
+                className="rs-files-search-input"
+                type="text"
+                placeholder="Search files…  (/)"
+                value={filesQuery}
+                onChange={(e) => setFilesQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape") setFilesQuery(""); }}
+                spellCheck={false}
+              />
+              {filesQuery && (
+                <button
+                  className="rs-files-search-clear"
+                  onClick={() => setFilesQuery("")}
+                  title="Clear"
+                >
+                  <XIcon size={10} />
+                </button>
+              )}
+            </div>
+            <div className="rs-scroll">
+              {!rootPath && !cwd && (
+                <div className="rs-empty">No active session</div>
+              )}
+              {(rootPath || cwd) && !filesQuery.trim() && tree.length === 0 && !reloading && (
+                <div className="rs-empty">Empty directory</div>
+              )}
+              {!filesQuery.trim() && tree.length > 0 && (
+                <FileTreeNodes nodes={tree} depth={0} onToggle={handleToggle} onOpenFile={onOpenFile} />
+              )}
+              {filesQuery.trim() && (() => {
+                const q = filesQuery.trim().toLowerCase();
+                // Prefer full-repo list (git) when we have it; otherwise fall back
+                // to the currently loaded tree so noGit workspaces still search.
+                const source = allFiles ?? collectLoadedFiles(tree, searchRoot ?? "");
+                const matches = source
+                  .filter((p) => p.toLowerCase().includes(q))
+                  .slice(0, 500);
+                if (matches.length === 0) {
+                  return <div className="rs-empty rs-empty--sm">No matches</div>;
+                }
+                const rootAbs = searchRoot ?? "";
+                return matches.map((rel) => {
+                  const slash = rel.lastIndexOf("/");
+                  const name = slash >= 0 ? rel.slice(slash + 1) : rel;
+                  const dir  = slash >= 0 ? rel.slice(0, slash) : "";
+                  const abs  = rootAbs ? `${rootAbs}/${rel}` : rel;
+                  return (
+                    <div
+                      key={rel}
+                      className="rs-file-item rs-file-item--file rs-file-item--search"
+                      onClick={() => onOpenFile?.(abs)}
+                      title={rel}
+                    >
+                      <span className="rs-file-chevron" />
+                      <span className="rs-file-icon"><File size={13} /></span>
+                      <span className="rs-file-name">{name}</span>
+                      {dir && <span className="rs-file-dir">{dir}</span>}
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </>
         )}
 
         {/* Changes tab */}
@@ -501,6 +614,12 @@ export function RightSidebar({ cwd, rootPath, open, gitRevision, noGit, onOpenDi
           <>
             {!noGit && (
               <div className="rs-changes-toolbar">
+                {branch && (
+                  <div className="rs-changes-branch" title={`Showing uncommitted changes on ${branch}`}>
+                    <GitBranch size={11} className="rs-changes-branch-icon" />
+                    <span className="rs-changes-branch-name">{branch}</span>
+                  </div>
+                )}
                 {!gitError && changes.length > 0 && (
                   <>
                     <Tooltip content={wrapLines ? "Scroll long lines" : "Wrap long lines"} placement="top">

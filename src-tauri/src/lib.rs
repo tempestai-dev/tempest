@@ -1140,8 +1140,10 @@ fn atlas_mcp_call(
 
 #[tauri::command(async)]
 fn git_ls_files(path: String) -> Result<Vec<String>, String> {
+    // -c cached + -o untracked - --exclude-standard: respects .gitignore.
+    // Union so the search finds files that are not yet tracked.
     let out = new_command("git")
-        .args(["ls-files"])
+        .args(["ls-files", "-co", "--exclude-standard"])
         .current_dir(&path)
         .output()
         .map_err(|e| format!("Failed to run git ls-files: {e}"))?;
