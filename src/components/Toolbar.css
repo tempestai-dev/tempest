@@ -563,7 +563,7 @@
 
 .bar.tabs-designer .agent-box .agent-icon  { width: 13px; height: 13px; }
 
-.bar.tabs-designer .agent-box:hover span {
+.bar.tabs-designer .agent-box:hover .session-tab-name {
   -webkit-mask-image: linear-gradient(to right, black calc(100% - 28px), transparent calc(100% - 14px), transparent 100%);
   mask-image:         linear-gradient(to right, black calc(100% - 28px), transparent calc(100% - 14px), transparent 100%);
 }
