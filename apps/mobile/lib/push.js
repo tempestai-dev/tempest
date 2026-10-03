@@ -12,6 +12,8 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 
+const log = (...a) => { if (__DEV__) console.log(...a); };
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
@@ -47,11 +49,11 @@ export async function getPushToken() {
     }
     if (status !== 'granted') return null;
     const pid = projectId();
-    if (!pid) { console.log('[push] no projectId in expoConfig'); return null; }
+    if (!pid) { log('[push] no projectId in expoConfig'); return null; }
     const { data } = await Notifications.getExpoPushTokenAsync({ projectId: pid });
     return { token: data, platform: Platform.OS };
   } catch (e) {
-    console.log('[push] getPushToken failed', e?.message || e);
+    log('[push] getPushToken failed', e?.message || e);
     return null;
   }
 }

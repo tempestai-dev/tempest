@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, Pressable, ScrollView, SectionList, TextInput,
+  View, Text, Pressable, SectionList, TextInput,
   RefreshControl, ActivityIndicator, StyleSheet, Linking,
   Animated, Easing,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { TerminalSquare, Bot, Monitor, Menu, Plus, LogOut, Bell, CheckCircle2 } from 'lucide-react-native';
+import { TerminalSquare, Bot, Monitor, LogOut, Bell, CheckCircle2 } from 'lucide-react-native';
 import { startRpcClient } from '../lib/rpc';
 import { getPushToken } from '../lib/push';
 import SessionScreen from './SessionScreen';
@@ -66,6 +66,8 @@ const MONO_AGENTS = new Set([
 const MOBILE_PROTOCOL_VERSION = 1;
 const MIN_COMPATIBLE_DESKTOP_VERSION = 1;
 
+const log = (...a) => { if (__DEV__) console.log(...a); };
+
 const geist = { regular: 'Geist_400Regular', medium: 'Geist_500Medium', semibold: 'Geist_600SemiBold' };
 
 const STATE_LABEL = { connecting: 'Connecting', open: 'Live', closed: 'Reconnecting' };
@@ -114,7 +116,6 @@ export default function Connected({ pairing, onUnpair, onBack }) {
   // One flat collapse set keyed by "projectId::branchKey". Sections default expanded.
   const [collapsedSections, setCollapsedSections] = useState(() => new Set());
   const [selectedSessionId, setSelectedSessionId] = useState(null);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [confirmUnpair, setConfirmUnpair] = useState(false);
   // Session id currently being reopened via session.hop — shows a spinner on
   // the tapped row so the user gets feedback while the desktop respawns PTY.
@@ -178,7 +179,7 @@ export default function Connected({ pairing, onUnpair, onBack }) {
         if (cancelled || !r) return;
         client.request('push.register', r).catch((e) => {
           // Older desktop without push.register — safe to ignore.
-          console.log('[push] register failed', e?.message);
+          log('[push] register failed', e?.message);
         });
       });
       client.request('session.list', {})
@@ -213,7 +214,7 @@ export default function Connected({ pairing, onUnpair, onBack }) {
     };
 
     const offUpdated = client.on('session.updated', (s) => {
-      console.log(`[Connected] session.updated id=${s.id.slice(0, 8)} status=${s.status} closed=${s.closed}`);
+      log(`[Connected] session.updated id=${s.id.slice(0, 8)} status=${s.status} closed=${s.closed}`);
       setSnapshot((prev) => {
         if (!prev) { refetch(); return prev; }
         const knownProject = prev.projects.some((p) => p.id === s.projectId);
@@ -427,11 +428,6 @@ export default function Connected({ pairing, onUnpair, onBack }) {
     }
   };
 
-  // Placeholders — wired later. Long-press should open an action sheet;
-  // FAB should launch a "new session" flow.
-  const handleLongPressSession = (_s) => {};
-  const handleNewSession = () => {};
-
   const selectedSession = selectedSessionId
     ? (snapshot?.sessions || []).find((s) => s.id === selectedSessionId) || null
     : null;
@@ -569,7 +565,6 @@ export default function Connected({ pairing, onUnpair, onBack }) {
                 session={item}
                 reopening={reopeningId === item.id}
                 onPress={() => handleTapSession(item)}
-                onLongPress={() => handleLongPressSession(item)}
               />
             )
           )}
@@ -584,30 +579,7 @@ export default function Connected({ pairing, onUnpair, onBack }) {
         />
       )}
 
-      <Fab onPress={() => setMenuOpen(true)} />
-
-      {menuOpen && (
-        <>
-          <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />
-          <View style={styles.menuCard}>
-            <Pressable
-              style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
-              onPress={() => { setMenuOpen(false); handleNewSession(); }}
-            >
-              <Plus size={16} color="#e4e4e7" strokeWidth={1.75} />
-              <Text style={styles.menuItemText}>New session</Text>
-            </Pressable>
-            <View style={styles.menuDivider} />
-            <Pressable
-              style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
-              onPress={() => { setMenuOpen(false); setConfirmUnpair(true); }}
-            >
-              <LogOut size={16} color="#f0b0b0" strokeWidth={1.75} />
-              <Text style={[styles.menuItemText, { color: '#f0b0b0' }]}>Unpair desktop</Text>
-            </Pressable>
-          </View>
-        </>
-      )}
+      <Fab onPress={() => setConfirmUnpair(true)} />
 
       {confirmUnpair && (
         <>
@@ -740,7 +712,7 @@ function KindDivider({ label }) {
   );
 }
 
-function SessionRow({ session, reopening, onPress, onLongPress }) {
+function SessionRow({ session, reopening, onPress }) {
   return (
     <Pressable
       style={({ pressed }) => [
@@ -748,8 +720,6 @@ function SessionRow({ session, reopening, onPress, onLongPress }) {
         pressed && { backgroundColor: '#18181b' },
       ]}
       onPress={onPress}
-      onLongPress={onLongPress}
-      delayLongPress={400}
       disabled={reopening}
       hitSlop={4}
     >
@@ -799,7 +769,7 @@ function Fab({ onPress }) {
       onPress={onPress}
       hitSlop={8}
     >
-      <Menu size={24} color="#09090b" strokeWidth={2.25} />
+      <LogOut size={22} color="#09090b" strokeWidth={2.25} />
     </Pressable>
   );
 }
@@ -1003,24 +973,6 @@ const styles = StyleSheet.create({
     position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
-  menuCard: {
-    position: 'absolute', right: 20, bottom: 96,
-    minWidth: 200,
-    backgroundColor: '#0f0f11',
-    borderWidth: 1, borderColor: '#27272a',
-    borderRadius: 12,
-    paddingVertical: 6,
-    shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 16, shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
-  },
-  menuItem: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingVertical: 12, paddingHorizontal: 14,
-  },
-  menuItemPressed: { backgroundColor: '#18181b' },
-  menuItemText: { color: '#e4e4e7', fontSize: 14, fontFamily: geist.medium },
-  menuDivider: { height: 1, backgroundColor: '#27272a', marginHorizontal: 6, marginVertical: 4 },
-
   confirmCard: {
     position: 'absolute', left: 24, right: 24, top: '35%',
     backgroundColor: '#0f0f11',

@@ -2,6 +2,7 @@ import { Component } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
 
 const geist = { regular: 'Geist_400Regular', semibold: 'Geist_600SemiBold' };
+const log = (...a) => { if (__DEV__) console.log(...a); };
 
 export default class ErrorBoundary extends Component {
   state = { err: null };
@@ -9,7 +10,7 @@ export default class ErrorBoundary extends Component {
   static getDerivedStateFromError(err) { return { err }; }
 
   componentDidCatch(err, info) {
-    console.log('[boundary]', err?.message, info?.componentStack);
+    log('[boundary]', err?.message, info?.componentStack);
   }
 
   reset = () => this.setState({ err: null });

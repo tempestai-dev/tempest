@@ -9,7 +9,6 @@ import {
   Geist_600SemiBold,
 } from '@expo-google-fonts/geist';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ThemeProvider, useTheme } from './themes';
 import Pair from './screens/Pair';
 import Connected from './screens/Connected';
 import DeviceList from './screens/DeviceList';
@@ -69,10 +68,9 @@ function GetStartedButton({ onPress }) {
 }
 
 function Welcome({ onGetStarted }) {
-  const { mode } = useTheme();
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0a0a0a' }}>
-      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
+      <StatusBar style="light" />
       <View style={{ paddingTop: 56, paddingHorizontal: 24 }}>
         <Text style={{
           color: '#f5f5f7',
@@ -191,7 +189,6 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
-      <ThemeProvider initial="dark">
         {screen === 'welcome' && <Welcome onGetStarted={goPair} />}
         {screen === 'pair' && (
           <Pair
@@ -214,7 +211,6 @@ export default function App() {
             onBack={showBackFromConnected ? () => setScreen('list') : undefined}
           />
         )}
-      </ThemeProvider>
       </ErrorBoundary>
     </SafeAreaProvider>
   );

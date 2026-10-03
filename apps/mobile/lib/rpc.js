@@ -6,6 +6,8 @@ import { RpcPeer, wsChannel, makeBackoff } from '@tempest/transport';
 import { b64 } from '@tempest/crypto';
 import { takeWarmSocket } from './warmSocket';
 
+const log = (...a) => { if (__DEV__) console.log(...a); };
+
 /**
  * Start a self-reconnecting RPC client for a paired desktop.
  *
@@ -53,22 +55,22 @@ export function startRpcClient({ relayUrl, sessionId, sessionKeyB64, onState }) 
   const dial = () => {
     if (disposed) return;
     emitState('connecting');
-    console.log(`[rpc/mobile] dial sid=${sessionId.slice(0, 8)}`);
+    log(`[rpc/mobile] dial sid=${sessionId.slice(0, 8)}`);
 
     // Reuse the pairing WS if it was handed off — same socket the desktop
     // bridge is talking to, no reconnect race, no CF-tunnel edge propagation
     // wait, no first-frame drop. Cold path (reconnect / no handoff) dials fresh.
     const warm = takeWarmSocket(sessionId);
     if (warm) {
-      console.log(`[rpc/mobile] warm socket taken readyState=${warm.readyState}`);
+      log(`[rpc/mobile] warm socket taken readyState=${warm.readyState}`);
       ws = warm;
     } else {
       const url = `${relayUrl}?session=${encodeURIComponent(sessionId)}&role=phone`;
-      console.log(`[rpc/mobile] cold dial ${url}`);
+      log(`[rpc/mobile] cold dial ${url}`);
       try {
         ws = new WebSocket(url);
       } catch (e) {
-        console.log(`[rpc/mobile] WebSocket ctor threw`, e?.message || e);
+        log(`[rpc/mobile] WebSocket ctor threw`, e?.message || e);
         scheduleReconnect();
         return;
       }
@@ -81,7 +83,7 @@ export function startRpcClient({ relayUrl, sessionId, sessionKeyB64, onState }) 
     ws.addEventListener('message', onAnyMessage);
 
     const setupOpen = () => {
-      console.log(`[rpc/mobile] ws open, wiring peer`);
+      log(`[rpc/mobile] ws open, wiring peer`);
       backoff.reset();
       peer = new RpcPeer(wsChannel(ws), sessionKey);
       // Re-attach every listener the caller registered.
@@ -89,16 +91,16 @@ export function startRpcClient({ relayUrl, sessionId, sessionKeyB64, onState }) 
       for (const [event, set] of listeners) {
         for (const fn of set) { peer.on(event, fn); attached++; }
       }
-      console.log(`[rpc/mobile] peer ready, re-attached ${attached} listeners`);
+      log(`[rpc/mobile] peer ready, re-attached ${attached} listeners`);
       emitState('open');
       armStallTimer();
       pingTimer = setInterval(() => {
         try { ws?.send('__ping'); } catch {}
       }, PING_MS);
     };
-    ws.onerror = (e) => { console.log(`[rpc/mobile] ws error`, e?.message || e); };
+    ws.onerror = (e) => { log(`[rpc/mobile] ws error`, e?.message || e); };
     ws.onclose = (e) => {
-      console.log(`[rpc/mobile] ws close code=${e?.code} reason=${e?.reason}`);
+      log(`[rpc/mobile] ws close code=${e?.code} reason=${e?.reason}`);
       clearTimers();
       try { ws?.removeEventListener('message', onAnyMessage); } catch {}
       peer = null;
@@ -140,16 +142,16 @@ export function startRpcClient({ relayUrl, sessionId, sessionKeyB64, onState }) 
   });
 
   const request = async (method, params) => {
-    if (!peer) { console.log(`[rpc/mobile] request(${method}) waiting for peer`); await waitForPeer(); }
-    console.log(`[rpc/mobile] → ${method}`, params && Object.keys(params).length ? params : '');
+    if (!peer) { log(`[rpc/mobile] request(${method}) waiting for peer`); await waitForPeer(); }
+    log(`[rpc/mobile] → ${method}`, params && Object.keys(params).length ? params : '');
     let timer;
     const timeoutMs = TIMEOUT_MS[method] ?? DEFAULT_TIMEOUT_MS;
     const timeout = new Promise((_, reject) => {
       timer = setTimeout(() => reject(new Error(`rpc_timeout:${method}`)), timeoutMs);
     });
     return Promise.race([peer.request(method, params), timeout])
-      .then((r) => { console.log(`[rpc/mobile] ← ${method} ok`); return r; })
-      .catch((e) => { console.log(`[rpc/mobile] ← ${method} err`, e?.message); throw e; })
+      .then((r) => { log(`[rpc/mobile] ← ${method} ok`); return r; })
+      .catch((e) => { log(`[rpc/mobile] ← ${method} err`, e?.message); throw e; })
       .finally(() => clearTimeout(timer));
   };
 
@@ -158,7 +160,7 @@ export function startRpcClient({ relayUrl, sessionId, sessionKeyB64, onState }) 
     if (!set) { set = new Set(); listeners.set(event, set); }
     set.add(handler);
     let detach = peer?.on(event, handler);
-    console.log(`[rpc/mobile] on(${event}) peer=${!!peer} total=${set.size}`);
+    log(`[rpc/mobile] on(${event}) peer=${!!peer} total=${set.size}`);
     return () => {
       set.delete(handler);
       detach?.();

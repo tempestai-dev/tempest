@@ -21,7 +21,6 @@ export default function SessionScreen({ client, session, connState, onBack }) {
   const [error, setError] = useState(null);
   const [termReady, setTermReady] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
-  const [diag, setDiag] = useState({ outputs: 0, replay: 0, lastRxAt: 0, sentAt: 0 });
   const [landscape, setLandscape] = useState(false);
   const [webviewKey, setWebviewKey] = useState(0);
   const [yielded, setYielded] = useState(false);
@@ -75,7 +74,6 @@ export default function SessionScreen({ client, session, connState, onBack }) {
     if (!client || !session?.id) return;
     const off = client.on('agent.output', ({ sessionId, chunk }) => {
       if (sessionId !== session.id) return;
-      setDiag((d) => ({ ...d, outputs: d.outputs + 1, lastRxAt: Date.now() }));
       queueWrite(chunk);
     });
     const offYield = client.on('session.controllerYielded', ({ sessionId }) => {
@@ -114,7 +112,6 @@ export default function SessionScreen({ client, session, connState, onBack }) {
       .then((r) => {
         if (cancelled) return;
         const replay = r?.replay || [];
-        setDiag((d) => ({ ...d, replay: replay.length, lastRxAt: replay.length ? Date.now() : d.lastRxAt }));
         // Replay is snapshot data — must land before any live chunks that
         // came in during the round-trip.
         pending.current = [...replay, ...pending.current];
@@ -136,8 +133,9 @@ export default function SessionScreen({ client, session, connState, onBack }) {
     if (lastPushedDims.current.cols === cols && lastPushedDims.current.rows === rows) return;
     lastPushedDims.current = { cols, rows };
     client.request('agent.resize', { sessionId: session.id, cols, rows }).catch((e) => {
-      // Older desktops without the RPC will error — cache to stop retrying.
-      if (String(e?.message || '').includes('agent.resize')) lastPushedDims.current = { cols: -1, rows: -1 };
+      // Older desktops without the RPC reject with `no_handler: agent.resize`
+      // (see RpcPeer). Pin dims to a sentinel so we stop re-asking.
+      if (String(e?.message || '').startsWith('no_handler:')) lastPushedDims.current = { cols: -1, rows: -1 };
     });
   };
 
@@ -171,7 +169,6 @@ export default function SessionScreen({ client, session, connState, onBack }) {
     setBusy(true);
     try {
       await client.request('agent.send', { sessionId: session.id, text });
-      setDiag((d) => ({ ...d, sentAt: Date.now() }));
       setDraft('');
     } catch (e) {
       setError(e.message);
@@ -200,7 +197,7 @@ export default function SessionScreen({ client, session, connState, onBack }) {
       <StatusBar style="light" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.topbar}>
           <Pressable onPress={onBack} hitSlop={12}>

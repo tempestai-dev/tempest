@@ -19,6 +19,8 @@ import {
 import nacl from 'tweetnacl';
 import { setWarmSocket } from './warmSocket';
 
+const log = (...a) => { if (__DEV__) console.log(...a); };
+
 // Expo Go has no webcrypto; seed once before any keygen.
 seedPrng((n) => Crypto.getRandomBytes(n));
 
@@ -130,7 +132,7 @@ export const runPhonePairing = (payload, { onStatus, ttlMs = 60_000, keepAliveOn
 
       ws.onopen = () => {
         opened = true;
-        console.log('[pairing] ws open');
+        log('[pairing] ws open');
         // CF quick tunnels drop idle client sockets in ~100s. During the
         // "waiting for laptop" window nothing else is sent — keep the pipe
         // warm with the router's `__ping` intercept.
@@ -140,12 +142,12 @@ export const runPhonePairing = (payload, { onStatus, ttlMs = 60_000, keepAliveOn
       };
 
       ws.onerror = (e) => {
-        console.log('[pairing] ws error opened=' + opened, e?.message || e);
+        log('[pairing] ws error opened=' + opened, e?.message || e);
         if (!opened) { scheduleRetry(); return; }
         fail('error', new Error('websocket_error'));
       };
       ws.onclose = (e) => {
-        console.log('[pairing] ws close opened=' + opened + ' code=' + e?.code + ' reason=' + e?.reason);
+        log('[pairing] ws close opened=' + opened + ' code=' + e?.code + ' reason=' + e?.reason);
         if (settled) return;
         if (!opened) { scheduleRetry(); return; }
         fail('error', new Error(`websocket_closed code=${e?.code ?? '?'}`));
@@ -156,8 +158,8 @@ export const runPhonePairing = (payload, { onStatus, ttlMs = 60_000, keepAliveOn
         if (raw === '__pong') return;
         let frame;
         try { frame = JSON.parse(raw); }
-        catch { console.log('[pairing] bad frame', ev.data); return; }
-        console.log('[pairing] frame', frame.__relay || frame.t);
+        catch { log('[pairing] bad frame', ev.data); return; }
+        log('[pairing] frame', frame.__relay || frame.t);
 
         if (frame.__relay === 'attached') {
           if (frame.peer_present) sendHello();

@@ -3,7 +3,7 @@ import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { StatusBar } from 'expo-status-bar';
-import { parseQrPayload, runPhonePairing } from '../lib/pairing';
+import { parseQrPayload, runPhonePairing, fingerprint, b64 } from '../lib/pairing';
 
 const geist = { regular: 'Geist_400Regular', semibold: 'Geist_600SemiBold' };
 
@@ -21,24 +21,37 @@ export default function Pair({ onBack, onPaired }) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(null);
   const [error, setError] = useState(null);
+  // Set after a successful QR parse. User must tap "Trust" before we dial the
+  // desktop — guards against scanning a QR substituted by someone else.
+  const [pending, setPending] = useState(null); // { payload, fingerprint }
   const activeCancelRef = useRef(null);
 
   useEffect(() => () => activeCancelRef.current?.(), []);
 
   const handleScan = ({ data }) => {
-    if (busy) return;
+    if (busy || pending) return;
     const payload = parseQrPayload(data);
     if (!payload) {
       setError('Not a Tempest pairing QR.');
       return;
     }
     setError(null);
+    try {
+      const fp = fingerprint(b64.dec(payload.laptop_pubkey));
+      setPending({ payload, fingerprint: fp });
+    } catch {
+      setError('Invalid desktop key in QR.');
+    }
+  };
+
+  const confirmTrust = () => {
+    if (!pending) return;
+    const { payload } = pending;
+    setPending(null);
     setBusy(true);
     setStatus('connecting');
 
-    const run = runPhonePairing(payload, {
-      onStatus: setStatus,
-    });
+    const run = runPhonePairing(payload, { onStatus: setStatus });
     activeCancelRef.current = run.cancel;
 
     run.promise
@@ -65,6 +78,7 @@ export default function Pair({ onBack, onPaired }) {
     activeCancelRef.current = null;
     setBusy(false);
     setStatus(null);
+    setPending(null);
   };
 
   return (
@@ -88,7 +102,7 @@ export default function Pair({ onBack, onPaired }) {
             style={StyleSheet.absoluteFill}
             facing="back"
             barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-            onBarcodeScanned={busy ? undefined : handleScan}
+            onBarcodeScanned={(busy || pending) ? undefined : handleScan}
           />
         ) : (
           <View style={styles.permBlock}>
@@ -116,6 +130,24 @@ export default function Pair({ onBack, onPaired }) {
             <Pressable style={styles.overlayCancel} onPress={cancelActive}>
               <Text style={styles.overlayCancelText}>Cancel</Text>
             </Pressable>
+          </View>
+        )}
+
+        {pending && !busy && (
+          <View style={styles.overlay}>
+            <Text style={styles.confirmLabel}>Desktop fingerprint</Text>
+            <Text style={styles.confirmFp} selectable>{pending.fingerprint}</Text>
+            <Text style={styles.confirmHint}>
+              Check this matches the fingerprint shown on your desktop before trusting it.
+            </Text>
+            <View style={styles.confirmRow}>
+              <Pressable style={styles.overlayCancel} onPress={cancelActive}>
+                <Text style={styles.overlayCancelText}>Scan again</Text>
+              </Pressable>
+              <Pressable style={styles.confirmBtn} onPress={confirmTrust}>
+                <Text style={styles.confirmBtnText}>Trust</Text>
+              </Pressable>
+            </View>
           </View>
         )}
       </View>
@@ -205,6 +237,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
   },
   overlayCancelText: { color: '#f5f5f7', fontSize: 13, fontFamily: geist.semibold },
+
+  confirmLabel: {
+    color: '#8a8a90', fontSize: 11, fontFamily: geist.semibold,
+    letterSpacing: 1.4, textTransform: 'uppercase',
+  },
+  confirmFp: {
+    color: '#f5f5f7', fontSize: 20, fontFamily: 'GeistPixel',
+    letterSpacing: 1.5, textAlign: 'center', marginTop: 4,
+  },
+  confirmHint: {
+    color: '#b8b8c0', fontSize: 13, fontFamily: geist.regular,
+    textAlign: 'center', lineHeight: 19, marginTop: 4, maxWidth: 260,
+  },
+  confirmRow: { flexDirection: 'row', gap: 12, marginTop: 12 },
+  confirmBtn: {
+    paddingVertical: 8, paddingHorizontal: 20, borderRadius: 6,
+    backgroundColor: '#ffffff',
+  },
+  confirmBtnText: { color: '#0c0d10', fontSize: 13, fontFamily: geist.semibold },
 
   permBlock: { padding: 24, alignItems: 'center', gap: 16 },
   permText: { color: '#b8b8c0', fontSize: 14, fontFamily: geist.regular, textAlign: 'center', lineHeight: 20 },
