@@ -1,7 +1,7 @@
 {
   "name": "tempest",
   "private": true,
-  "version": "0.1.23",
+  "version": "0.1.25",
   "type": "module",
   "workspaces": [
     "web",
