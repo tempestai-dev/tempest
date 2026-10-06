@@ -131,6 +131,24 @@
   flex-shrink: 0;
 }
 
+.sp-nav-badge {
+  margin-left: auto;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--tempest-accent-blue);
+  background: color-mix(in srgb, var(--tempest-accent-blue) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tempest-accent-blue) 35%, transparent);
+  border-radius: 4px;
+}
+
+.sp-section-heading .sp-nav-badge {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
 /* ── Content ─────────────────────────────────────────────────────────────── */
 
 .sp-content {

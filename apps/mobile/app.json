@@ -48,6 +48,12 @@
         "projectId": "8ce33113-9b4d-4a44-9760-0a29efb472f9"
       }
     },
-    "owner": "usetempest"
+    "owner": "usetempest",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/8ce33113-9b4d-4a44-9760-0a29efb472f9"
+    }
   }
 }

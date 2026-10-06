@@ -19,6 +19,7 @@
     "expo-notifications": "~57.0.20",
     "expo-screen-orientation": "~57.0.2",
     "expo-status-bar": "~57.0.1",
+    "expo-updates": "~57.0.24",
     "lucide-react-native": "^0.475.0",
     "react": "19.2.3",
     "react-native": "0.86.3",

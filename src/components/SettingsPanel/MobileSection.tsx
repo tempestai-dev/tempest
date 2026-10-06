@@ -246,7 +246,7 @@ export function MobileSection() {
 
   return (
     <div className="sp-section">
-      <div className="sp-section-heading">Mobile</div>
+      <div className="sp-section-heading">Mobile <span className="sp-nav-badge">Beta</span></div>
       <p className="sp-section-desc">
         Pair a phone to drive Tempest from anywhere. Scan this QR from the
         Tempest mobile app. Payload is single-use and expires after {QR_TTL_SECONDS} seconds.
