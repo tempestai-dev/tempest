@@ -1053,8 +1053,8 @@ export function WorkspaceView({ zen, name, path }: Props) {
       // resize_pty. Without this, the agent stays idle at the 24×80 spawn size
       // until the tab is focused. We size from the shared workspace area — which
       // is always laid out — so a hidden pane gets the same dimensions a focused
-      // one would. The exact fit is corrected by the ResizeObserver once the pane
-      // is shown.
+      // one would. A visible pane corrects this on the next frame (register()
+      // signals it to re-fit); a hidden one corrects it once shown.
       if (agent) {
         const area = workspaceContentRef.current;
         const fontSize = getSettings().terminalFontSize;

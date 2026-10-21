@@ -254,4 +254,40 @@ function flush(fake: Fake) {
   assert.equal(fake.acquires, 2, "each trigger still re-acquires (idempotent)");
 }
 
+// Instant-tab spawn: the pane fits before its PTY exists, so that resize lands
+// nowhere, and the spawn path then kicks the PTY to an estimated size. Once the
+// PTY registers, the pane's real fit must reach it despite the cached dims.
+{
+  const fake = makeFake();
+  const controller = makeController(fake);
+  let registered = false;
+  let ptyDims = { rows: 0, cols: 0 };
+  fake.sendImpl = (dims) => {
+    if (registered) ptyDims = { ...dims };
+    return Promise.resolve();
+  };
+  fake.dims = { rows: 40, cols: 118 };
+  controller.fitNow();
+  registered = true;
+  ptyDims = { rows: 52, cols: 140 };
+  controller.ptyReady();
+  await flush(fake);
+  assert.deepEqual(ptyDims, { rows: 40, cols: 118 }, "registered PTY adopts the pane's fitted size");
+}
+
+// ptyReady before the pane is laid out sends nothing; the next visible fit does.
+{
+  const fake = makeFake();
+  const controller = makeController(fake);
+  fake.dims = null;
+  controller.ptyReady();
+  await flush(fake);
+  assert.equal(fake.sends.length, 0, "hidden pane leaves the spawn-path size in place");
+  fake.dims = { rows: 40, cols: 118 };
+  controller.restoreOnShow();
+  await flush(fake);
+  await flush(fake);
+  assert.deepEqual(fake.sends, [{ rows: 40, cols: 118 }], "first visible fit sends");
+}
+
 console.log("terminalFocus: all checks passed");

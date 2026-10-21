@@ -185,6 +185,7 @@ export const TerminalPane = memo(forwardRef<TerminalPaneHandle, Props>(function 
     onDataRef.current = onData;
     const buffered = sessionManager.attach(sessionId, onData);
     for (const chunk of buffered) term.write(chunk);
+    const offRegistered = sessionManager.onRegistered(sessionId, () => restoreRef.current?.ptyReady());
 
     // Wait for the terminal font to load before the first fit. If we fit while the
     // fallback font is still active, xterm measures the wrong cell width → too few
@@ -286,6 +287,7 @@ export const TerminalPane = memo(forwardRef<TerminalPaneHandle, Props>(function 
       el.removeEventListener("paste", handlePaste, { capture: true });
       if (resizeTimerRef.current !== null) clearTimeout(resizeTimerRef.current);
       sessionManager.detach(sessionId, onDataRef.current);
+      offRegistered();
       webglPool.release(sessionId);
       termRef.current = null;
       fitAddonRef.current = null;

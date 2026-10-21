@@ -125,6 +125,9 @@ class SessionManager {
   // path: the tab renders synchronously, the PTY spawns a beat later). register()
   // adopts these into the real record; until then there's nothing to replay.
   private pending = new Map<string, Set<(data: string) => void>>();
+  // Panes waiting to hear their PTY registered, so they can re-send their fit:
+  // resizes sent before registration reached no PTY.
+  private registeredWaiters = new Map<string, Set<() => void>>();
 
   register(
     sessionId: string,
@@ -165,6 +168,24 @@ class SessionManager {
     this.sessions.set(sessionId, record);
     console.log(`[sm] register sid=${sessionId.slice(0, 8)} agent=${!!isAgent} adopted_pending=${pending?.size ?? 0} listeners=${record.listeners.size}`);
     channel.onmessage = (payload) => this.processChunk(sessionId, payload.data);
+    const waiters = this.registeredWaiters.get(sessionId);
+    this.registeredWaiters.delete(sessionId);
+    if (waiters) for (const w of waiters) w();
+  }
+
+  // Calls onRegistered once register() runs for this session. Returns an
+  // unsubscribe; a no-op when the session is already registered.
+  onRegistered(sessionId: string, onRegistered: () => void): () => void {
+    if (this.sessions.has(sessionId)) return () => {};
+    let waiters = this.registeredWaiters.get(sessionId);
+    if (!waiters) { waiters = new Set(); this.registeredWaiters.set(sessionId, waiters); }
+    waiters.add(onRegistered);
+    return () => {
+      const current = this.registeredWaiters.get(sessionId);
+      if (!current) return;
+      current.delete(onRegistered);
+      if (current.size === 0) this.registeredWaiters.delete(sessionId);
+    };
   }
 
   // True once register() has run for this session and before unregister() — i.e.
@@ -176,6 +197,7 @@ class SessionManager {
 
   unregister(sessionId: string) {
     this.pending.delete(sessionId);
+    this.registeredWaiters.delete(sessionId);
     const record = this.sessions.get(sessionId);
     if (!record) return;
     if (record.quietTimer !== null) clearTimeout(record.quietTimer);
