@@ -173,17 +173,17 @@ class SessionManager {
     if (waiters) for (const w of waiters) w();
   }
 
-  // Calls onRegistered once register() runs for this session. Returns an
-  // unsubscribe; a no-op when the session is already registered.
-  onRegistered(sessionId: string, onRegistered: () => void): () => void {
+  // Calls listener once register() runs for this session. Returns an
+  // unsubscribe; never fires if the session is already registered.
+  onRegistered(sessionId: string, listener: () => void): () => void {
     if (this.sessions.has(sessionId)) return () => {};
     let waiters = this.registeredWaiters.get(sessionId);
     if (!waiters) { waiters = new Set(); this.registeredWaiters.set(sessionId, waiters); }
-    waiters.add(onRegistered);
+    waiters.add(listener);
     return () => {
       const current = this.registeredWaiters.get(sessionId);
       if (!current) return;
-      current.delete(onRegistered);
+      current.delete(listener);
       if (current.size === 0) this.registeredWaiters.delete(sessionId);
     };
   }

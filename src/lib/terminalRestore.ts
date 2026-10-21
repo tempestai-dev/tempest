@@ -123,6 +123,13 @@ export function createRestoreController(deps: RestoreControllerDeps): RestoreCon
     });
   }
 
+  // Drops the cached dims so the next fit sends even if its dims match them.
+  function forceFit(): void {
+    if (disposed) return;
+    lastSent = null;
+    scheduleFit();
+  }
+
   return {
     fitNow,
     scheduleFit,
@@ -150,16 +157,8 @@ export function createRestoreController(deps: RestoreControllerDeps): RestoreCon
       if (disposed) return;
       lastSent = null;
     },
-    notifyFontReady(): void {
-      if (disposed) return;
-      lastSent = null;
-      scheduleFit();
-    },
-    ptyReady(): void {
-      if (disposed) return;
-      lastSent = null;
-      scheduleFit();
-    },
+    notifyFontReady: forceFit,
+    ptyReady: forceFit,
     dispose(): void {
       disposed = true;
       fitPending = false;
