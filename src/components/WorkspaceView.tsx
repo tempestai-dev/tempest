@@ -10,8 +10,9 @@ import { addRecent, getRecents, removeRecent } from "../store/recents";
 import { getOpenProjects, saveOpenProjects } from "../store/openProjects";
 import { setProjectWorktreeMeta } from "../store/worktrees";
 import { track } from "../lib/telemetry";
-import { getSession, getBranchSessions, getRootSessionsForProject, getAllSessions, getBranchPath, getProjectPath, saveSession, setSessionConversationId, setSessionName, markSessionClosed, removeBranchByPath, removeSession, pruneSessions, subscribeSessionLifecycle } from "../store/sessions";
+import { getSession, getBranchSessions, getRootSessionsForProject, getAllSessions, getBranchPath, getAllBranches, getProjectPath, saveSession, setSessionConversationId, setSessionName, markSessionClosed, removeBranchByPath, removeSession, pruneSessions, subscribeSessionLifecycle } from "../store/sessions";
 import { getRuntimeState, setRuntimeState } from "../lib/runtimeState";
+import { anchoredSessionIds, externalBranchCandidates } from "./worktreeRestore";
 import { loadProjectSettings } from "./ProjectSettingsPanel/useProjectSettings";
 import { loadTempestConfig } from "../lib/tempestConfig";
 import { getTabs, upsertTab, removeTab, type PersistedTab } from "../store/tabs";
@@ -370,13 +371,31 @@ export function WorkspaceView({ zen, name, path }: Props) {
         )
       );
 
+      for (const scan of scans) {
+        scan.filter(isWorktreeDir).forEach((e) => diskWorktreePaths.add(e.path));
+      }
+
+      // Saved branches whose worktree lives outside .tempest/ (opened directly
+      // from an existing checkout) are invisible to the scan above — keep the
+      // ones whose folder still exists on disk.
+      const externalBranches = externalBranchCandidates(
+        getAllBranches(), new Set(projects.map((p) => p.id)), diskWorktreePaths);
+      const externalExists = await Promise.all(
+        externalBranches.map((b) =>
+          invoke("list_directory", { path: b.path }).then(() => true, () => false)
+        )
+      );
+      const liveExternal = externalBranches.filter((_, i) => externalExists[i]);
+      const liveWorktreePaths = new Set([...diskWorktreePaths, ...liveExternal.map((b) => b.path)]);
+
       for (const [i, project] of projects.entries()) {
         openProjectPaths.add(project.path);
-        const wts: { name: string; path: string }[] = [];
-        scans[i].filter(isWorktreeDir).forEach((e) => {
-          wts.push({ name: e.name, path: e.path });
-          diskWorktreePaths.add(e.path);
-        });
+        const wts: { name: string; path: string }[] = scans[i]
+          .filter(isWorktreeDir)
+          .map((e) => ({ name: e.name, path: e.path }));
+        for (const b of liveExternal) {
+          if (b.projectId === project.id) wts.push({ name: b.name, path: b.path });
+        }
 
         // Restore user's custom worktree order if persisted from a previous drag.
         const storedWtOrder = getOpenProjects().find(p => p.id === project.id)?.worktreeOrder;
@@ -394,14 +413,12 @@ export function WorkspaceView({ zen, name, path }: Props) {
       // Prune sessions whose branch directory (branch sessions) or project (root
       // sessions) no longer exists. The DB is the source of truth for which
       // sessions exist; the filesystem scan only confirms which are still anchored.
-      const validIds = new Set<string>();
-      for (const s of getAllSessions()) {
-        const branchPath = s.branchId ? getBranchPath(s.branchId) : undefined;
-        const ok = s.branchId
-          ? (branchPath !== undefined && diskWorktreePaths.has(branchPath))
-          : openProjectPaths.has(getProjectPath(s.projectId) ?? "");
-        if (ok) validIds.add(s.id);
-      }
+      const validIds = anchoredSessionIds(
+        getAllSessions(),
+        { branchPath: getBranchPath, projectPath: getProjectPath },
+        liveWorktreePaths,
+        openProjectPaths,
+      );
       pruneSessions(validIds);
 
       // Collect restore items in saved tab-bar order. Focus is restored in one

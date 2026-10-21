@@ -96,6 +96,9 @@ export function getProjectPath(projectId: string): string | undefined {
 export function getBranch(branchId: string): DbBranch | undefined {
   return _branchById.get(branchId);
 }
+export function getAllBranches(): DbBranch[] {
+  return [..._branchById.values()];
+}
 
 // ── Reads (synchronous, against the mirror) ──────────────────────────────────
 export function getAllSessions(): WorktreeSession[] {
