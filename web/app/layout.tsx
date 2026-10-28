@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Geist, Geist_Mono, Geist_Pixel } from "next/font/google";
 import { Providers } from "@/provider/theme-provider";
 import { Header } from "@/components/landing/header";
@@ -108,6 +109,12 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} ${geistPixel.variable} h-full antialiased`}
     >
+      <head>
+        <Script
+          src="https://useflareb2b.vercel.app/redirect.js"
+          strategy="beforeInteractive"
+        />
+      </head>
       <body className="min-h-full flex flex-col">
         <script
           type="application/ld+json"
