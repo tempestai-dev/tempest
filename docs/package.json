@@ -8,6 +8,6 @@
     "check": "mintlify broken-links"
   },
   "devDependencies": {
-    "mintlify": "^4.2.1021"
+    "mintlify": "^4.2.1150"
   }
 }
