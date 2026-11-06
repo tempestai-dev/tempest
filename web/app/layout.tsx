@@ -111,7 +111,7 @@ export default function RootLayout({
     >
       <head>
         <Script
-          src="https://useflareb2b.vercel.app/redirect.js"
+          src="https://app.useflareb2b.com/redirect.js"
           strategy="beforeInteractive"
         />
       </head>
