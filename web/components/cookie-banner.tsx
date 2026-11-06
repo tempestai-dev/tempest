@@ -2,19 +2,18 @@
 
 import { useEffect, useState } from "react"
 
-const GA_ID = "G-EXBWHMSY2X"
+const GTM_ID = "GTM-KBS7QZBZ"
 const STORAGE_KEY = "cookie-consent"
 
 function loadGA() {
   if (typeof window === "undefined") return
   const script = document.createElement("script")
-  script.src = `https://www.googletagmanager.com/gtag/js?id=${GA_ID}`
+  script.src = `https://www.googletagmanager.com/gtm.js?id=${GTM_ID}`
   script.async = true
   document.head.appendChild(script)
   ;(window as any).dataLayer = (window as any).dataLayer || []
   ;(window as any).gtag = function() { (window as any).dataLayer.push(arguments) }
   ;(window as any).gtag("js", new Date())
-  ;(window as any).gtag("config", GA_ID)
 }
 
 export function CookieBanner() {
