@@ -83,13 +83,35 @@ export function Header() {
           </div>
 
           <Button asChild compact uppercase mono>
-            <Link href="/download">Download</Link>
+            <Link
+              href="/download"
+              onClick={() =>
+                (window as unknown as { gtag?: (...args: unknown[]) => void }).gtag?.(
+                  "event",
+                  "download_click",
+                  { location: "header" },
+                )
+              }
+            >
+              Download
+            </Link>
           </Button>
         </div>
 
         <div className="flex items-center gap-3 min-[1000px]:hidden">
           <Button asChild compact uppercase mono>
-            <Link href="/download">Download</Link>
+            <Link
+              href="/download"
+              onClick={() =>
+                (window as unknown as { gtag?: (...args: unknown[]) => void }).gtag?.(
+                  "event",
+                  "download_click",
+                  { location: "mobile-header" },
+                )
+              }
+            >
+              Download
+            </Link>
           </Button>
           <MobileNav />
         </div>
